@@ -71,6 +71,9 @@ func (m *Collection) setDefaultAuthOptions() {
 			Length:        8,
 			EmailTemplate: defaultOTPTemplate,
 		},
+		WebAuthn: WebAuthnConfig{
+			Enabled: false,
+		},
 		AuthToken: TokenConfig{
 			Secret:   security.RandomString(50),
 			Duration: 432000, // 5days
@@ -134,6 +137,9 @@ type collectionAuthOptions struct {
 	// OTP defines options related to the One-time password authentication (OTP).
 	OTP OTPConfig `form:"otp" json:"otp"`
 
+	// WebAuthn defines options related to the WebAuthn/Passkey authentication.
+	WebAuthn WebAuthnConfig `form:"webauthn" json:"webauthn"`
+
 	// Various token configurations
 	// ---
 	AuthToken          TokenConfig `form:"authToken" json:"authToken"`
@@ -166,6 +172,7 @@ func (o *collectionAuthOptions) validate(cv *collectionValidator) error {
 		validation.Field(&o.PasswordAuth),
 		validation.Field(&o.OAuth2),
 		validation.Field(&o.OTP),
+		validation.Field(&o.WebAuthn),
 		validation.Field(&o.MFA),
 		validation.Field(&o.AuthToken),
 		validation.Field(&o.PasswordResetToken),
@@ -193,6 +200,9 @@ func (o *collectionAuthOptions) validate(cv *collectionValidator) error {
 			authsEnabled++
 		}
 		if o.OTP.Enabled {
+			authsEnabled++
+		}
+		if o.WebAuthn.Enabled {
 			authsEnabled++
 		}
 		if authsEnabled < 2 {
@@ -552,6 +562,19 @@ func (c OAuth2ProviderConfig) Validate() error {
 		validation.Field(&c.TokenURL, is.URL),
 		validation.Field(&c.UserInfoURL, is.URL),
 	)
+}
+
+// -------------------------------------------------------------------
+
+// WebAuthnConfig defines options related to the WebAuthn/Passkey authentication
+// for auth collections.
+type WebAuthnConfig struct {
+	Enabled bool `form:"enabled" json:"enabled"`
+}
+
+// Validate makes WebAuthnConfig validatable by implementing [validation.Validatable] interface.
+func (c WebAuthnConfig) Validate() error {
+	return nil
 }
 
 func checkProviderName(value any) error {

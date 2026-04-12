@@ -21,6 +21,10 @@ type mfaResponse struct {
 	Duration int64 `json:"duration"` // in seconds
 }
 
+type webauthnResponse struct {
+	Enabled bool `json:"enabled"`
+}
+
 type passwordResponse struct {
 	IdentityFields []string `json:"identityFields"`
 	Enabled        bool     `json:"enabled"`
@@ -55,6 +59,7 @@ type authMethodsResponse struct {
 	OAuth2   oauth2Response   `json:"oauth2"`
 	MFA      mfaResponse      `json:"mfa"`
 	OTP      otpResponse      `json:"otp"`
+	WebAuthn webauthnResponse `json:"webauthn"`
 
 	// legacy fields
 	// @todo remove after dropping v0.22 support
@@ -98,6 +103,9 @@ func recordAuthMethods(e *core.RequestEvent) error {
 		},
 		MFA: mfaResponse{
 			Enabled: collection.MFA.Enabled,
+		},
+		WebAuthn: webauthnResponse{
+			Enabled: collection.WebAuthn.Enabled,
 		},
 	}
 

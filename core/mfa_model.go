@@ -14,6 +14,7 @@ const (
 	MFAMethodPassword = "password"
 	MFAMethodOAuth2   = "oauth2"
 	MFAMethodOTP      = "otp"
+	MFAMethodWebAuthn = "webauthn"
 )
 
 const CollectionNameMFAs = "_mfas"
