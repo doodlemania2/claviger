@@ -63,6 +63,10 @@ func bindRecordAuthApi(app core.App, rg *router.RouterGroup[*core.RequestEvent])
 		collectionPathRateLimit("", "webauthnListCredentials"),
 		RequireSameCollectionContextAuth(""),
 	)
+	sub.PATCH("/auth-with-webauthn/credentials/{credentialId}", recordWebAuthnPatchCredential).Bind(
+		collectionPathRateLimit("", "webauthnPatchCredential"),
+		RequireSameCollectionContextAuth(""),
+	)
 	sub.DELETE("/auth-with-webauthn/credentials/{credentialId}", recordWebAuthnDeleteCredential).Bind(
 		collectionPathRateLimit("", "webauthnDeleteCredential"),
 		RequireSameCollectionContextAuth(""),

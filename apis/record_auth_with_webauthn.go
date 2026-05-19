@@ -509,6 +509,18 @@ func (form *webauthnLoginFinishForm) validate() error {
 	)
 }
 
+// webauthnPatchCredentialForm captures the new credential name for the
+// rename-own-credential endpoint.
+type webauthnPatchCredentialForm struct {
+	Name string `form:"name" json:"name"`
+}
+
+func (form *webauthnPatchCredentialForm) validate() error {
+	return validation.ValidateStruct(form,
+		validation.Field(&form.Name, validation.Required, validation.Length(1, 255)),
+	)
+}
+
 // -------------------------------------------------------------------
 // Credential management (recovery support)
 // -------------------------------------------------------------------
@@ -555,6 +567,58 @@ func recordWebAuthnListCredentials(e *core.RequestEvent) error {
 	}
 
 	return e.JSON(http.StatusOK, result)
+}
+
+// recordWebAuthnPatchCredential lets an authenticated user rename
+// one of their own WebAuthn credentials.
+func recordWebAuthnPatchCredential(e *core.RequestEvent) error {
+	collection, err := findAuthCollection(e)
+	if err != nil {
+		return err
+	}
+
+	if !collection.WebAuthn.Enabled {
+		return e.ForbiddenError("The collection is not configured to allow WebAuthn authentication.", nil)
+	}
+
+	record := e.Auth
+	if record == nil {
+		return e.UnauthorizedError("Authentication is required.", nil)
+	}
+
+	credentialId := e.Request.PathValue("credentialId")
+	if credentialId == "" {
+		return e.BadRequestError("Missing credential ID.", nil)
+	}
+
+	form := &webauthnPatchCredentialForm{}
+	if err := e.BindBody(form); err != nil {
+		return firstApiError(err, e.BadRequestError("An error occurred while loading the submitted data.", err))
+	}
+	if err := form.validate(); err != nil {
+		return firstApiError(err, e.BadRequestError("An error occurred while validating the submitted data.", err))
+	}
+
+	credRecord, err := e.App.FindRecordById(core.CollectionNameWebAuthnCredentials, credentialId)
+	if err != nil {
+		return e.NotFoundError("Credential not found.", err)
+	}
+
+	proxy := &core.WebAuthnCredential{Record: credRecord}
+
+	if proxy.RecordRef() != record.Id || proxy.CollectionRef() != collection.Id {
+		return e.NotFoundError("Credential not found.", nil)
+	}
+
+	proxy.SetName(form.Name)
+	if err := e.App.Save(credRecord); err != nil {
+		return e.InternalServerError("Failed to update credential.", err)
+	}
+
+	return e.JSON(http.StatusOK, map[string]any{
+		"id":   credRecord.Id,
+		"name": proxy.Name(),
+	})
 }
 
 // recordWebAuthnDeleteCredential lets an authenticated user delete
