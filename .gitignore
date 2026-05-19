@@ -21,3 +21,6 @@ LICENSE.html
 
 # local dev planning docs
 WEBAUTHN_PLAN.md
+
+# stray curl cookie jars
+cookies*

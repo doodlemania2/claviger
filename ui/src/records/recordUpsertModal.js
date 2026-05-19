@@ -45,6 +45,7 @@ window.app.modals.openRecordUpsert = function(collection, record = null, modalSe
 
 const TAB_MAIN = "main";
 const TAB_AUTH_PROVIDERS = "authProviders";
+const TAB_PASSKEYS = "passkeys";
 
 // @todo consider exporting the "tabs" with the final version
 function recordUpsertModal(collection, rawRecord, modalSettings) {
@@ -842,6 +843,20 @@ function recordUpsertModal(collection, rawRecord, modalSettings) {
                                 },
                                 t.span({ className: "txt" }, "Auth providers"),
                             ),
+                            () => {
+                                if (!collection?.webauthn?.enabled) {
+                                    return;
+                                }
+                                return t.button(
+                                    {
+                                        type: "button",
+                                        disabled: () => data.isLoading || data.isSaving,
+                                        className: () => `tab-item ${data.activeTab == TAB_PASSKEYS ? "active" : ""}`,
+                                        onclick: () => data.activeTab = TAB_PASSKEYS,
+                                    },
+                                    t.span({ className: "txt" }, "Passkeys"),
+                                );
+                            },
                         ),
                     );
                 },
@@ -854,6 +869,15 @@ function recordUpsertModal(collection, rawRecord, modalSettings) {
                 && data.activeTab == TAB_AUTH_PROVIDERS
             ) {
                 return authProvidersTab(collection, data);
+            }
+
+            if (
+                !data.isNew
+                && !data.isSuperusersCollection
+                && collection?.webauthn?.enabled
+                && data.activeTab == TAB_PASSKEYS
+            ) {
+                return passkeysTab(collection, data);
             }
 
             return mainTab();
@@ -1465,6 +1489,175 @@ function authProvidersTab(collection, data) {
                 },
                 t.span({ className: "txt" }, "Close"),
             ),
+        ),
+    ];
+}
+
+function passkeysTab(collection, data) {
+    const local = store({
+        isLoading: false,
+        isClearingAll: false,
+        credentials: [],
+    });
+
+    async function loadCredentials() {
+        if (!data.record?.id) {
+            local.credentials = [];
+            return;
+        }
+
+        local.isLoading = true;
+
+        try {
+            const path = `/api/collections/${encodeURIComponent(collection.name)}/auth-with-webauthn/credentials-by-record/${encodeURIComponent(data.record.id)}`;
+            const result = await app.pb.send(path, { method: "GET" });
+            local.credentials = Array.isArray(result) ? result : (result?.items || []);
+        } catch (err) {
+            // fallback: query the system collection directly
+            try {
+                local.credentials = await app.pb.collection("_webauthnCredentials").getFullList({
+                    filter: app.pb.filter("collectionRef={:collectionId} && recordRef={:recordId}", {
+                        collectionId: data.record.collectionId,
+                        recordId: data.record.id,
+                    }),
+                });
+            } catch (err2) {
+                if (!err2?.isAbort) {
+                    app.pb.checkApiError(err2);
+                }
+                local.credentials = [];
+            }
+        }
+
+        local.isLoading = false;
+    }
+
+    function confirmAndDelete(credential) {
+        const name = credential.name || credential.id;
+        app.modals.confirm(
+            `Do you really want to delete the passkey "${name}"?`,
+            () => {
+                return app.pb
+                    .collection("_webauthnCredentials")
+                    .delete(credential.id)
+                    .then(() => {
+                        app.toasts.success(`Successfully deleted passkey "${name}".`);
+                        loadCredentials();
+                    })
+                    .catch((err) => {
+                        app.pb.checkApiError(err);
+                    });
+            },
+            null,
+            { yesButton: "Delete" },
+        );
+    }
+
+    function confirmAndClearAll() {
+        if (!data.record?.id) {
+            return;
+        }
+        app.modals.confirm(
+            "Do you really want to remove ALL passkeys for this user? They will need to use another auth method to sign in.",
+            async () => {
+                local.isClearingAll = true;
+                try {
+                    const path = `/api/collections/${encodeURIComponent(collection.name)}/auth-with-webauthn/credentials-by-record/${encodeURIComponent(data.record.id)}`;
+                    const result = await app.pb.send(path, { method: "DELETE" });
+                    app.toasts.success(`Successfully removed ${result?.deleted ?? 0} passkey(s).`);
+                    loadCredentials();
+                } catch (err) {
+                    if (!err?.isAbort) {
+                        app.pb.checkApiError(err);
+                    }
+                }
+                local.isClearingAll = false;
+            },
+            null,
+            { yesButton: "Remove all" },
+        );
+    }
+
+    return [
+        t.div(
+            { className: "modal-content" },
+            t.div(
+                {
+                    className: "list",
+                    onmount: () => {
+                        loadCredentials();
+                    },
+                },
+                () => {
+                    if (local.isLoading) {
+                        return t.div({ className: "list-item" }, t.div({ className: "skeleton-loader" }));
+                    }
+
+                    if (!local.credentials.length) {
+                        return t.div(
+                            { className: "list-item" },
+                            t.div({ className: "block txt-hint txt-center" }, "No registered passkeys."),
+                        );
+                    }
+
+                    return local.credentials.map((cred) => {
+                        return t.div(
+                            { className: "list-item" },
+                            t.figure(
+                                { className: "provider-logo" },
+                                t.i({ className: "ri-fingerprint-line", ariaHidden: true }),
+                            ),
+                            t.div(
+                                { className: "content" },
+                                t.span({ className: "txt-nowrap" }, () => cred.name || "Unnamed passkey"),
+                                t.small(
+                                    { className: "txt-hint" },
+                                    () => cred.created ? `Registered: ${cred.created}` : "",
+                                    () => (cred.signCount !== undefined ? ` · Uses: ${cred.signCount}` : ""),
+                                ),
+                            ),
+                            t.div(
+                                { className: "actions" },
+                                t.button(
+                                    {
+                                        type: "button",
+                                        className: "btn sm secondary transparent circle",
+                                        ariaLabel: app.attrs.tooltip("Delete passkey", "left"),
+                                        onclick: () => confirmAndDelete(cred),
+                                    },
+                                    t.i({ className: "ri-close-line", ariaHidden: true }),
+                                ),
+                            ),
+                        );
+                    });
+                },
+            ),
+        ),
+        t.footer(
+            { className: "modal-footer" },
+            t.button(
+                {
+                    type: "button",
+                    className: "btn transparent m-r-auto",
+                    onclick: () => app.modals.close(),
+                },
+                t.span({ className: "txt" }, "Close"),
+            ),
+            () => {
+                if (!local.credentials.length) {
+                    return;
+                }
+                return t.button(
+                    {
+                        type: "button",
+                        className: () => `btn btn-sm btn-danger btn-transparent ${local.isClearingAll ? "btn-loading btn-disabled" : ""}`,
+                        disabled: () => local.isClearingAll,
+                        onclick: confirmAndClearAll,
+                    },
+                    t.i({ className: "ri-delete-bin-line", ariaHidden: true }),
+                    t.span({ className: "txt" }, "Clear all passkeys"),
+                );
+            },
         ),
     ];
 }

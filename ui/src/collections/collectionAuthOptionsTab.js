@@ -4,6 +4,7 @@ import { oauth2Accordion } from "./oauth2Accordion";
 import { otpAccordion } from "./otpAccordion";
 import { passwordAuthAccordion } from "./passwordAuthAccordion";
 import { tokenOptionsAccordion } from "./tokenOptionsAccordion";
+import { webauthnAccordion } from "./webauthnAccordion";
 
 export function collectionAuthOptionsTab(upsertData) {
     const uniqueId = "options_" + app.utils.randomString();
@@ -43,6 +44,13 @@ export function collectionAuthOptionsTab(upsertData) {
                     return oauth2Accordion(upsertData.collection);
                 },
                 otpAccordion(upsertData.collection),
+                () => {
+                    if (upsertData.originalCollection?.name == "_superusers") {
+                        return;
+                    }
+
+                    return webauthnAccordion(upsertData.collection);
+                },
                 mfaAccordion(upsertData.collection),
             ),
             t.div(

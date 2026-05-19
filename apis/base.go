@@ -53,6 +53,9 @@ func NewRouter(app core.App) (*router.Router[*core.RequestEvent], error) {
 	// UI routes
 	bindUIExtensions(app)
 
+	// Inline end-user passkey self-service page
+	bindPasskeysPage(app)
+
 	return pbRouter, nil
 }
 
