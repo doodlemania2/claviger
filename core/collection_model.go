@@ -569,7 +569,6 @@ func (m Collection) MarshalJSON() ([]byte, error) {
 		alias.PasswordResetToken.Secret = ""
 		alias.EmailChangeToken.Secret = ""
 		alias.VerificationToken.Secret = ""
-		alias.PasskeyResetToken.Secret = ""
 
 		if alias.OAuth2.Providers == nil {
 			// ensure that it is always returned as array
