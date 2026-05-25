@@ -266,9 +266,16 @@ func TestRecordWebAuthnLoginBegin(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			ExpectedStatus:  400,
-			ExpectedContent: []string{`"data":{}`},
-			ExpectedEvents:  map[string]int{"*": 0},
+			// audit H3: equalized response — non-existing identity now gets
+			// indistinguishable decoy publicKey options instead of leaking the
+			// account state through a 400.
+			ExpectedStatus: 200,
+			ExpectedContent: []string{
+				`"options":{"publicKey":{`,
+				`"challenge":`,
+				`"sessionToken":`,
+			},
+			ExpectedEvents: map[string]int{"*": 0},
 		},
 		{
 			Name:   "valid identity but user has no passkeys",
@@ -285,9 +292,16 @@ func TestRecordWebAuthnLoginBegin(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			ExpectedStatus:  400,
-			ExpectedContent: []string{`"data":{}`},
-			ExpectedEvents:  map[string]int{"*": 0},
+			// audit H3: identity exists but has no registered passkeys —
+			// indistinguishable from "identity exists" so the response is the
+			// same decoy publicKey options shape with a 200.
+			ExpectedStatus: 200,
+			ExpectedContent: []string{
+				`"options":{"publicKey":{`,
+				`"challenge":`,
+				`"sessionToken":`,
+			},
+			ExpectedEvents: map[string]int{"*": 0},
 		},
 	}
 
