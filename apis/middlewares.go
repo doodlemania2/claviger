@@ -294,6 +294,10 @@ func securityHeaders() *hook.Handler[*core.RequestEvent] {
 			e.Response.Header().Set("X-Content-Type-Options", "nosniff")
 			e.Response.Header().Set("X-Frame-Options", "SAMEORIGIN")
 			e.Response.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+			// audit L9: limit referrer leakage on cross-origin nav
+			e.Response.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			// audit L9: lock down WebAuthn ceremony origin to first-party only
+			e.Response.Header().Set("Permissions-Policy", "publickey-credentials-get=(self), publickey-credentials-create=(self)")
 
 			// @todo consider a default HSTS?
 			// (see also https://webkit.org/blog/8146/protecting-against-hsts-abuse/)

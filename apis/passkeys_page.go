@@ -40,8 +40,22 @@ func bindPasskeysPage(app core.App) {
 			})
 
 			se.Router.GET("/passkeys", func(e *core.RequestEvent) error {
-				e.Response.Header().Set("Content-Type", "text/html; charset=utf-8")
-				e.Response.Header().Set("Cache-Control", "no-cache")
+				header := e.Response.Header()
+				header.Set("Content-Type", "text/html; charset=utf-8")
+				header.Set("Cache-Control", "no-cache")
+				// audit M6: tight CSP. Inline script/style are required because
+				// the helper module is consumed at runtime and the page applies
+				// minimal inline styles. img-src includes data: for the favicon.
+				header.Set("Content-Security-Policy",
+					"default-src 'self'; "+
+						"script-src 'self' 'unsafe-inline'; "+
+						"style-src 'self' 'unsafe-inline'; "+
+						"img-src 'self' data:; "+
+						"connect-src 'self'; "+
+						"frame-ancestors 'self'; "+
+						"base-uri 'self'; "+
+						"form-action 'self'",
+				)
 				e.Response.WriteHeader(http.StatusOK)
 				_, err := e.Response.Write([]byte(passkeysPageHTML))
 				return err
