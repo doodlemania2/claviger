@@ -136,7 +136,9 @@ func TestSQLRun(t *testing.T) {
 			ExpectedStatus: 200,
 			ExpectedContent: []string{
 				`"execTime":`,
-				`"affectedRows":0`,
+				// modernc/sqlite (this fork's CGo-free driver) reports affectedRows=1
+				// for DDL; mattn/sqlite (upstream's driver) reports 0.
+				`"affectedRows":1`,
 				`"columns":[]`,
 				`"rows":[]`,
 			},
