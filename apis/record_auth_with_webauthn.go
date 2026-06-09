@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -133,8 +134,79 @@ func initWebAuthn(app core.App) (*webauthn.WebAuthn, error) {
 	// origin must be scheme://host[:port] only; trailing path/fragment must
 	// not leak into RPOrigins or the browser will reject the assertion.
 	origin := parsed.Scheme + "://" + parsed.Host
+	rpOrigins := []string{origin}
 
-	cacheKey := app.Settings().Meta.AppName + "\x00" + origin + "\x00" + rpID
+	if envRPID := strings.TrimSpace(os.Getenv("WEBAUTHN_RP_ID")); envRPID != "" {
+		rpID = envRPID
+	}
+
+	if envOrigins := os.Getenv("WEBAUTHN_RP_ORIGINS"); envOrigins != "" {
+		overrideOrigins := make([]string, 0, 4)
+		for _, raw := range strings.Split(envOrigins, ",") {
+			raw = strings.TrimSpace(raw)
+			if raw == "" {
+				continue
+			}
+
+			u, err := url.Parse(raw)
+			if err != nil {
+				return nil, fmt.Errorf("invalid WebAuthn RP origin %q: %w", raw, err)
+			}
+			if u.Host == "" {
+				return nil, fmt.Errorf("invalid WebAuthn RP origin %q: missing host", raw)
+			}
+
+			host := u.Hostname()
+			if host == "" {
+				return nil, fmt.Errorf("invalid WebAuthn RP origin %q: missing hostname", raw)
+			}
+
+			if u.Scheme != "https" {
+				if !isLocalWebAuthnHost(host) {
+					return nil, fmt.Errorf("WebAuthn RP origin must use https (got %q)", u.Scheme)
+				}
+				if u.Scheme != "http" {
+					return nil, fmt.Errorf("WebAuthn RP origin scheme %q is not supported", u.Scheme)
+				}
+			}
+
+			if u.Path != "" && u.Path != "/" {
+				return nil, fmt.Errorf("invalid WebAuthn RP origin %q: path is not allowed", raw)
+			}
+			if u.RawQuery != "" {
+				return nil, fmt.Errorf("invalid WebAuthn RP origin %q: query is not allowed", raw)
+			}
+			if u.Fragment != "" {
+				return nil, fmt.Errorf("invalid WebAuthn RP origin %q: fragment is not allowed", raw)
+			}
+
+			overrideOrigins = append(overrideOrigins, u.Scheme+"://"+u.Host)
+		}
+
+		if len(overrideOrigins) == 0 {
+			return nil, errors.New("WEBAUTHN_RP_ORIGINS does not contain any valid origins")
+		}
+
+		rpOrigins = overrideOrigins
+	}
+
+	for _, rpOrigin := range rpOrigins {
+		rpOriginURL, err := url.Parse(rpOrigin)
+		if err != nil {
+			continue
+		}
+		host := strings.ToLower(rpOriginURL.Hostname())
+		rpIDLower := strings.ToLower(rpID)
+		if host == rpIDLower || strings.HasSuffix(host, "."+rpIDLower) {
+			continue
+		}
+		app.Logger().Warn("webauthn_rp_config_mismatch",
+			"rpId", rpID,
+			"origin", rpOrigin,
+		)
+	}
+
+	cacheKey := app.Settings().Meta.AppName + "\x00" + rpID + "\x00" + strings.Join(rpOrigins, "\x00")
 	if raw, ok := app.Store().GetOk(webauthnRPCacheKey); ok {
 		if cached, ok := raw.(*webauthnRPCacheEntry); ok && cached != nil && cached.cacheKey == cacheKey && cached.wa != nil {
 			return cached.wa, nil
@@ -144,7 +216,7 @@ func initWebAuthn(app core.App) (*webauthn.WebAuthn, error) {
 	config := &webauthn.Config{
 		RPDisplayName: app.Settings().Meta.AppName,
 		RPID:          rpID,
-		RPOrigins:     []string{origin},
+		RPOrigins:     rpOrigins,
 	}
 	wa, err := webauthn.New(config)
 	if err != nil {
@@ -695,10 +767,7 @@ func recordWebAuthnLoginBegin(e *core.RequestEvent) error {
 	// Decoy path: identity unknown OR no registered credentials. Synthesize
 	// an indistinguishable response and decoy session.
 	if record == nil || len(existingCreds) == 0 {
-		rpID := ""
-		if u, perr := url.Parse(e.App.Settings().Meta.AppURL); perr == nil {
-			rpID = u.Hostname()
-		}
+		rpID := wa.Config.RPID
 		decoyOpts := buildDecoyWebAuthnLoginOptions(collection, form.Identity, rpID)
 		decoySession := buildDecoySessionData(decoyOpts)
 		token := storeWebAuthnSession(e.App, decoySession, "", true)
