@@ -15,10 +15,10 @@ import (
 	"time"
 	"unicode"
 
-	validation "github.com/pocketbase/ozzo-validation/v4"
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/pocketbase/dbx"
+	validation "github.com/pocketbase/ozzo-validation/v4"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/security"
 )
@@ -26,9 +26,9 @@ import (
 const (
 	webauthnSessionPrefix     = "webauthn:session:"
 	webauthnSessionTTL        = 2 * time.Minute
-	webauthnSessionMaxEntries = 1024              // hard cap to prevent unbounded growth (DoS)
-	webauthnSessionGCInterval = 30 * time.Second  // background sweep interval
-	webauthnRPCacheKey        = "webauthn:rp"     // cached *webauthn.WebAuthn in app.Store
+	webauthnSessionMaxEntries = 1024             // hard cap to prevent unbounded growth (DoS)
+	webauthnSessionGCInterval = 30 * time.Second // background sweep interval
+	webauthnRPCacheKey        = "webauthn:rp"    // cached *webauthn.WebAuthn in app.Store
 	webauthnLoginRateRule     = "@pb_webauthn_login_"
 	webauthnRegisterRateRule  = "@pb_webauthn_register_"
 	webauthnPatchRateRule     = "@pb_webauthn_patch_"
