@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -212,6 +213,25 @@ func initWebAuthn(app core.App) (*webauthn.WebAuthn, error) {
 		app.Logger().Warn("webauthn_rp_config_mismatch",
 			"rpId", rpID,
 			"origin", rpOrigin,
+		)
+	}
+
+	// The RP-ID must be a domain, never an IP address. The WebAuthn spec calls
+	// for a "valid domain string" and browsers refuse an IP-based RP-ID
+	// outright, so an IP here can never complete a real ceremony.
+	//
+	// go-webauthn only began enforcing this in v0.18.0; v0.17.4 accepted an IP
+	// at config time and let it fail later in the browser. Check it here so the
+	// failure is an actionable configuration error rather than an opaque
+	// library message, and so the behaviour no longer depends on the library
+	// version. Note this runs *after* the WEBAUTHN_RP_ID override, so binding
+	// the app to http://127.0.0.1:8090 and setting WEBAUTHN_RP_ID=localhost
+	// remains a working local-dev setup.
+	if net.ParseIP(rpID) != nil {
+		return nil, fmt.Errorf(
+			"WebAuthn RP-ID must be a domain, not an IP address (got %q); "+
+				"use http://localhost:<port> as the application URL, or set WEBAUTHN_RP_ID to a domain",
+			rpID,
 		)
 	}
 
