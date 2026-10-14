@@ -76,3 +76,17 @@ var defaultAuthAlertTemplate = EmailTemplate{
   ` + EmailPlaceholderAppName + ` team
 </p>`,
 }
+
+var defaultPasskeyResetTemplate = EmailTemplate{
+	Subject: "Reset your " + EmailPlaceholderAppName + " passkey",
+	Body: `<p>Hello,</p>
+<p>Click on the button below to register a new passkey on this device. This link will replace any previously registered passkeys for your account.</p>
+<p>
+  <a class="btn" href="` + EmailPlaceholderAppURL + "/_/#/auth/confirm-passkey-reset/" + EmailPlaceholderToken + `" target="_blank" rel="noopener">Reset passkey</a>
+</p>
+<p><i>If you didn't ask to reset your passkey, you can ignore this email.</i></p>
+<p>
+  Thanks,<br/>
+  ` + EmailPlaceholderAppName + ` team
+</p>`,
+}

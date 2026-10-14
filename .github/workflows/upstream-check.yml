@@ -1,0 +1,131 @@
+name: Check Upstream Releases
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday at 9am UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Get latest upstream release
+        id: upstream
+        run: |
+          LATEST=$(curl -sf https://api.github.com/repos/pocketbase/pocketbase/releases/latest | jq -r '.tag_name')
+          if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+            echo "::error::could not determine the latest upstream release"
+            exit 1
+          fi
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Latest upstream PocketBase release: $LATEST"
+
+      # The version this fork is synced to is recorded in FORK_SYNC.md's Sync
+      # Status section, which Step 6 of the sync runbook updates on every sync.
+      # This used to grep origin for a `synced-vX.Y.Z` tag instead -- but that
+      # tag was never actually pushed, for any version, so the check always said
+      # "not synced" and the workflow filed a duplicate issue every Monday.
+      - name: Read the synced version from FORK_SYNC.md
+        id: synced
+        run: |
+          SYNCED=$(grep -m1 -oE '\*\*Current:\*\*[[:space:]]+synced to upstream[[:space:]]+\*\*v[0-9]+\.[0-9]+\.[0-9]+\*\*' FORK_SYNC.md \
+                   | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
+          if [ -z "$SYNCED" ]; then
+            echo "::error::could not parse the synced version from FORK_SYNC.md. Expected a line like:"
+            echo "::error::**Current:** synced to upstream **v0.39.11** (\`5d217ddb\`) on YYYY-MM-DD"
+            exit 1
+          fi
+          echo "version=$SYNCED" >> "$GITHUB_OUTPUT"
+          echo "Fork is synced to: $SYNCED"
+
+      - name: Reconcile upstream-sync issues
+        uses: actions/github-script@v8
+        env:
+          LATEST: ${{ steps.upstream.outputs.version }}
+          SYNCED: ${{ steps.synced.outputs.version }}
+        with:
+          script: |
+            const latest = process.env.LATEST;
+            const synced = process.env.SYNCED;
+
+            // numeric compare, so v0.39.9 < v0.39.10 (a lexical compare gets this wrong)
+            const cmp = (a, b) => {
+              const pa = a.replace(/^v/, '').split('.').map(Number);
+              const pb = b.replace(/^v/, '').split('.').map(Number);
+              for (let i = 0; i < 3; i++) {
+                const d = (pa[i] || 0) - (pb[i] || 0);
+                if (d !== 0) return d;
+              }
+              return 0;
+            };
+
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'upstream-sync',
+              state: 'open',
+              per_page: 100,
+            });
+
+            // Close anything we've already synced past. Nothing ever closed these
+            // before, so the backlog grew one stale issue per upstream release.
+            for (const issue of open) {
+              const m = issue.title.match(/v\d+\.\d+\.\d+/);
+              if (!m || cmp(m[0], synced) > 0) continue;
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `Superseded: the fork is synced to **${synced}** (per \`FORK_SYNC.md\`). Closing automatically.`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+                state_reason: 'completed',
+              });
+              core.info(`closed #${issue.number} (${m[0]} <= ${synced})`);
+            }
+
+            if (cmp(latest, synced) <= 0) {
+              core.info(`Already synced to ${latest}; nothing to file.`);
+              return;
+            }
+
+            if (open.some(i => i.title.includes(latest))) {
+              core.info(`An open issue for ${latest} already exists; not filing a duplicate.`);
+              return;
+            }
+
+            const body = [
+              `A new PocketBase release [${latest}](https://github.com/pocketbase/pocketbase/releases/tag/${latest}) is available.`,
+              ``,
+              `This fork is currently synced to **${synced}**.`,
+              ``,
+              `## Sync Steps`,
+              ``,
+              `See [FORK_SYNC.md](./FORK_SYNC.md) for the full workflow.`,
+              ``,
+              `1. \`git fetch upstream\``,
+              `2. Rebase \`feat/webauthn-passkey-support\` onto \`upstream/master\``,
+              `3. \`make test\``,
+              `4. Rebuild \`deploy/azure\` on top of the updated webauthn branch (Step 4 -- it is *not* cleanly rebasable)`,
+              `5. \`make test && docker build\``,
+              `6. Update the Sync Status section in FORK_SYNC.md -- this workflow reads the synced version from it, and will close this issue on the next run.`,
+            ].join('\n');
+
+            const created = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Upstream sync: PocketBase ${latest} available`,
+              body,
+              labels: ['upstream-sync'],
+            });
+            core.info(`filed #${created.data.number} for ${latest}`);

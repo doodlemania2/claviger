@@ -159,6 +159,8 @@ func NewWithConfig(config Config) *PocketBase {
 		},
 	})
 
+	bindPreRestartSignal(pb)
+
 	return pb
 }
 

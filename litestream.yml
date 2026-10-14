@@ -1,0 +1,27 @@
+# Litestream configuration for continuous SQLite replication to Azure Blob Storage.
+#
+# Required environment variables:
+#   LITESTREAM_REPLICA_URL          - Azure Blob URL (e.g., abs://container-name)
+#   LITESTREAM_AZURE_ACCOUNT_NAME   - Storage account name
+#   LITESTREAM_AZURE_ACCOUNT_KEY    - Storage account key
+
+dbs:
+  - path: /pb_data/data.db
+    replicas:
+      - type: abs
+        url: ${LITESTREAM_REPLICA_URL}/data.db
+        account-name: ${LITESTREAM_AZURE_ACCOUNT_NAME}
+        account-key: ${LITESTREAM_AZURE_ACCOUNT_KEY}
+        sync-interval: 10s
+        snapshot-interval: 1h
+        retention: 168h  # 7 days
+
+  - path: /pb_data/auxiliary.db
+    replicas:
+      - type: abs
+        url: ${LITESTREAM_REPLICA_URL}/auxiliary.db
+        account-name: ${LITESTREAM_AZURE_ACCOUNT_NAME}
+        account-key: ${LITESTREAM_AZURE_ACCOUNT_KEY}
+        sync-interval: 10s
+        snapshot-interval: 1h
+        retention: 168h

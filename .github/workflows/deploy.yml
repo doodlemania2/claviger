@@ -1,0 +1,66 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [deploy/azure]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install azd
+        uses: Azure/setup-azd@v2
+
+      - name: Log in with Azure (Federated Credentials)
+        run: |
+          azd auth login \
+            --client-id "$AZURE_CLIENT_ID" \
+            --federated-credential-provider "github" \
+            --tenant-id "$AZURE_TENANT_ID"
+        shell: bash
+
+      - name: Provision and Deploy
+        run: azd up --no-prompt
+        env:
+          AZD_INITIAL_ENVIRONMENT_CONFIG: ${{ secrets.AZD_INITIAL_ENVIRONMENT_CONFIG }}
+          PB_ADMIN_EMAIL: ${{ secrets.PB_ADMIN_EMAIL }}
+          PB_ADMIN_PASSWORD: ${{ secrets.PB_ADMIN_PASSWORD }}
+          AZURE_RG_NAME: ${{ vars.AZURE_RG_NAME }}
+          # Custom domain binding is staged across three deploys to handle the
+          # asuid TXT validation chicken-and-egg: Phase 1 leaves CUSTOM_DOMAIN
+          # unset so the env is created and customDomainVerificationId is
+          # surfaced for the DNS update. Phase 2 sets CUSTOM_DOMAIN with
+          # BIND_CERT=false so the hostname is added with bindingType=Disabled.
+          # Phase 3 flips BIND_CERT=true to issue the managed cert and switch
+          # the binding to SniEnabled. Defaults are intentionally empty — set
+          # the repo variables explicitly per phase.
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+          BIND_CERT: ${{ vars.BIND_CERT }}
+          # WebAuthn relying-party config, decoupled from AppURL so passkeys are
+          # scoped to the parent domain (stfoafrisco.org) while auth/email links
+          # stay on the auth subdomain. Unset vars resolve to empty and the app
+          # falls back to the AppURL hostname/origin.
+          WEBAUTHN_RP_ID: ${{ vars.WEBAUTHN_RP_ID }}
+          WEBAUTHN_RP_ORIGINS: ${{ vars.WEBAUTHN_RP_ORIGINS }}
+          # OTLP export to the self-hosted SigNoz collector. Unset OTLP_ENDPOINT
+          # disables telemetry export entirely — the app logs to SQLite only, as
+          # upstream does. The auth header carries the ingest token, so it is a
+          # repo SECRET, never a variable.
+          OTLP_ENDPOINT: ${{ vars.OTLP_ENDPOINT }}
+          OTLP_AUTH_HEADER: ${{ secrets.OTLP_AUTH_HEADER }}
+          OTEL_SERVICE_NAME: ${{ vars.OTEL_SERVICE_NAME }}
+          OTEL_ENVIRONMENT: ${{ vars.OTEL_ENVIRONMENT }}
+          OTEL_MIN_LEVEL: ${{ vars.OTEL_MIN_LEVEL }}

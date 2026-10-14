@@ -19,6 +19,16 @@ app.pb.beforeSend = function(url, options) {
     return { url, options };
 };
 
+// The pinned pocketbase JS SDK doesn't expose a helper for the superuser
+// "all supported OAuth2 providers" catalog, so add a thin wrapper around the
+// existing backend endpoint (GET /api/collections/meta/oauth2-providers).
+if (typeof app.pb.collections.getAllOAuth2Providers !== "function") {
+    app.pb.collections.getAllOAuth2Providers = function(options = {}) {
+        options = Object.assign({ method: "GET" }, options);
+        return app.pb.send("/api/collections/meta/oauth2-providers", options);
+    };
+}
+
 app.store.superuser = app.pb.authStore.record;
 app.pb.authStore.onChange((_, record) => {
     if (!record && window.location.hash != LOGIN_PATH) {

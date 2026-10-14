@@ -1,0 +1,11 @@
+name: pocketbase-fork
+metadata:
+  template: pocketbase-fork@0.0.1
+services:
+  pocketbase:
+    host: containerapp
+    language: docker
+    project: .
+    docker:
+      path: ./Dockerfile
+      remoteBuild: true

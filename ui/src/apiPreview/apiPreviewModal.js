@@ -100,6 +100,15 @@ function apiPreviewModal(collection, settings) {
             }
             : null;
 
+        if (collection.name != "_superusers") {
+            docs["Auth with passkey"] = collection.webauthn?.enabled
+                ? async (collection) => {
+                    const { docsAuthWithPasskey } = await import("./docsAuthWithPasskey");
+                    return data.tabEl = docsAuthWithPasskey(collection);
+                }
+                : null;
+        }
+
         docs["Auth refresh"] = async (collection) => {
             const { docsAuthRefresh } = await import("./docsAuthRefresh");
             return data.tabEl = docsAuthRefresh(collection);
@@ -116,6 +125,15 @@ function apiPreviewModal(collection, settings) {
             const { docsPasswordReset } = await import("./docsPasswordReset");
             return data.tabEl = docsPasswordReset(collection);
         };
+
+        if (collection.name != "_superusers") {
+            docs["Passkey reset"] = collection.webauthn?.enabled
+                ? async (collection) => {
+                    const { docsPasskeyReset } = await import("./docsPasskeyReset");
+                    return data.tabEl = docsPasskeyReset(collection);
+                }
+                : null;
+        }
 
         docs["Email change"] = async (collection) => {
             const { docsEmailChange } = await import("./docsEmailChange");

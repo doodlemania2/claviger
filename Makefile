@@ -10,3 +10,6 @@ jstypes:
 test-report:
 	go test ./... -v --cover -coverprofile=coverage.out
 	go tool cover -html=coverage.out
+
+third-party-notices:
+	./scripts/generate-third-party-notices.sh
