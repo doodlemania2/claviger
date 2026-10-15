@@ -31,10 +31,13 @@ jobs:
         # (action v7+). The old action@v6 installs v1 and fails to parse it.
         # Upstream v0.40.0 renamed the `gomodguard` linter to `gomodguard_v2`,
         # which v2.6.2 rejects ("unknown linters: 'gomodguard_v2'") -- that name
-        # needs golangci-lint >= v2.12.0.
+        # needs golangci-lint >= v2.12.0. Keep the pin on a release built with at
+        # least the Go that `go-version-file: go.mod` resolves to (1.27.2 from the
+        # v0.40.5 sync): v2.13.2 (built with 1.27.0) fails every package with
+        # "export data version 5 is greater than maximum supported version 4".
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.13.2
+          version: v2.14.0
           args: -c ./golangci.yml
 
   docker-build:
