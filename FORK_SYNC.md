@@ -10,12 +10,15 @@ single-version **patch** release, 28 files). `go-webauthn/webauthn` stays at
 required.** Tests: `go test ./...` green on `feat`; on `deploy/azure` the only
 failure was the allowlisted macOS `fsnotify` watcher flake
 (`TestNotifyWatcher_SettingsUpdate`, 2 of 2 isolated runs). `golangci-lint`
-**v2.13.2** and `gofmt -l`: **0 issues on both branches**. WebAuthn
+**v2.14.0** and `gofmt -l`: **0 issues on both branches**. WebAuthn
 scenario + ceremony suites green. A **native** binary smoke test passed
 (`/api/health`, `/passkeys` and `/_/` all 200; COOP, `Referrer-Policy` and
 `Permissions-Policy` headers present; WebAuthn `register-begin` bound, 401).
 Docker is still not installed locally, so the container smoke test is deferred
-to CI.
+to CI. **CI lint pin bumped v2.13.2 -> v2.14.0 after the push:** the sync raised
+the resolved Go to 1.27.2 and v2.13.2 (built with Go 1.27.0) could not read its
+export data, failing `Test` before the Docker job. Reproduced locally and fixed;
+watch for this whenever upstream raises the minimum Go patch version.
 
 The previous sync (v0.40.4, 2026-09-28) bumped `go-webauthn/webauthn` v0.18.0 ->
 v0.18.2 and needed two hand-resolved follow-ups on the deploy rebuild, kept below
@@ -439,7 +442,7 @@ follow-up.
 - [ ] `make test` passes on `deploy/azure`
 - [ ] `make lint` clean on **both** branches — `golangci.yml` is schema v2, so
       you need golangci-lint v2 at the version `test.yml` pins (`go install
-      github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2`) — and at
+      github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0`) — and at
       least v2.12.0, since `golangci.yml` names the `gomodguard_v2` linter.
       Keep this in step with the `version:` pin in `.github/workflows/test.yml`.
       Fork-added files drift out of gofmt easily during rebases (import
