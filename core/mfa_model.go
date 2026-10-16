@@ -123,8 +123,8 @@ func (m *MFA) HasExpired(maxElapsed time.Duration) bool {
 func (app *BaseApp) registerMFAHooks() {
 	recordRefHooks[*MFA](app, CollectionNameMFAs, CollectionTypeAuth)
 
-	// run on every hour to cleanup expired mfa sessions
-	app.Cron().Add("__pbMFACleanup__", "0 * * * *", func() {
+	// run on every hour to cleanup expired mfa sessions (fork: offset from :00, see #60)
+	app.Cron().Add("__pbMFACleanup__", "7 * * * *", func() {
 		if err := app.DeleteExpiredMFAs(); err != nil {
 			app.Logger().Warn("Failed to delete expired MFA sessions", "error", err)
 		}
