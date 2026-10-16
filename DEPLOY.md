@@ -387,8 +387,16 @@ Any later occurrence needs a look.
 > third replica failed open 74 s later. No GitHub deploy ran, so Azure replaced the replica
 > itself. The old replica had already released the volume, and no `log sink write failed`
 > or `malformed` record appeared in the four days after, so there is no sign of damage. A
-> platform-driven replacement can therefore trip the critical rule without a deploy: read
+> platform-driven replacement can therefore trip the handover rule without a deploy: read
 > `/pb_data/.pb_handover.log` first and look for a released-and-parked replica.
+>
+> **2026-10-16 21:29 UTC, a real deploy (#63) did the same.** The outgoing replica logged
+> `released` at 21:29:17; the incoming one gave up at 21:29:29 with `never acknowledged`. It took the
+> outgoing replica ~48 s to notice the request, and the ack never became visible to the incoming
+> one in time, which points at NFS visibility lag rather than overlap. Because that made the
+> original single rule page as critical for a benign event, it was split: only `no handover
+> after` (lock still held) is critical. The underlying wait logic in `entrypoint.sh` is unchanged;
+> see the tracking issue.
 
 `PB_HANDOVER_TIMEOUT` (default 60 s) bounds the wait; the normal wait is a poll
 interval plus a graceful drain, a few seconds. `PB_HANDOVER_TIMEOUT=0` disables
@@ -530,7 +538,8 @@ from Mattermost to ntfy"; if this section disagrees with it, that one wins.
 
 | Rule | Severity | Fires when |
 |---|---|---|
-| `PocketBase - Single-Writer Handover Failed` | critical | an `entrypoint.sh` WARN says `no handover after` or `never acknowledged` (two writers may have shared `/pb_data`) |
+| `PocketBase - Single-Writer Handover Failed` | critical | an `entrypoint.sh` WARN says `no handover after`: the lock was still held, so two writers share `/pb_data` |
+| `PocketBase - Single-Writer Handover Unacknowledged` | warning | an `entrypoint.sh` WARN says `never acknowledged`. Not proof of overlap: all three observed cases (2026-09-28, 10-12, 10-16) had the outgoing replica log `released` first |
 | `PocketBase - Server Errors (5xx)` | warning | 2 or more 5xx in 15 min (30-day peak: 1) |
 | `PocketBase - Password Auth Failure Spike` | warning | 50 or more failed `auth-with-password` in 15 min (30-day peak: 17) |
 | `PocketBase - Scheduled Cleanup Failing Continuously` | warning | 12 or more `Failed to delete expired ...` in 6 h, i.e. the hourly cron failing every run (30-day peak: 6) |

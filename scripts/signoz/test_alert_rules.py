@@ -19,6 +19,7 @@ import alert_rules as ar  # noqa: E402
 # or a window is a deliberate act: update this table in the same commit.
 EXPECTED = {
     "PocketBase - Single-Writer Handover Failed": ("critical", "30m0s", "5m0s", 0, True),
+    "PocketBase - Single-Writer Handover Unacknowledged": ("warning", "30m0s", "5m0s", 0, True),
     "PocketBase - Server Errors (5xx)": ("warning", "15m0s", "5m0s", 1, True),
     "PocketBase - Password Auth Failure Spike": ("warning", "15m0s", "5m0s", 49, True),
     "PocketBase - Scheduled Cleanup Failing Continuously": ("warning", "6h0m0s", "30m0s", 11, True),
@@ -102,6 +103,18 @@ class RuleShape(unittest.TestCase):
         self.assertEqual(q.count(ar.BACKUP_OK), 2)
         where = q.rsplit("WHERE", 1)[1]
         self.assertNotIn("service.name", where)
+
+
+    def test_only_the_lock_still_held_case_is_critical(self):
+        # 'never acknowledged' fired on three benign handovers; it must not page as critical.
+        crit = next(r for r in ar.RULES if r.name.endswith("Handover Failed"))
+        warn = next(r for r in ar.RULES if r.name.endswith("Handover Unacknowledged"))
+        self.assertEqual(crit.severity, "critical")
+        self.assertIn("no handover after", crit.query)
+        self.assertNotIn("never acknowledged", crit.query)
+        self.assertEqual(warn.severity, "warning")
+        self.assertIn("never acknowledged", warn.query)
+        self.assertNotIn("no handover after", warn.query)
 
 
 class Channel(unittest.TestCase):

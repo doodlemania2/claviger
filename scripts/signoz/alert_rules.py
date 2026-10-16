@@ -110,21 +110,46 @@ RULES: tuple[Rule, ...] = (
         eval_window="30m0s",
         frequency="5m0s",
         target=0,
-        intent="any 'no handover after' or 'never acknowledged' WARN from entrypoint.sh in 30 minutes",
+        intent="any 'no handover after' WARN from entrypoint.sh in 30 minutes (the lock was still held)",
         description=(
-            "A rollout of auth.stfoafrisco.org started the incoming replica without proof that "
-            "the outgoing one released /pb_data, so two writers may have shared the SQLite volume. "
-            "This is the corruption alarm of #35/#54: auxiliary.db was corrupted five times by this. "
-            "Runbook: (1) read the record body: 'no handover after Ns' means the lock was still held; "
-            "'never acknowledged' means no ack arrived (expected exactly once, on the deploy that "
-            "introduced the ack, so any later one needs a look). (2) Read the durable log: "
-            "az containerapp exec -g stfoa-auth -n ca-auth --command 'tail -n 40 /pb_data/.pb_handover.log'. "
-            "(3) Check integrity: see 'Recovering a corrupt auxiliary.db' in DEPLOY.md. "
-            "(4) Confirm only one replica is running: az containerapp replica list -g stfoa-auth -n ca-auth."
+            "A rollout of auth.stfoafrisco.org started the incoming replica while the outgoing one STILL "
+            "HELD the /pb_data lock, so two writers are sharing the SQLite volume. This is the corruption "
+            "alarm of #35/#54: auxiliary.db was corrupted five times by exactly this. Runbook: (1) read the "
+            "durable log: az containerapp exec -g stfoa-auth -n ca-auth --command 'tail -n 40 "
+            "/pb_data/.pb_handover.log'. (2) Confirm only one replica is running: az containerapp replica "
+            "list -g stfoa-auth -n ca-auth, and deactivate the older revision if two are. (3) Check "
+            "integrity: see 'Recovering a corrupt auxiliary.db' in DEPLOY.md, and watch the 'Log Sink "
+            "Failing' rule."
         ),
         query=count_rule_query(
             "attributes_string['source'] = 'single-writer-handover'",
-            "(body LIKE '%no handover after%' OR body LIKE '%never acknowledged%')",
+            "body LIKE '%no handover after%'",
+        ),
+    ),
+    Rule(
+        # Split out of the rule above on 2026-10-16. All three observed occurrences (2026-09-28,
+        # 2026-10-12, 2026-10-16) had the OUTGOING replica logging 'released' BEFORE the incoming
+        # one gave up waiting, i.e. no overlap: the incoming replica missed the ack. A critical
+        # page for that is wrong; a warning with a one-line check is right.
+        name="PocketBase - Single-Writer Handover Unacknowledged",
+        severity="warning",
+        eval_window="30m0s",
+        frequency="5m0s",
+        target=0,
+        intent="any 'never acknowledged' WARN from entrypoint.sh in 30 minutes",
+        description=(
+            "The incoming replica gave up waiting for the outgoing replica's ack and started anyway. "
+            "That is NOT proof of two writers: the usual cause is the ack or lock release not becoming "
+            "visible over NFS in time, or the outgoing replica reacting late. Runbook: (1) read "
+            "az containerapp exec -g stfoa-auth -n ca-auth --command 'tail -n 20 /pb_data/.pb_handover.log'. "
+            "(2) If the outgoing replica logged 'handover: /pb_data released' BEFORE the incoming replica's "
+            "'never acknowledged' line, there was no overlap and this needs no action beyond a note on the "
+            "tracking issue. (3) If there is no 'released' line, treat it as the critical rule: two writers. "
+            "(4) Either way, confirm 'Log Sink Failing' stays quiet for the next hour."
+        ),
+        query=count_rule_query(
+            "attributes_string['source'] = 'single-writer-handover'",
+            "body LIKE '%never acknowledged%'",
         ),
     ),
     Rule(
