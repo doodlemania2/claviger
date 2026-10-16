@@ -260,13 +260,30 @@ func (h *fanoutHandler) Handle(ctx context.Context, record slog.Record) error {
 		}
 	}
 
-	if record.Level >= h.minLevel && h.remote.Enabled(ctx, record.Level) {
+	if (record.Level >= h.minLevel || forcesOTLP(record)) && h.remote.Enabled(ctx, record.Level) {
 		if err := h.remote.Handle(ctx, record.Clone()); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
 
 	return firstErr
+}
+
+// OTelAlwaysAttr marks a record that must reach the OTLP sink whatever
+// PB_OTEL_MIN_LEVEL says. It exists for heartbeats: a success that is invisible
+// at WARN cannot be alerted on when it goes missing (the daily backup).
+const OTelAlwaysAttr = "otel.always"
+
+func forcesOTLP(record slog.Record) bool {
+	forced := false
+	record.Attrs(func(a slog.Attr) bool {
+		if a.Key == OTelAlwaysAttr && a.Value.Kind() == slog.KindBool && a.Value.Bool() {
+			forced = true
+			return false
+		}
+		return true
+	})
+	return forced
 }
 
 // SetLevel forwards a settings-driven level change to the local sink, which is
