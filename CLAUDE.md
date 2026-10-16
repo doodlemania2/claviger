@@ -83,6 +83,21 @@ API tests are table-driven `tests.ApiScenario` slices (method, URL, body, auth h
 
 <!-- BEGIN derek-task-inbox — shared block, identical in every CLAUDE.md under /Volumes/Data/repos. Edit all copies together. Canonical source: the Outline "Protocol" page linked below. -->
 
+## Alerting
+
+Alerts go to ntfy (https://alert.thedoodleproject.net, topic `stfoa`) via SigNoz channel
+`ntfy-stfoa`. Rules live in `scripts/signoz/alert_rules.py` and are applied by name; never create
+rules in the UI. CI failure notices use the `NTFY_URL` secret. Tokens are never committed.
+Mattermost is retired. Source of truth: K3s `docs/current-state.md` "alerting moved from Mattermost
+to ntfy".
+
+- Rule thresholds are pinned by `scripts/signoz/test_alert_rules.py` (CI runs it). Change a threshold and its
+  pin in the same commit. After `--apply`, run `--probe`: a rule shaped wrong logs "query result is nil" and
+  looks quiet. Details and the rule table: `DEPLOY.md`, "Alerting".
+- Only WARN and ERROR reach SigNoz (`OTEL_MIN_LEVEL=WARN`), so a successful backup or cron is invisible there.
+- `STFoA - PocketBase Log Sink Failing` for this service lives in the STFoA-Church rules, not here. Do not copy it:
+  two appliers owning one rule name overwrite each other.
+
 ## Handing work back to Derek — the Outline Task Inbox
 
 Derek runs many agents at once, so a task mentioned only in a chat reply is lost. **Anything

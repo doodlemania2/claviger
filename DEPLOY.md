@@ -201,7 +201,8 @@ is the one that proves the object actually landed.
 > stderr and returns `nil`, so the transaction still commits), meaning log loss
 > is silent and partial rather than a loud failure. The only other alarm is the
 > superuser email from `sendSystemAlertToAllSuperusers`, which needs working
-> SMTP. Treat "no errors in the log" as weak evidence; check the bucket.
+> SMTP. Treat "no errors in the log" as weak evidence; check the bucket. No alert rule
+> can see a *missing* backup either: see [Alerting](#alerting), "Not covered".
 
 ### Restore (disaster recovery)
 
@@ -365,7 +366,8 @@ console logs (Log Analytics was removed in #51/#52), so the entrypoint appends
 each event to `/pb_data/.pb_handover.log` (last 500 lines) and sends every WARN
 to the OTLP collector as a log record with `source=single-writer-handover`.
 That record reaches SigNoz with the same `service.name` as PocketBase's own
-logs, so alert on it there. To read the file:
+logs, so it is alerted on there (rule `PocketBase - Single-Writer Handover Failed`,
+see [Alerting](#alerting)). To read the file:
 
 ```sh
 script -q /dev/null az containerapp exec -g stfoa-auth -n ca-auth --command "tail -n 40 /pb_data/.pb_handover.log"
@@ -474,8 +476,9 @@ limited to one per 5 minutes and accumulates its counts in between, so a fully
 corrupt database costs 288 records a day instead of 8,600 while still reporting
 the true number of dropped rows.
 
-**Alert on `local log sink write failed`** in SigNoz, and clear on
-`local log sink recovered`.
+`local log sink write failed` is alerted on by the STFoA-Church rule `STFoA - PocketBase
+Log Sink Failing` (see [Alerting](#alerting) for why it lives there). It clears by itself
+when the count falls to zero; `local log sink recovered` is the all-clear in the logs.
 
 ### Ingestion cost
 
@@ -500,6 +503,81 @@ az containerapp logs show -g <rg-name> -n ca-<envName> --tail 50 --type console 
 Then find the service in SigNoz under `service.name=stfoa-auth` with the right
 `deployment.environment`. An empty `resourceSpans` array returns `200` without
 proving anything reached ClickHouse — only a real record does.
+
+## Alerting
+
+Everything pages through the self-hosted ntfy at `https://alert.thedoodleproject.net`
+(auth required), topic **`stfoa`**. Mattermost is retired. The source of truth for the
+whole stack is the K3s repo's `docs/current-state.md`, section "2026-10-16: alerting moved
+from Mattermost to ntfy"; if this section disagrees with it, that one wins.
+
+| Signal | Mechanism | Lands in |
+|---|---|---|
+| App/runtime alerts for `service.name=stfoa-auth` | SigNoz rules in [scripts/signoz/alert_rules.py](scripts/signoz/alert_rules.py), channel `ntfy-stfoa` | ntfy `stfoa` |
+| Deploy, weekly upstream-check, and trunk CI failures | `Notify ntfy on failure` step using the `NTFY_URL` repo secret | ntfy `stfoa` |
+| Outside availability of the cluster itself | Gatus on doodlenode, deliberately via public `ntfy.sh` | ntfy.sh (do not repoint) |
+
+### The rules
+
+| Rule | Severity | Fires when |
+|---|---|---|
+| `PocketBase - Single-Writer Handover Failed` | critical | an `entrypoint.sh` WARN says `no handover after` or `never acknowledged` (two writers may have shared `/pb_data`) |
+| `PocketBase - Server Errors (5xx)` | warning | 2 or more 5xx in 15 min (30-day peak: 1) |
+| `PocketBase - Password Auth Failure Spike` | warning | 50 or more failed `auth-with-password` in 15 min (30-day peak: 17) |
+| `PocketBase - Scheduled Cleanup Failing Continuously` | warning | 12 or more `Failed to delete expired ...` in 6 h, i.e. the hourly cron failing every run (30-day peak: 6) |
+| `PocketBase - Telemetry Silent (24h)` | warning | no record at all from `stfoa-auth` for 24 h (longest silence in 30 days: 15 h) |
+| `PocketBase - Availability Probe Failing` | critical | **disabled** until the K3s collector probes `https://auth.stfoafrisco.org` |
+
+The service exports only WARN and ERROR (`OTEL_MIN_LEVEL=WARN`), so request logs are
+visible only when their status is 400 or above; every rule is written against that.
+The rules and their thresholds are pinned by `scripts/signoz/test_alert_rules.py`, which
+CI runs. Each carries a runbook in its description, so the page tells you what to do.
+
+`STFoA - PocketBase Log Sink Failing` also watches this service but lives in the
+STFoA-Church rules (`scripts/signoz/alert-rules.mjs` there). Two appliers owning one rule
+name would overwrite each other, so it was not copied; moving it here is a deliberate
+two-repo change.
+
+### Applying rules
+
+Rules are applied by name; never create or edit them in the SigNoz UI. The applier refuses
+to run unless the channel `ntfy-stfoa` exists, and `--apply` refuses anything but a clean,
+fetched `origin/master`.
+
+```sh
+export SIGNOZ_API_KEY=$(kubectl -n signoz get secret signoz-query-api-key -o jsonpath='{.data.key}' | base64 -d)
+python3 scripts/signoz/alert_rules.py            # dry run
+python3 scripts/signoz/alert_rules.py --probe    # run every query against live data
+python3 scripts/signoz/alert_rules.py --check    # drift report, exit 1 on drift
+python3 scripts/signoz/alert_rules.py --apply    # write
+```
+
+A successful apply proves nothing: a rule shaped wrong logs `query result is nil` on every
+cycle and looks exactly like a quiet one. After applying, run `--probe` and
+`kubectl -n signoz logs signoz-0 --since=15m | grep 'query result is nil'`.
+
+### CI failure notices
+
+`deploy.yml`, `upstream-check.yml` and a push-only job in `test.yml` POST to ntfy when they
+fail. They read one repo **secret**, `NTFY_URL`: the full publish URL including the topic
+and `?auth=...`. If it is unset they print a warning and exit 0; a notification problem
+never fails a job.
+
+```sh
+# Run on m4. The auth value never leaves the pipe.
+gh secret set NTFY_URL --repo doodlemania2/pocketbase \
+  --body "https://alert.thedoodleproject.net/stfoa?auth=$(cat ~/secure/alert-ntfy-auth-param)"
+```
+
+### Not covered, and why
+
+- **A missed or failed backup.** The daily backup cron logs at INFO and a success is
+  invisible at `OTEL_MIN_LEVEL=WARN`, so no SigNoz rule can tell a skipped run from a good
+  one. Needs either a bucket-age check or an emitted heartbeat record.
+- **Certificate and secret expiry.** The managed certificate renews itself; Key Vault
+  secrets and the OTLP ingest token have no expiry watch.
+- **Auth availability** until the probe above exists.
+- **Queue backlog:** this service has no queue.
 
 ## Litestream: why it is off, and what re-enabling would take
 
@@ -560,4 +638,5 @@ azd down --purge
 - [infra/modules/network.bicep](infra/modules/network.bicep) — VNet + delegated subnet (required for NFS)
 - [litestream.yml](litestream.yml) — replica config, **inert**: no `LITESTREAM_*` env is set
 - [entrypoint.sh](entrypoint.sh) — (restore) → superuser bootstrap → (replicate) → serve; both parenthesized steps are skipped while `LITESTREAM_REPLICA_URL` is unset
+- [scripts/signoz/alert_rules.py](scripts/signoz/alert_rules.py) — SigNoz alert rules as code, applied by name to `ntfy-stfoa`; `test_alert_rules.py` pins them
 - [scripts/verify-dns.sh](scripts/verify-dns.sh) — generic DNS validator (CNAME + asuid TXT)
