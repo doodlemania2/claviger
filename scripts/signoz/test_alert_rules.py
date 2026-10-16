@@ -19,11 +19,14 @@ import alert_rules as ar  # noqa: E402
 # or a window is a deliberate act: update this table in the same commit.
 EXPECTED = {
     "PocketBase - Single-Writer Handover Failed": ("critical", "30m0s", "5m0s", 0, True),
+    "PocketBase - Single-Writer Handover Unacknowledged": ("warning", "30m0s", "5m0s", 0, True),
     "PocketBase - Server Errors (5xx)": ("warning", "15m0s", "5m0s", 1, True),
     "PocketBase - Password Auth Failure Spike": ("warning", "15m0s", "5m0s", 49, True),
     "PocketBase - Scheduled Cleanup Failing Continuously": ("warning", "6h0m0s", "30m0s", 11, True),
     "PocketBase - Telemetry Silent (24h)": ("warning", "24h0m0s", "1h0m0s", 0, True),
-    "PocketBase - Availability Probe Failing": ("critical", "5m0s", "1m0s", 0, False),
+    "PocketBase - Log Sink Failing": ("warning", "15m0s", "5m0s", 0, True),
+    "PocketBase - Backup Heartbeat Missing": ("warning", "26h0m0s", "1h0m0s", 0, True),
+    "PocketBase - Availability Probe Failing": ("critical", "5m0s", "1m0s", 0, True),
 }
 
 
@@ -83,11 +86,35 @@ class RuleShape(unittest.TestCase):
         self.assertNotIn("service.name", where.split("GROUP BY")[0])
         self.assertIn(f"countIf({ar.SERVICE} AND {ar.PROD})", q)
 
-    def test_availability_rule_stays_disabled_until_a_probe_exists(self):
+    def test_availability_rule_reads_the_health_path_the_collector_probes(self):
         rule = next(r for r in ar.RULES if "Availability" in r.name)
-        self.assertFalse(rule.enabled)
-        self.assertTrue(ar.to_payload(rule)["disabled"])
-        self.assertIn("auth.stfoafrisco.org", rule.query)
+        self.assertTrue(rule.enabled)
+        self.assertFalse(ar.to_payload(rule)["disabled"])
+        # PocketBase answers 404 at "/", so the probe and the rule must both use /api/health.
+        self.assertIn("https://auth.stfoafrisco.org/api/health", rule.query)
+
+
+    def test_backup_heartbeat_is_self_arming(self):
+        # Without the 7-day arming subquery the rule would fire the moment it is applied,
+        # before the first heartbeat has ever been emitted.
+        q = next(r for r in ar.RULES if "Backup Heartbeat" in r.name).query
+        self.assertIn("SELECT count() FROM", q)
+        self.assertIn("7 * 86400 * 1000000000", q)
+        self.assertEqual(q.count(ar.BACKUP_OK), 2)
+        where = q.rsplit("WHERE", 1)[1]
+        self.assertNotIn("service.name", where)
+
+
+    def test_only_the_lock_still_held_case_is_critical(self):
+        # 'never acknowledged' fired on three benign handovers; it must not page as critical.
+        crit = next(r for r in ar.RULES if r.name.endswith("Handover Failed"))
+        warn = next(r for r in ar.RULES if r.name.endswith("Handover Unacknowledged"))
+        self.assertEqual(crit.severity, "critical")
+        self.assertIn("no handover after", crit.query)
+        self.assertNotIn("never acknowledged", crit.query)
+        self.assertEqual(warn.severity, "warning")
+        self.assertIn("never acknowledged", warn.query)
+        self.assertNotIn("no handover after", warn.query)
 
 
 class Channel(unittest.TestCase):

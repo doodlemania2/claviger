@@ -70,6 +70,7 @@ METRICS_WINDOW = (
     "unix_milli <= intDiv({{.end_timestamp_nano}}, 1000000)"
 )
 PROBE_URL = "https://auth.stfoafrisco.org/api/health"
+BACKUP_OK = "body LIKE '%[Backup cron] Backup created%'"
 
 # The app runs OTEL_MIN_LEVEL=WARN, so only WARN and ERROR records reach SigNoz:
 # request logs are visible only when their status is >= 400. Every rule below
@@ -109,21 +110,46 @@ RULES: tuple[Rule, ...] = (
         eval_window="30m0s",
         frequency="5m0s",
         target=0,
-        intent="any 'no handover after' or 'never acknowledged' WARN from entrypoint.sh in 30 minutes",
+        intent="any 'no handover after' WARN from entrypoint.sh in 30 minutes (the lock was still held)",
         description=(
-            "A rollout of auth.stfoafrisco.org started the incoming replica without proof that "
-            "the outgoing one released /pb_data, so two writers may have shared the SQLite volume. "
-            "This is the corruption alarm of #35/#54: auxiliary.db was corrupted five times by this. "
-            "Runbook: (1) read the record body: 'no handover after Ns' means the lock was still held; "
-            "'never acknowledged' means no ack arrived (expected exactly once, on the deploy that "
-            "introduced the ack, so any later one needs a look). (2) Read the durable log: "
-            "az containerapp exec -g stfoa-auth -n ca-auth --command 'tail -n 40 /pb_data/.pb_handover.log'. "
-            "(3) Check integrity: see 'Recovering a corrupt auxiliary.db' in DEPLOY.md. "
-            "(4) Confirm only one replica is running: az containerapp replica list -g stfoa-auth -n ca-auth."
+            "A rollout of auth.stfoafrisco.org started the incoming replica while the outgoing one STILL "
+            "HELD the /pb_data lock, so two writers are sharing the SQLite volume. This is the corruption "
+            "alarm of #35/#54: auxiliary.db was corrupted five times by exactly this. Runbook: (1) read the "
+            "durable log: az containerapp exec -g stfoa-auth -n ca-auth --command 'tail -n 40 "
+            "/pb_data/.pb_handover.log'. (2) Confirm only one replica is running: az containerapp replica "
+            "list -g stfoa-auth -n ca-auth, and deactivate the older revision if two are. (3) Check "
+            "integrity: see 'Recovering a corrupt auxiliary.db' in DEPLOY.md, and watch the 'Log Sink "
+            "Failing' rule."
         ),
         query=count_rule_query(
             "attributes_string['source'] = 'single-writer-handover'",
-            "(body LIKE '%no handover after%' OR body LIKE '%never acknowledged%')",
+            "body LIKE '%no handover after%'",
+        ),
+    ),
+    Rule(
+        # Split out of the rule above on 2026-10-16. All three observed occurrences (2026-09-28,
+        # 2026-10-12, 2026-10-16) had the OUTGOING replica logging 'released' BEFORE the incoming
+        # one gave up waiting, i.e. no overlap: the incoming replica missed the ack. A critical
+        # page for that is wrong; a warning with a one-line check is right.
+        name="PocketBase - Single-Writer Handover Unacknowledged",
+        severity="warning",
+        eval_window="30m0s",
+        frequency="5m0s",
+        target=0,
+        intent="any 'never acknowledged' WARN from entrypoint.sh in 30 minutes",
+        description=(
+            "The incoming replica gave up waiting for the outgoing replica's ack and started anyway. "
+            "That is NOT proof of two writers: the usual cause is the ack or lock release not becoming "
+            "visible over NFS in time, or the outgoing replica reacting late. Runbook: (1) read "
+            "az containerapp exec -g stfoa-auth -n ca-auth --command 'tail -n 20 /pb_data/.pb_handover.log'. "
+            "(2) If the outgoing replica logged 'handover: /pb_data released' BEFORE the incoming replica's "
+            "'never acknowledged' line, there was no overlap and this needs no action beyond a note on the "
+            "tracking issue. (3) If there is no 'released' line, treat it as the critical rule: two writers. "
+            "(4) Either way, confirm 'Log Sink Failing' stays quiet for the next hour."
+        ),
+        query=count_rule_query(
+            "attributes_string['source'] = 'single-writer-handover'",
+            "body LIKE '%never acknowledged%'",
         ),
     ),
     Rule(
@@ -216,10 +242,68 @@ RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
-        # DISABLED until the probe exists. The httpcheck receiver on the K3s collector probes
-        # app.stfoafrisco.org only; auth.stfoafrisco.org has no synthetic check, so enabling
-        # this today would fire immediately and permanently. Enable it (set enabled=True and
-        # re-apply) after the K3s collector probes PROBE_URL (K3s branch chore/httpcheck-auth-probe).
+        # Moved here from STFoA-Church (was "STFoA - PocketBase Log Sink Failing"), so the repo
+        # that emits the signal owns the rule that reads it.
+        # The emitter is rate limited to one record per 5 minutes while the sink fails, so the
+        # count falling to zero across the window IS the all-clear; the matching
+        # `local log sink recovered` WARN confirms it in the logs. LIKE, not `=`, on purpose:
+        # a rule that dies silently because a body gained a prefix is the failure to avoid.
+        name="PocketBase - Log Sink Failing",
+        severity="warning",
+        eval_window="15m0s",
+        frequency="5m0s",
+        target=0,
+        intent="any auxiliary.db write failure reported by auth.stfoafrisco.org in 15 minutes",
+        description=(
+            "PocketBase (auth.stfoafrisco.org) is failing to write request logs to auxiliary.db, so "
+            "log records are being dropped. Sign-ins still work: this is the audit trail, not the auth "
+            "path. Runbook: (1) read failedRecords and attemptedRecords on the record for the magnitude. "
+            "(2) Follow 'Recovering a corrupt auxiliary.db' in DEPLOY.md of this repo. (3) If it starts "
+            "right after a deploy, check the single-writer handover (rule 'Single-Writer Handover Failed' "
+            "and /pb_data/.pb_handover.log). Warning, not critical: the fix is a three-command runbook."
+        ),
+        query=count_rule_query("body LIKE '%local log sink write failed%'"),
+    ),
+    Rule(
+        # Dead-man's switch for the daily backup. A successful backup is INFO and would be
+        # dropped at OTEL_MIN_LEVEL=WARN, so core/backup.go tags its success record
+        # otel.always, which forces it onto the OTLP sink.
+        #
+        # SELF-ARMING: it fires only when a heartbeat HAS been seen in the last 7 days and then
+        # none arrived in the 26h window (daily cron plus 2h slack). A deployment that has never
+        # emitted one stays quiet instead of firing the moment the rule is applied. Residual
+        # limit: if backups were already broken for 7 days before this ships, it never arms;
+        # DEPLOY.md's "Verify backups are landing" covers the first check.
+        name="PocketBase - Backup Heartbeat Missing",
+        severity="warning",
+        eval_window="26h0m0s",
+        frequency="1h0m0s",
+        target=0,
+        intent="no '[Backup cron] Backup created' record in 26 hours although one was seen in the last 7 days",
+        description=(
+            "The daily PocketBase backup has not reported success for 26 hours, so the newest restore "
+            "point is getting stale (Litestream is disabled: this backup is the only copy besides the "
+            "NFS volume). Runbook: (1) look for an ERROR '[Backup cron] Failed to create backup' in "
+            "SigNoz (service.name=stfoa-auth) for the reason. (2) List what exists: GET "
+            "https://auth.stfoafrisco.org/api/backups with a superuser token, and check the S3 bucket "
+            "directly, since the API list reflects configured storage, not proof of upload. "
+            "(3) Check Settings -> Backups: the cron must still be set and the S3 credentials valid. "
+            "(4) Take a manual backup from the dashboard now, then fix the cause."
+        ),
+        query=(
+            f"SELECT\n  {TS_BUCKET},\n"
+            f"  toInt32(if(countIf({SERVICE} AND {PROD} AND {BACKUP_OK}) = 0\n"
+            f"    AND (SELECT count() FROM {LOGS}\n"
+            f"           WHERE timestamp >= toUnixTimestamp64Nano(now64(9)) - 7 * 86400 * 1000000000\n"
+            f"             AND {SERVICE} AND {PROD} AND {BACKUP_OK}) > 0,\n"
+            "    1, 0)) AS value\n"
+            f"FROM {LOGS}\nWHERE {WINDOW}\nGROUP BY ts"
+        ),
+    ),
+    Rule(
+        # Reads httpcheck.status for PROBE_URL, which the K3s collector probes every 60 s
+        # (services/signoz/values.yaml, receiver httpcheck/stfoa). If that target is removed the
+        # rule fires permanently, which is the correct reading of "no 2xx".
         name="PocketBase - Availability Probe Failing",
         severity="critical",
         eval_window="5m0s",
@@ -243,7 +327,6 @@ RULES: tuple[Rule, ...] = (
             f"FROM {METRICS_SAMPLES}\nWHERE {METRICS_WINDOW}\n"
             "  AND metric_name = 'httpcheck.status'\nGROUP BY ts"
         ),
-        enabled=False,
     ),
 )
 

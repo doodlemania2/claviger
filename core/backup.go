@@ -64,6 +64,14 @@ func (app *BaseApp) registerAutobackupHooks() {
 						slog.String("error", alertError.Error()),
 					)
 				}
+			} else {
+				// Heartbeat for the SigNoz rule "PocketBase - Backup Heartbeat Missing":
+				// a success is INFO, which OTEL_MIN_LEVEL=WARN would otherwise drop.
+				app.Logger().Info(
+					"[Backup cron] Backup created",
+					slog.String("name", name),
+					slog.Bool(OTelAlwaysAttr, true),
+				)
 			}
 
 			maxKeep := app.Settings().Backups.CronMaxKeep
