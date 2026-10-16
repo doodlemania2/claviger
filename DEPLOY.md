@@ -381,6 +381,15 @@ shared the volume**, so treat it as the corruption alarm it is. `never
 acknowledged` is expected exactly once, on the deploy that introduces the ack.
 Any later occurrence needs a look.
 
+> **2026-10-12 23:10 UTC, `never acknowledged` with no deploy.** `.pb_handover.log` shows
+> the same revision (`azd-1790955274`) cycling through three replicas in 74 s: the outgoing
+> replica released and parked at 23:09:02 for an incoming one that never confirmed, and a
+> third replica failed open 74 s later. No GitHub deploy ran, so Azure replaced the replica
+> itself. The old replica had already released the volume, and no `log sink write failed`
+> or `malformed` record appeared in the four days after, so there is no sign of damage. A
+> platform-driven replacement can therefore trip the critical rule without a deploy: read
+> `/pb_data/.pb_handover.log` first and look for a released-and-parked replica.
+
 `PB_HANDOVER_TIMEOUT` (default 60 s) bounds the wait; the normal wait is a poll
 interval plus a graceful drain, a few seconds. `PB_HANDOVER_TIMEOUT=0` disables
 the mechanism entirely and should only ever be used for a single-node local run.
