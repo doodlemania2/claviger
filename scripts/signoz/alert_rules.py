@@ -276,10 +276,9 @@ RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
-        # DISABLED until the probe exists. The httpcheck receiver on the K3s collector probes
-        # app.stfoafrisco.org only; auth.stfoafrisco.org has no synthetic check, so enabling
-        # this today would fire immediately and permanently. Enable it (set enabled=True and
-        # re-apply) after the K3s collector probes PROBE_URL (K3s branch chore/httpcheck-auth-probe).
+        # Reads httpcheck.status for PROBE_URL, which the K3s collector probes every 60 s
+        # (services/signoz/values.yaml, receiver httpcheck/stfoa). If that target is removed the
+        # rule fires permanently, which is the correct reading of "no 2xx".
         name="PocketBase - Availability Probe Failing",
         severity="critical",
         eval_window="5m0s",
@@ -303,7 +302,6 @@ RULES: tuple[Rule, ...] = (
             f"FROM {METRICS_SAMPLES}\nWHERE {METRICS_WINDOW}\n"
             "  AND metric_name = 'httpcheck.status'\nGROUP BY ts"
         ),
-        enabled=False,
     ),
 )
 

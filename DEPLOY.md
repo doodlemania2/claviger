@@ -537,7 +537,7 @@ from Mattermost to ntfy"; if this section disagrees with it, that one wins.
 | `PocketBase - Telemetry Silent (24h)` | warning | no record at all from `stfoa-auth` for 24 h (longest silence in 30 days: 15 h) |
 | `PocketBase - Log Sink Failing` | warning | any `local log sink write failed` (auxiliary.db rejecting writes) in 15 min; clears when the count falls to zero |
 | `PocketBase - Backup Heartbeat Missing` | warning | no `[Backup cron] Backup created` in 26 h, **after** one was seen in the last 7 days (self-arming, so it is quiet until the first heartbeat) |
-| `PocketBase - Availability Probe Failing` | critical | **disabled** until the K3s collector probes `https://auth.stfoafrisco.org/api/health` (K3s branch `chore/httpcheck-auth-probe`, committed, not applied) |
+| `PocketBase - Availability Probe Failing` | critical | no 2xx `httpcheck.status` for `https://auth.stfoafrisco.org/api/health` in 5 min (the K3s collector probes it every 60 s) |
 
 The service exports only WARN and ERROR (`OTEL_MIN_LEVEL=WARN`), so request logs are
 visible only when their status is 400 or above; every rule is written against that.

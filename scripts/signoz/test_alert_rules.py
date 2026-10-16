@@ -25,7 +25,7 @@ EXPECTED = {
     "PocketBase - Telemetry Silent (24h)": ("warning", "24h0m0s", "1h0m0s", 0, True),
     "PocketBase - Log Sink Failing": ("warning", "15m0s", "5m0s", 0, True),
     "PocketBase - Backup Heartbeat Missing": ("warning", "26h0m0s", "1h0m0s", 0, True),
-    "PocketBase - Availability Probe Failing": ("critical", "5m0s", "1m0s", 0, False),
+    "PocketBase - Availability Probe Failing": ("critical", "5m0s", "1m0s", 0, True),
 }
 
 
@@ -85,11 +85,12 @@ class RuleShape(unittest.TestCase):
         self.assertNotIn("service.name", where.split("GROUP BY")[0])
         self.assertIn(f"countIf({ar.SERVICE} AND {ar.PROD})", q)
 
-    def test_availability_rule_stays_disabled_until_a_probe_exists(self):
+    def test_availability_rule_reads_the_health_path_the_collector_probes(self):
         rule = next(r for r in ar.RULES if "Availability" in r.name)
-        self.assertFalse(rule.enabled)
-        self.assertTrue(ar.to_payload(rule)["disabled"])
-        self.assertIn("auth.stfoafrisco.org", rule.query)
+        self.assertTrue(rule.enabled)
+        self.assertFalse(ar.to_payload(rule)["disabled"])
+        # PocketBase answers 404 at "/", so the probe and the rule must both use /api/health.
+        self.assertIn("https://auth.stfoafrisco.org/api/health", rule.query)
 
 
     def test_backup_heartbeat_is_self_arming(self):
