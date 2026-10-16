@@ -535,17 +535,22 @@ from Mattermost to ntfy"; if this section disagrees with it, that one wins.
 | `PocketBase - Password Auth Failure Spike` | warning | 50 or more failed `auth-with-password` in 15 min (30-day peak: 17) |
 | `PocketBase - Scheduled Cleanup Failing Continuously` | warning | 12 or more `Failed to delete expired ...` in 6 h, i.e. the hourly cron failing every run (30-day peak: 6) |
 | `PocketBase - Telemetry Silent (24h)` | warning | no record at all from `stfoa-auth` for 24 h (longest silence in 30 days: 15 h) |
-| `PocketBase - Availability Probe Failing` | critical | **disabled** until the K3s collector probes `https://auth.stfoafrisco.org/api/health` (K3s branch `chore/httpcheck-auth-probe`, committed, not applied) |
+| `PocketBase - Log Sink Failing` | warning | any `local log sink write failed` (auxiliary.db rejecting writes) in 15 min; clears when the count falls to zero |
+| `PocketBase - Backup Heartbeat Missing` | warning | no `[Backup cron] Backup created` in 26 h, **after** one was seen in the last 7 days (self-arming, so it is quiet until the first heartbeat) |
+| `PocketBase - Availability Probe Failing` | critical | no 2xx `httpcheck.status` for `https://auth.stfoafrisco.org/api/health` in 5 min (the K3s collector probes it every 60 s) |
 
 The service exports only WARN and ERROR (`OTEL_MIN_LEVEL=WARN`), so request logs are
 visible only when their status is 400 or above; every rule is written against that.
 The rules and their thresholds are pinned by `scripts/signoz/test_alert_rules.py`, which
 CI runs. Each carries a runbook in its description, so the page tells you what to do.
 
-`STFoA - PocketBase Log Sink Failing` also watches this service but lives in the
-STFoA-Church rules (`scripts/signoz/alert-rules.mjs` there). Two appliers owning one rule
-name would overwrite each other, so it was not copied; moving it here is a deliberate
-two-repo change.
+The log-sink rule used to live in STFoA-Church as `STFoA - PocketBase Log Sink Failing`; it
+moved here (as `PocketBase - Log Sink Failing`) so the repo that emits the signal owns the rule.
+Two appliers owning one rule name would overwrite each other, so the Church copy is removed in
+its own change and the old live rule is deleted once that lands.
+
+The backup heartbeat works because `core/backup.go` logs `Backup created` with the
+`otel.always` attribute, which `core/logger_otel.go` lets past `PB_OTEL_MIN_LEVEL`.
 
 ### Applying rules
 
@@ -580,12 +585,14 @@ gh secret set NTFY_URL --repo doodlemania2/pocketbase \
 
 ### Not covered, and why
 
-- **A missed or failed backup.** The daily backup cron logs at INFO and a success is
-  invisible at `OTEL_MIN_LEVEL=WARN`, so no SigNoz rule can tell a skipped run from a good
-  one. Needs either a bucket-age check or an emitted heartbeat record.
-- **Certificate and secret expiry.** The managed certificate renews itself; Key Vault
-  secrets and the OTLP ingest token have no expiry watch.
-- **Auth availability** until the probe above exists.
+- **A backup that fails before it ever ran once.** The heartbeat rule arms itself on the first
+  success, so a deployment whose backups never worked is caught only by "Verify backups are
+  landing" above.
+- **Secret expiry.** In production the secrets are Container Apps secrets fed from GitHub repo
+  secrets, and none of them expires. If the Key Vault change (#47) lands, give its secrets an
+  expiry and revisit this.
+- **Certificate expiry** is covered by `cert-expiry.yml` (weekly TLS handshake, notices under 21
+  days), not by SigNoz.
 - **Queue backlog:** this service has no queue.
 
 ## Litestream: why it is off, and what re-enabling would take

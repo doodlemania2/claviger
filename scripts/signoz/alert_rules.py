@@ -70,6 +70,7 @@ METRICS_WINDOW = (
     "unix_milli <= intDiv({{.end_timestamp_nano}}, 1000000)"
 )
 PROBE_URL = "https://auth.stfoafrisco.org/api/health"
+BACKUP_OK = "body LIKE '%[Backup cron] Backup created%'"
 
 # The app runs OTEL_MIN_LEVEL=WARN, so only WARN and ERROR records reach SigNoz:
 # request logs are visible only when their status is >= 400. Every rule below
@@ -216,10 +217,68 @@ RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
-        # DISABLED until the probe exists. The httpcheck receiver on the K3s collector probes
-        # app.stfoafrisco.org only; auth.stfoafrisco.org has no synthetic check, so enabling
-        # this today would fire immediately and permanently. Enable it (set enabled=True and
-        # re-apply) after the K3s collector probes PROBE_URL (K3s branch chore/httpcheck-auth-probe).
+        # Moved here from STFoA-Church (was "STFoA - PocketBase Log Sink Failing"), so the repo
+        # that emits the signal owns the rule that reads it.
+        # The emitter is rate limited to one record per 5 minutes while the sink fails, so the
+        # count falling to zero across the window IS the all-clear; the matching
+        # `local log sink recovered` WARN confirms it in the logs. LIKE, not `=`, on purpose:
+        # a rule that dies silently because a body gained a prefix is the failure to avoid.
+        name="PocketBase - Log Sink Failing",
+        severity="warning",
+        eval_window="15m0s",
+        frequency="5m0s",
+        target=0,
+        intent="any auxiliary.db write failure reported by auth.stfoafrisco.org in 15 minutes",
+        description=(
+            "PocketBase (auth.stfoafrisco.org) is failing to write request logs to auxiliary.db, so "
+            "log records are being dropped. Sign-ins still work: this is the audit trail, not the auth "
+            "path. Runbook: (1) read failedRecords and attemptedRecords on the record for the magnitude. "
+            "(2) Follow 'Recovering a corrupt auxiliary.db' in DEPLOY.md of this repo. (3) If it starts "
+            "right after a deploy, check the single-writer handover (rule 'Single-Writer Handover Failed' "
+            "and /pb_data/.pb_handover.log). Warning, not critical: the fix is a three-command runbook."
+        ),
+        query=count_rule_query("body LIKE '%local log sink write failed%'"),
+    ),
+    Rule(
+        # Dead-man's switch for the daily backup. A successful backup is INFO and would be
+        # dropped at OTEL_MIN_LEVEL=WARN, so core/backup.go tags its success record
+        # otel.always, which forces it onto the OTLP sink.
+        #
+        # SELF-ARMING: it fires only when a heartbeat HAS been seen in the last 7 days and then
+        # none arrived in the 26h window (daily cron plus 2h slack). A deployment that has never
+        # emitted one stays quiet instead of firing the moment the rule is applied. Residual
+        # limit: if backups were already broken for 7 days before this ships, it never arms;
+        # DEPLOY.md's "Verify backups are landing" covers the first check.
+        name="PocketBase - Backup Heartbeat Missing",
+        severity="warning",
+        eval_window="26h0m0s",
+        frequency="1h0m0s",
+        target=0,
+        intent="no '[Backup cron] Backup created' record in 26 hours although one was seen in the last 7 days",
+        description=(
+            "The daily PocketBase backup has not reported success for 26 hours, so the newest restore "
+            "point is getting stale (Litestream is disabled: this backup is the only copy besides the "
+            "NFS volume). Runbook: (1) look for an ERROR '[Backup cron] Failed to create backup' in "
+            "SigNoz (service.name=stfoa-auth) for the reason. (2) List what exists: GET "
+            "https://auth.stfoafrisco.org/api/backups with a superuser token, and check the S3 bucket "
+            "directly, since the API list reflects configured storage, not proof of upload. "
+            "(3) Check Settings -> Backups: the cron must still be set and the S3 credentials valid. "
+            "(4) Take a manual backup from the dashboard now, then fix the cause."
+        ),
+        query=(
+            f"SELECT\n  {TS_BUCKET},\n"
+            f"  toInt32(if(countIf({SERVICE} AND {PROD} AND {BACKUP_OK}) = 0\n"
+            f"    AND (SELECT count() FROM {LOGS}\n"
+            f"           WHERE timestamp >= toUnixTimestamp64Nano(now64(9)) - 7 * 86400 * 1000000000\n"
+            f"             AND {SERVICE} AND {PROD} AND {BACKUP_OK}) > 0,\n"
+            "    1, 0)) AS value\n"
+            f"FROM {LOGS}\nWHERE {WINDOW}\nGROUP BY ts"
+        ),
+    ),
+    Rule(
+        # Reads httpcheck.status for PROBE_URL, which the K3s collector probes every 60 s
+        # (services/signoz/values.yaml, receiver httpcheck/stfoa). If that target is removed the
+        # rule fires permanently, which is the correct reading of "no 2xx".
         name="PocketBase - Availability Probe Failing",
         severity="critical",
         eval_window="5m0s",
@@ -243,7 +302,6 @@ RULES: tuple[Rule, ...] = (
             f"FROM {METRICS_SAMPLES}\nWHERE {METRICS_WINDOW}\n"
             "  AND metric_name = 'httpcheck.status'\nGROUP BY ts"
         ),
-        enabled=False,
     ),
 )
 

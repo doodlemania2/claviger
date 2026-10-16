@@ -425,3 +425,35 @@ func TestFanoutHandlerSetLevelForwardsToLocal(t *testing.T) {
 	// a local sink without SetLevel must not panic
 	(&fanoutHandler{local: &recordingHandler{}, remote: remote}).SetLevel(slog.LevelError)
 }
+
+func TestFanoutHandlerForcesTaggedRecordsPastMinLevel(t *testing.T) {
+	local := &recordingHandler{enabled: true}
+	remote := &recordingHandler{enabled: true}
+	h := &fanoutHandler{local: local, remote: remote, minLevel: slog.LevelWarn}
+
+	plain := slog.NewRecord(time.Now(), slog.LevelInfo, "plain", 0)
+	if err := h.Handle(context.Background(), plain); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(remote.records); got != 0 {
+		t.Fatalf("an untagged INFO record must stay below the OTLP gate, got %d", got)
+	}
+
+	tagged := slog.NewRecord(time.Now(), slog.LevelInfo, "heartbeat", 0)
+	tagged.AddAttrs(slog.Bool(OTelAlwaysAttr, true))
+	if err := h.Handle(context.Background(), tagged); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(remote.records); got != 1 {
+		t.Fatalf("a tagged INFO record must reach OTLP, got %d", got)
+	}
+
+	falsy := slog.NewRecord(time.Now(), slog.LevelInfo, "not forced", 0)
+	falsy.AddAttrs(slog.Bool(OTelAlwaysAttr, false))
+	if err := h.Handle(context.Background(), falsy); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(remote.records); got != 1 {
+		t.Fatalf("otel.always=false must not force delivery, got %d", got)
+	}
+}
