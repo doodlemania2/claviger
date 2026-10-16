@@ -64,3 +64,26 @@ jobs:
           OTEL_SERVICE_NAME: ${{ vars.OTEL_SERVICE_NAME }}
           OTEL_ENVIRONMENT: ${{ vars.OTEL_ENVIRONMENT }}
           OTEL_MIN_LEVEL: ${{ vars.OTEL_MIN_LEVEL }}
+
+      # Failure notice -> self-hosted ntfy (https://alert.thedoodleproject.net).
+      # NTFY_URL is the FULL publish URL including the topic and ?auth=..., so it is a
+      # repo SECRET (see the Alerting block in CLAUDE.md). A notice that cannot be
+      # delivered must never turn into a second failure, hence the unconditional exit 0.
+      - name: Notify ntfy on failure
+        if: failure()
+        env:
+          NTFY_URL: ${{ secrets.NTFY_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$NTFY_URL" ]; then
+            echo "::warning::NTFY_URL secret is not set; no failure notice was sent."
+            exit 0
+          fi
+          curl -sS -m 15 --retry 2 -X POST "$NTFY_URL" \
+            -H "Title: auth.stfoafrisco.org DEPLOY FAILED" \
+            -H "Priority: high" \
+            -H "Tags: rotating_light,azure" \
+            -H "Click: $RUN_URL" \
+            -d "${GITHUB_REPOSITORY} ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7} failed to deploy. See the run log: $RUN_URL" >/dev/null \
+            || echo "::warning::ntfy notification could not be delivered."
+          exit 0
