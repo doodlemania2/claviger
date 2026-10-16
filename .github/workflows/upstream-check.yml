@@ -129,3 +129,26 @@ jobs:
               labels: ['upstream-sync'],
             });
             core.info(`filed #${created.data.number} for ${latest}`);
+
+      # Failure notice -> self-hosted ntfy (https://alert.thedoodleproject.net).
+      # NTFY_URL is the FULL publish URL including the topic and ?auth=..., so it is a
+      # repo SECRET (see the Alerting block in CLAUDE.md). A notice that cannot be
+      # delivered must never turn into a second failure, hence the unconditional exit 0.
+      - name: Notify ntfy on failure
+        if: failure()
+        env:
+          NTFY_URL: ${{ secrets.NTFY_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$NTFY_URL" ]; then
+            echo "::warning::NTFY_URL secret is not set; no failure notice was sent."
+            exit 0
+          fi
+          curl -sS -m 15 --retry 2 -X POST "$NTFY_URL" \
+            -H "Title: pocketbase upstream-check FAILED" \
+            -H "Priority: default" \
+            -H "Tags: warning,calendar" \
+            -H "Click: $RUN_URL" \
+            -d "The weekly upstream release check failed, so a new PocketBase release may go unnoticed. $RUN_URL" >/dev/null \
+            || echo "::warning::ntfy notification could not be delivered."
+          exit 0

@@ -26,6 +26,9 @@ jobs:
       - name: Run tests
         run: go test ./... -v --cover
 
+      - name: SigNoz alert rule tests
+        run: python3 -m unittest discover -s scripts/signoz -v
+
       - name: Run linter
         # golangci.yml is schema `version: "2"`, which requires golangci-lint v2
         # (action v7+). The old action@v6 installs v1 and fails to parse it.
@@ -139,3 +142,33 @@ jobs:
 
           docker rm -f pb-old pb-new
           docker volume rm pb-handover-test
+
+  # Trunk is the source of deploy/azure and the fork's default branch: a red push
+  # there means the next sync or deploy starts broken. PR failures already show on the
+  # PR, so only push events notify.
+  notify-failure:
+    runs-on: ubuntu-latest
+    needs: [test, docker-build]
+    if: ${{ always() && github.event_name == 'push' && contains(needs.*.result, 'failure') }}
+    steps:
+      # Failure notice -> self-hosted ntfy (https://alert.thedoodleproject.net).
+      # NTFY_URL is the FULL publish URL including the topic and ?auth=..., so it is a
+      # repo SECRET (see the Alerting block in CLAUDE.md). A notice that cannot be
+      # delivered must never turn into a second failure, hence the unconditional exit 0.
+      - name: Notify ntfy on failure
+        env:
+          NTFY_URL: ${{ secrets.NTFY_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$NTFY_URL" ]; then
+            echo "::warning::NTFY_URL secret is not set; no failure notice was sent."
+            exit 0
+          fi
+          curl -sS -m 15 --retry 2 -X POST "$NTFY_URL" \
+            -H "Title: pocketbase CI FAILED on ${GITHUB_REF_NAME}" \
+            -H "Priority: high" \
+            -H "Tags: x,test_tube" \
+            -H "Click: $RUN_URL" \
+            -d "${GITHUB_REPOSITORY} ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}: the Test workflow failed on push. $RUN_URL" >/dev/null \
+            || echo "::warning::ntfy notification could not be delivered."
+          exit 0
