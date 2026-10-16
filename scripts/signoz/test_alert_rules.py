@@ -23,6 +23,8 @@ EXPECTED = {
     "PocketBase - Password Auth Failure Spike": ("warning", "15m0s", "5m0s", 49, True),
     "PocketBase - Scheduled Cleanup Failing Continuously": ("warning", "6h0m0s", "30m0s", 11, True),
     "PocketBase - Telemetry Silent (24h)": ("warning", "24h0m0s", "1h0m0s", 0, True),
+    "PocketBase - Log Sink Failing": ("warning", "15m0s", "5m0s", 0, True),
+    "PocketBase - Backup Heartbeat Missing": ("warning", "26h0m0s", "1h0m0s", 0, True),
     "PocketBase - Availability Probe Failing": ("critical", "5m0s", "1m0s", 0, False),
 }
 
@@ -88,6 +90,17 @@ class RuleShape(unittest.TestCase):
         self.assertFalse(rule.enabled)
         self.assertTrue(ar.to_payload(rule)["disabled"])
         self.assertIn("auth.stfoafrisco.org", rule.query)
+
+
+    def test_backup_heartbeat_is_self_arming(self):
+        # Without the 7-day arming subquery the rule would fire the moment it is applied,
+        # before the first heartbeat has ever been emitted.
+        q = next(r for r in ar.RULES if "Backup Heartbeat" in r.name).query
+        self.assertIn("SELECT count() FROM", q)
+        self.assertIn("7 * 86400 * 1000000000", q)
+        self.assertEqual(q.count(ar.BACKUP_OK), 2)
+        where = q.rsplit("WHERE", 1)[1]
+        self.assertNotIn("service.name", where)
 
 
 class Channel(unittest.TestCase):
