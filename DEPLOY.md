@@ -535,7 +535,7 @@ from Mattermost to ntfy"; if this section disagrees with it, that one wins.
 | `PocketBase - Password Auth Failure Spike` | warning | 50 or more failed `auth-with-password` in 15 min (30-day peak: 17) |
 | `PocketBase - Scheduled Cleanup Failing Continuously` | warning | 12 or more `Failed to delete expired ...` in 6 h, i.e. the hourly cron failing every run (30-day peak: 6) |
 | `PocketBase - Telemetry Silent (24h)` | warning | no record at all from `stfoa-auth` for 24 h (longest silence in 30 days: 15 h) |
-| `PocketBase - Availability Probe Failing` | critical | **disabled** until the K3s collector probes `https://auth.stfoafrisco.org` |
+| `PocketBase - Availability Probe Failing` | critical | **disabled** until the K3s collector probes `https://auth.stfoafrisco.org/api/health` (K3s branch `chore/httpcheck-auth-probe`, committed, not applied) |
 
 The service exports only WARN and ERROR (`OTEL_MIN_LEVEL=WARN`), so request logs are
 visible only when their status is 400 or above; every rule is written against that.

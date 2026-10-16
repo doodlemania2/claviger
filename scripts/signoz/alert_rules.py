@@ -69,7 +69,7 @@ METRICS_WINDOW = (
     "unix_milli >= intDiv({{.start_timestamp_nano}}, 1000000) AND "
     "unix_milli <= intDiv({{.end_timestamp_nano}}, 1000000)"
 )
-PROBE_URL = "https://auth.stfoafrisco.org"
+PROBE_URL = "https://auth.stfoafrisco.org/api/health"
 
 # The app runs OTEL_MIN_LEVEL=WARN, so only WARN and ERROR records reach SigNoz:
 # request logs are visible only when their status is >= 400. Every rule below
@@ -219,7 +219,7 @@ RULES: tuple[Rule, ...] = (
         # DISABLED until the probe exists. The httpcheck receiver on the K3s collector probes
         # app.stfoafrisco.org only; auth.stfoafrisco.org has no synthetic check, so enabling
         # this today would fire immediately and permanently. Enable it (set enabled=True and
-        # re-apply) after the K3s repo adds PROBE_URL to the collector's httpcheck targets.
+        # re-apply) after the K3s collector probes PROBE_URL (K3s branch chore/httpcheck-auth-probe).
         name="PocketBase - Availability Probe Failing",
         severity="critical",
         eval_window="5m0s",

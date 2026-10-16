@@ -24,3 +24,5 @@ WEBAUTHN_PLAN.md
 
 # stray curl cookie jars
 cookies*
+__pycache__/
+*.pyc
