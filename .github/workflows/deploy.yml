@@ -35,6 +35,14 @@ jobs:
       - name: Provision and Deploy
         run: azd up --no-prompt
         env:
+          # Every secret below is written into the deployment's Key Vault by
+          # infra/modules/keyvault.bicep and reaches the container app as a Key
+          # Vault *reference*, never as a stored value — so `az containerapp
+          # secret show` cannot return any of them. These repo secrets stay the
+          # source of truth: a deploy rewrites the vault from them, so rotating
+          # means changing the repo secret (or the vault, then the repo secret
+          # before the next deploy overwrites it). See DEPLOY.md, "Where the
+          # secrets live".
           AZD_INITIAL_ENVIRONMENT_CONFIG: ${{ secrets.AZD_INITIAL_ENVIRONMENT_CONFIG }}
           PB_ADMIN_EMAIL: ${{ secrets.PB_ADMIN_EMAIL }}
           PB_ADMIN_PASSWORD: ${{ secrets.PB_ADMIN_PASSWORD }}

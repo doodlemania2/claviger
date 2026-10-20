@@ -28,7 +28,8 @@ End-to-end deployment of this PocketBase fork to **Azure Container Apps**, with 
 | Storage account | `<storage-account>` | `<rg-name>` | Premium **FileStorage**, NFS share `pbdata`. No blob endpoint — this kind cannot host one |
 | Container Apps env | `cae-<envName>` | `<rg-name>` | Consumption profile, no console-log destination (`appLogsConfiguration.destination: null`) |
 | Container App | `ca-<envName>` | `<rg-name>` | 1 vCPU / 2 GiB, **single replica** (SQLite) |
-| Managed identity | `id-<envName>` | `<rg-name>` | AcrPull |
+| Key Vault | `kv-<resourceToken>` | `<rg-name>` | Standard, RBAC authorization. Holds every secret the app consumes — see [Where the secrets live](#where-the-secrets-live) |
+| Managed identity | `id-<envName>` | `<rg-name>` | AcrPull + **Key Vault Secrets User** on the vault above |
 
 Everything the deployment touches lives in one resource group. There is no
 observability resource and no cross-RG dependency: logs leave the process over
@@ -47,6 +48,7 @@ only supports NFS Azure Files under those conditions.
 1. `az login` and `azd auth login`.
 2. The signed-in principal needs:
    - `Contributor` on the subscription (or on `<rg-name>` after first create). That is the only role the deployment needs — nothing outside `<rg-name>` is touched.
+   - No Key Vault **data-plane** role. The deployment writes vault secrets through the ARM control plane, which `Contributor` already covers. You only need `Key Vault Secrets Officer` to run `az keyvault secret set` by hand.
 3. Set required azd env vars (all values stay in the gitignored `.azure/<envName>/.env`):
    ```sh
    azd env new <envname>           # e.g. prod
@@ -138,7 +140,13 @@ azd provision
 azd env set PB_ADMIN_PASSWORD '<new>'
 azd provision
 ```
-The entrypoint runs `pocketbase superuser upsert` on next start.
+`azd provision` writes the new value to the Key Vault secret
+`pb-admin-password`. The container app references it by a **versionless** URI, so
+Container Apps picks the new version up within 30 minutes and restarts the
+revision; the entrypoint then runs `pocketbase superuser upsert`. The restart is
+not immediate and is a short downtime window at `maxReplicas: 1` — see
+[Where the secrets live](#where-the-secrets-live) for the full rotation story and
+for the GitHub Actions path.
 
 ### View logs
 
@@ -167,6 +175,146 @@ Two consequences worth knowing before you go looking:
 - A container that dies before PocketBase's logger starts leaves no trace in
   SigNoz. Catch that case with `az containerapp revision list` /
   `az containerapp replica list` plus the stream above, while it is still alive.
+
+## Where the secrets live
+
+Every secret the container app consumes is stored in the deployment's **Key
+Vault** and reaches the app as a **Key Vault reference** — the `secrets` array on
+the Container App holds a `keyVaultUrl` plus the managed identity to read it
+with, never the value.
+
+That matters because `az containerapp secret show` returns raw secret **values in
+plaintext** to any principal holding `Microsoft.App/containerApps/listSecrets/action`,
+and several built-in roles grant it through wildcards — including *Container Apps
+Operator*, whose description implies read-only operational access
+([Learn](https://learn.microsoft.com/azure/container-apps/manage-secrets#permissions-for-managing-secrets)).
+With references there is no stored value for that call to return.
+
+| Container Apps secret | Key Vault secret | Env var | Source of truth | URI |
+|---|---|---|---|---|
+| `pb-admin-email` | `pb-admin-email` | `PB_ADMIN_EMAIL` | repo secret `PB_ADMIN_EMAIL` | versionless |
+| `pb-admin-password` | `pb-admin-password` | `PB_ADMIN_PASSWORD` | repo secret `PB_ADMIN_PASSWORD` | versionless |
+| `otlp-auth-header` | `otlp-auth-header` | `OTEL_EXPORTER_OTLP_HEADERS` | repo secret `OTLP_AUTH_HEADER` | versionless |
+
+That is the whole list — if a future change adds a secret to the container app,
+it goes in the vault too. The invariant to check is not "these three names are
+absent" but **"the app's `secrets` array has no `value` field at all"**.
+
+Find the vault:
+
+```sh
+az keyvault list -g <rg-name> --query "[].name" -o tsv
+```
+
+Confirm no values are exposed on the app — each entry must show a `keyVaultUrl`
+and an `identity`, and **no** `value`:
+
+```sh
+az containerapp secret show -n ca-<envName> -g <rg-name> --secret-name pb-admin-password
+```
+
+### How a deploy populates the vault
+
+`infra/modules/keyvault.bicep` writes the secret values; the app never receives
+them. The chain is `identity` → `keyvault` (secrets + role grant) → `container-app`,
+and that order is mandatory because Key Vault data-plane RBAC can take **up to 10
+minutes** to propagate after ARM reports the role assignment created
+([Learn](https://learn.microsoft.com/azure/container-apps/troubleshoot-deployment-errors#app-starts-with-missing-configuration)).
+Granting first is necessary but not sufficient.
+
+**An unresolvable reference has two documented outcomes, and you cannot predict
+which one you get:**
+
+- **The write is rejected and the deploy goes red.** Container Apps validates that
+  references resolve to a non-empty value during deployment
+  ([Microsoft support answer, 2026-07](https://learn.microsoft.com/answers/a/12888502)).
+  This is the safe case — the running revision is untouched.
+- **The deploy goes green and the env var arrives empty.** Learn's own
+  troubleshooting flow has a whole section for "an expected configuration value …
+  is empty or missing at runtime", and lists `Authorization failed on Key Vault`
+  and `RBAC permission denied` as causes under it. So the app can come up
+  *degraded*: no superuser bootstrap, and unauthenticated (i.e. dropped) OTLP
+  export, with nothing in the deploy result to say so.
+
+The second case is the one that bites, and at `maxReplicas: 1` it happens *after*
+`acquire_single_writer` has already drained the healthy outgoing replica.
+
+**So verify delivery, do not infer it.** After a deploy that touched the vault or
+the identity:
+
+```sh
+# Key Vault sync errors surface as SYSTEM logs, not console logs:
+az containerapp logs show -n ca-<envName> -g <rg-name> --type system --tail 50
+
+# Then confirm the app actually got the values:
+curl -fsS https://<custom-domain>/api/health
+az containerapp logs show -n ca-<envName> -g <rg-name> --tail 100   # superuser upsert ran?
+```
+
+Two more consequences worth knowing:
+
+- The secrets are written through the **ARM control plane**
+  (`Microsoft.KeyVault/vaults/secrets/write`, part of `Contributor`), not the data
+  plane. The CI service principal therefore needs **no** Key Vault role. A human
+  running `az keyvault secret set` does — `Key Vault Secrets Officer`.
+- A deploy **rewrites the vault from the GitHub repo secrets**. The repo secrets
+  are the source of truth; the vault is the delivery mechanism. An out-of-band
+  vault edit is reverted by the next deploy.
+
+### Rotating a secret
+
+Prefer the repo secret, so the change survives the next deploy:
+
+```sh
+gh secret set PB_ADMIN_PASSWORD --repo doodlemania2/pocketbase
+```
+
+Then merge a PR into `deploy/azure` (see the production warning at the top of
+this file). Confirm the new version landed:
+
+```sh
+az keyvault secret list-versions --vault-name <kv-name> --name pb-admin-password \
+  -o table --query "[].{created:attributes.created,enabled:attributes.enabled}"
+```
+
+All three secrets use **versionless** URIs, so you can also rotate the vault
+directly for a fast fix, without a deploy:
+
+```sh
+az keyvault secret set --vault-name <kv-name> --name otlp-auth-header --value '<new>'
+```
+
+Container Apps picks up the new version **within 30 minutes** and then
+**automatically restarts the active revision** to apply it
+([Learn](https://learn.microsoft.com/azure/container-apps/manage-secrets#key-vault-secret-uri-and-secret-rotation)).
+At `maxReplicas: 1` that restart is a short downtime window through the
+`/pb_data` handover path, and it happens on the platform's schedule, not yours.
+Update the matching repo secret in the same sitting or the next deploy silently
+reverts you.
+
+> ⚠️ **Versionless is only safe because all three secrets are rotatable in
+> place.** A secret whose value the app cannot survive changing must be
+> **version-pinned** instead (`secretUriWithVersion` out of `keyvault.bicep`), or
+> one portal edit will auto-restart production within 30 minutes with no
+> deployment and no review. The settings-encryption key
+> ([#46](https://github.com/doodlemania2/pocketbase/pull/46), reverted by
+> [#51](https://github.com/doodlemania2/pocketbase/pull/51)) is exactly that case:
+> when it is reintroduced it adds a fourth vault secret and must be pinned.
+
+### What this does not fix
+
+`Contributor` on the resource group is still a path to these values. The vault
+uses `enableRbacAuthorization: true`, which closes the "grant yourself an access
+policy" shortcut, but a Contributor can flip that flag back, or assign itself
+`Key Vault Secrets User`. This change removes the **one-command, role-implied**
+read (`az containerapp secret show`) and replaces it with several deliberate,
+separately-audited control-plane changes. Tightening RG-level `Contributor` is
+the remaining work and is out of scope here.
+
+The vault has no firewall or private endpoint. Container Apps resolves references
+from the platform rather than from the app's VNet subnet, so restricting network
+access needs extra plumbing; a private endpoint would also cost roughly $7/month
+against $0 today. Access is gated by RBAC, not by network position.
 
 ## Backups & disaster recovery
 
@@ -428,6 +576,10 @@ on one Docker volume, asserting that the outgoing replica parks and that a
 | Container crashloops with `SQLITE_BUSY (5)` | `/pb_data` mounted over SMB instead of NFS | SMB lacks POSIX byte-range locks. Storage must be Premium FileStorage + NFS, env VNet-integrated (`6a4f04df`) |
 | `customDomains` value rejected | Cert resource was deleted out-of-band | Set `CUSTOM_DOMAIN=` (empty) and re-deploy, then redo passes 2–3 |
 | Two replicas running (data corruption risk) | Someone bumped `maxReplicas` | Revert — SQLite is single-writer; `maxReplicas: 1` is enforced in [infra/modules/container-app.bicep](infra/modules/container-app.bicep) |
+| Deploy fails writing the container app, citing a Key Vault reference the identity cannot fetch | The `Key Vault Secrets User` grant had not propagated yet, or the vault secret is empty/disabled | The module order (`identity` → `keyvault` → `container-app`) covers the ordering; data-plane RBAC can still take up to 10 minutes. Re-run `azd provision` — it is idempotent. The running revision is untouched |
+| Deploy goes **green** but the superuser upsert never ran, or OTLP export is silently unauthenticated | Same cause, other documented outcome — the reference did not resolve and the env var arrived **empty**, which does not always fail the deploy | `az containerapp logs show --type system --tail 50` for the sync error, then `az role assignment list --assignee <identity-principal-id> --scope <vault-id>`. See [Where the secrets live](#where-the-secrets-live) |
+| App boots but a secret-backed env var is empty | The vault secret is disabled, or the reference points at a deleted version | `az keyvault secret show --vault-name <kv-name> --name <secret>` and check `attributes.enabled`. See [Where the secrets live](#where-the-secrets-live) |
+| A rotated secret has not taken effect | Versionless references refresh on the platform's schedule, up to 30 minutes | Wait, or force it with `az containerapp revision restart` |
 
 ## Telemetry — OTLP export to SigNoz
 
@@ -650,7 +802,7 @@ that has already caused one data-loss incident.
 ```sh
 azd down --purge
 ```
-`--purge` is required to actually delete the ACR and Key Vault soft-delete tombstones. Then manually delete the DNS records at your provider.
+`--purge` is required to actually delete the ACR and Key Vault soft-delete tombstones — the vault is created with a 7-day soft-delete retention and **no** purge protection precisely so this works. Then manually delete the DNS records at your provider.
 
 ## Files
 
@@ -660,6 +812,8 @@ azd down --purge
 - [infra/modules/acr.bicep](infra/modules/acr.bicep)
 - [infra/modules/storage.bicep](infra/modules/storage.bicep)
 - [infra/modules/container-app.bicep](infra/modules/container-app.bicep) — managed env, cert, ingress, app
+- [infra/modules/identity.bicep](infra/modules/identity.bicep) — user-assigned identity, created ahead of the vault so the secret grant precedes the app
+- [infra/modules/keyvault.bicep](infra/modules/keyvault.bicep) — the vault, its secrets, and the `Key Vault Secrets User` grant. The only module that sees a secret value
 - [infra/modules/network.bicep](infra/modules/network.bicep) — VNet + delegated subnet (required for NFS)
 - [litestream.yml](litestream.yml) — replica config, **inert**: no `LITESTREAM_*` env is set
 - [entrypoint.sh](entrypoint.sh) — (restore) → superuser bootstrap → (replicate) → serve; both parenthesized steps are skipped while `LITESTREAM_REPLICA_URL` is unset

@@ -4,8 +4,11 @@ param environmentName string
 @description('Name of the Container App')
 param appName string
 
-@description('Name of the managed identity')
-param identityName string
+@description('Resource ID of the user-assigned managed identity. Created by modules/identity.bicep rather than here, so modules/keyvault.bicep can grant it Key Vault Secrets User before this app is written. A reference this identity cannot read may either fail this write or come up green with an empty env var — both are documented, see modules/identity.bicep. Observe the delivered value, never infer it from a green deploy.')
+param identityId string
+
+@description('Principal ID of that same user-assigned managed identity, used for the AcrPull role assignment below.')
+param identityPrincipalId string
 
 @description('Location for resources')
 param location string
@@ -25,13 +28,25 @@ param storageAccountName string
 @description('Resource ID of the VNet subnet that the Container Apps environment runs in. Required for NFS Azure Files mounts.')
 param subnetId string
 
-@description('PocketBase admin email')
-@secure()
-param pbAdminEmail string = ''
+// No secret VALUES are passed into this module. Every entry in the `secrets`
+// array below is a Key Vault reference (keyVaultUrl + identity), which is what
+// keeps `az containerapp secret show` from returning any of them in plaintext to
+// a holder of Microsoft.App/containerApps/listSecrets/action. The values reach
+// exactly one module, modules/keyvault.bicep.
+//
+// The "empty means omitted" contract is preserved: keyvault.bicep returns an
+// empty URI for a secret it did not create, and each conditional below keys off
+// that, so an environment without a given secret still provisions.
 
-@description('PocketBase admin password')
-@secure()
-param pbAdminPassword string = ''
+@description('Key Vault secret URI for the PocketBase admin email. Empty = omit PB_ADMIN_EMAIL.')
+param pbAdminEmailSecretUri string = ''
+
+@description('Key Vault secret URI for the PocketBase admin password. Empty = omit PB_ADMIN_PASSWORD.')
+param pbAdminPasswordSecretUri string = ''
+
+@description('Key Vault secret URI for the OTLP auth header. Empty = omit OTEL_EXPORTER_OTLP_HEADERS.')
+param otlpAuthHeaderSecretUri string = ''
+
 
 @description('Custom domain (e.g., auth.example.com). Leave empty to skip binding/managed cert.')
 param customDomain string = ''
@@ -51,10 +66,6 @@ param webauthnRpOrigins string = ''
 @description('OTLP collector ingest URL, e.g. https://otlp.thedoodleproject.net. Empty = telemetry export disabled entirely. Set the endpoint ROOT, not a signal path — the SDK appends /v1/logs itself.')
 param otlpEndpoint string = ''
 
-@description('Full OTLP auth header, i.e. "Authorization=Bearer <token>". Hold this in Key Vault and pass it as a reference; never commit the token.')
-@secure()
-param otlpAuthHeader string = ''
-
 @description('Stable service.name for this app in SigNoz. The onboarding contract requires one per app and it must never change — it is the key SigNoz groups on. Empty resolves to the default below.')
 param otelServiceName string = ''
 
@@ -69,13 +80,6 @@ param otelEnvironment string = ''
 
 @description('Minimum log level exported to the collector (DEBUG|INFO|WARN|ERROR). Empty exports everything, which for this app is ~8.6k health-probe records/day. Local SQLite logging is unaffected either way.')
 param otelMinLevel string = ''
-
-// Managed Identity
-resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
-  name: identityName
-  location: location
-  tags: tags
-}
 
 // Reference existing resources
 resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
@@ -92,12 +96,14 @@ var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 // stream, exactly what the onboarding contract exists to prevent.
 var resolvedOtelServiceName = empty(otelServiceName) ? 'stfoa-auth' : otelServiceName
 var resolvedOtelEnvironment = empty(otelEnvironment) ? 'production' : otelEnvironment
+// guid() still hashes the identity's resource ID, which the hoist into
+// modules/identity.bicep did not change — so this assignment is not recreated.
 resource acrRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(acr.id, identity.id, acrPullRoleId)
+  name: guid(acr.id, identityId, acrPullRoleId)
   scope: acr
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleId)
-    principalId: identity.properties.principalId
+    principalId: identityPrincipalId
     principalType: 'ServicePrincipal'
   }
 }
@@ -167,19 +173,23 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
-      '${identity.id}': {}
+      '${identityId}': {}
     }
   }
   properties: {
     managedEnvironmentId: environment.id
     configuration: {
       activeRevisionsMode: 'Single'
-      secrets: concat([], empty(pbAdminEmail) ? [] : [
-        { name: 'pb-admin-email', value: pbAdminEmail }
-      ], empty(pbAdminPassword) ? [] : [
-        { name: 'pb-admin-password', value: pbAdminPassword }
-      ], empty(otlpAuthHeader) ? [] : [
-        { name: 'otlp-auth-header', value: otlpAuthHeader }
+      // Every entry is keyVaultUrl + identity, never `value`. A user-assigned
+      // identity is mandatory here, not a preference: a system-assigned identity
+      // does not exist until after the container app is created, so it cannot
+      // resolve a reference present at create time.
+      secrets: concat([], empty(pbAdminEmailSecretUri) ? [] : [
+        { name: 'pb-admin-email', keyVaultUrl: pbAdminEmailSecretUri, identity: identityId }
+      ], empty(pbAdminPasswordSecretUri) ? [] : [
+        { name: 'pb-admin-password', keyVaultUrl: pbAdminPasswordSecretUri, identity: identityId }
+      ], empty(otlpAuthHeaderSecretUri) ? [] : [
+        { name: 'otlp-auth-header', keyVaultUrl: otlpAuthHeaderSecretUri, identity: identityId }
       ])
       ingress: {
         external: true
@@ -200,7 +210,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       registries: [
         {
           server: containerRegistryLoginServer
-          identity: identity.id
+          identity: identityId
         }
       ]
     }
@@ -216,9 +226,9 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           env: concat([
             { name: 'PB_HOST', value: '0.0.0.0' }
             { name: 'PB_PORT', value: '8090' }
-          ], empty(pbAdminEmail) ? [] : [
+          ], empty(pbAdminEmailSecretUri) ? [] : [
             { name: 'PB_ADMIN_EMAIL', secretRef: 'pb-admin-email' }
-          ], empty(pbAdminPassword) ? [] : [
+          ], empty(pbAdminPasswordSecretUri) ? [] : [
             { name: 'PB_ADMIN_PASSWORD', secretRef: 'pb-admin-password' }
           ], empty(webauthnRpId) ? [] : [
             { name: 'WEBAUTHN_RP_ID', value: webauthnRpId }
@@ -237,7 +247,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'OTEL_RESOURCE_ATTRIBUTES'
               value: 'service.name=${resolvedOtelServiceName},service.namespace=stfoa,deployment.environment=${resolvedOtelEnvironment},deployment.environment.name=${resolvedOtelEnvironment}'
             }
-          ], empty(otlpEndpoint) || empty(otlpAuthHeader) ? [] : [
+          ], empty(otlpEndpoint) || empty(otlpAuthHeaderSecretUri) ? [] : [
             { name: 'OTEL_EXPORTER_OTLP_HEADERS', secretRef: 'otlp-auth-header' }
           ], empty(otelMinLevel) ? [] : [
             { name: 'PB_OTEL_MIN_LEVEL', value: otelMinLevel }

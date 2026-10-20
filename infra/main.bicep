@@ -25,6 +25,11 @@ param resourceGroupName string = 'rg-${environmentName}'
 @maxLength(24)
 param storageAccountName string = 'st${uniqueString(subscription().subscriptionId, environmentName, location)}'
 
+@description('Key Vault name (3-24 chars, globally unique). Holds every secret the container app consumes; the app reads them through Key Vault references so the values are never stored on the Container App resource. Defaults to a deterministic name derived from the resource token.')
+@minLength(3)
+@maxLength(24)
+param keyVaultName string = 'kv-${uniqueString(subscription().subscriptionId, environmentName, location)}'
+
 @description('Custom domain to bind to the Container App ingress (leave empty on first deploy to obtain the verification ID, then add DNS records and redeploy with this set). Example: auth.example.com')
 param customDomain string = ''
 
@@ -107,28 +112,60 @@ module storage 'modules/storage.bicep' = {
   }
 }
 
+// The identity is created on its own so the Key Vault module can grant it
+// `Key Vault Secrets User` before the container app exists. An unreadable Key
+// Vault reference either fails the app write or comes up green with an empty env
+// var — both outcomes are documented, and the second one is the dangerous one.
+// See modules/identity.bicep.
+module identity 'modules/identity.bicep' = {
+  name: 'identity'
+  scope: rg
+  params: {
+    name: '${abbrs.managedIdentity}-${environmentName}'
+    location: location
+    tags: tags
+  }
+}
+
+// Every secret the container app consumes lives here. This is the only module
+// that sees a secret value; container-app.bicep receives URIs only.
+module keyVault 'modules/keyvault.bicep' = {
+  name: 'keyvault'
+  scope: rg
+  params: {
+    name: keyVaultName
+    location: location
+    tags: tags
+    readerPrincipalId: identity.outputs.principalId
+    pbAdminEmail: pbAdminEmail
+    pbAdminPassword: pbAdminPassword
+    otlpAuthHeader: otlpAuthHeader
+  }
+}
+
 module containerApp 'modules/container-app.bicep' = {
   name: 'container-app'
   scope: rg
   params: {
     environmentName: '${abbrs.containerAppsEnvironment}-${environmentName}'
     appName: '${abbrs.containerApp}-${environmentName}'
-    identityName: '${abbrs.managedIdentity}-${environmentName}'
+    identityId: identity.outputs.id
+    identityPrincipalId: identity.outputs.principalId
     location: location
     tags: tags
     containerRegistryLoginServer: acr.outputs.loginServer
     containerRegistryName: acr.outputs.name
     storageAccountName: storage.outputs.storageAccountName
     subnetId: network.outputs.subnetId
-    pbAdminEmail: pbAdminEmail
-    pbAdminPassword: pbAdminPassword
+    pbAdminEmailSecretUri: keyVault.outputs.pbAdminEmailSecretUri
+    pbAdminPasswordSecretUri: keyVault.outputs.pbAdminPasswordSecretUri
+    otlpAuthHeaderSecretUri: keyVault.outputs.otlpAuthHeaderSecretUri
     customDomain: customDomain
     bindCertificate: bindCertificate
     containerImage: containerImage
     webauthnRpId: webauthnRpId
     webauthnRpOrigins: webauthnRpOrigins
     otlpEndpoint: otlpEndpoint
-    otlpAuthHeader: otlpAuthHeader
     otelServiceName: otelServiceName
     otelEnvironment: otelEnvironment
     otelMinLevel: otelMinLevel
@@ -140,3 +177,5 @@ output AZURE_CONTAINER_REGISTRY_NAME string = acr.outputs.name
 output AZURE_CONTAINER_APP_FQDN string = containerApp.outputs.fqdn
 output AZURE_CONTAINER_APP_CUSTOM_DOMAIN_VERIFICATION_ID string = containerApp.outputs.customDomainVerificationId
 output AZURE_RESOURCE_GROUP string = rg.name
+output AZURE_KEY_VAULT_NAME string = keyVault.outputs.vaultName
+output AZURE_KEY_VAULT_URI string = keyVault.outputs.vaultUri
