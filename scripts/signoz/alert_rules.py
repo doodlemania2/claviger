@@ -180,13 +180,20 @@ RULES: tuple[Rule, ...] = (
         intent="50 or more failed password-auth requests (400/401/403/429) in 15 minutes",
         description=(
             "Failed auth-with-password requests are far above normal (30-day peak is 17 per 15 "
-            "minutes), which looks like credential stuffing or a client stuck in a retry loop. "
-            "Runbook: (1) in SigNoz Logs (service.name=stfoa-auth) group the failing requests by "
-            "'client.address' / 'userIP' and by collection in the URL (users vs _superusers). "
-            "(2) One address: block it at the edge. Many addresses against _superusers: treat as an "
-            "attack, rotate the superuser password (PB_ADMIN_PASSWORD secret, redeploy). "
-            "(3) One address that is a parish app server: a deploy broke its credentials, "
-            "fix the caller. (4) 429s mean the rate limiter is already shedding load."
+            "minutes), which looks like credential stuffing, a staging QA walk, or a client stuck "
+            "in a retry loop. The identity being tried is NOT in these logs. "
+            "Runbook: (1) in SigNoz Logs read service.name=stfoa-church-api over the same window, "
+            "'auth-session: PocketBase authentication attempt N for user: <identity>' - parish "
+            "sign-ins are proxied by that function, so stfoa-auth only ever records the function "
+            "app's egress IP. Identities ending @stfoa.test are a QA walk, not an attack "
+            "(STFoA-Church#6528): note it and stop. (2) Real identities: group the stfoa-auth "
+            "failures by collection in the URL (users vs _superusers). Several identities against "
+            "_superusers: treat as an attack, rotate the superuser password (PB_ADMIN_PASSWORD "
+            "secret, redeploy). (3) For direct, unproxied callers only, 'userIP' is the real client "
+            "and can be blocked at the edge; 'client.address' is not - it took 5 distinct values in "
+            "30 days across all traffic, so blocking on it blocks everyone. (4) One identity that "
+            "is a parish app service account: a deploy broke its credentials, fix the caller. "
+            "(5) 429s mean the rate limiter is already shedding load."
         ),
         query=count_rule_query(
             "body LIKE 'POST /api/collections/%/auth-with-password'",
