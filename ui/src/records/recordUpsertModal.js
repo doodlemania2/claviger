@@ -1509,7 +1509,9 @@ function passkeysTab(collection, data) {
         local.isLoading = true;
 
         try {
-            const path = `/api/collections/${encodeURIComponent(collection.name)}/auth-with-webauthn/credentials-by-record/${encodeURIComponent(data.record.id)}`;
+            const path = `/api/collections/${
+                encodeURIComponent(collection.name)
+            }/auth-with-webauthn/credentials-by-record/${encodeURIComponent(data.record.id)}`;
             const result = await app.pb.send(path, { method: "GET" });
             local.credentials = Array.isArray(result) ? result : (result?.items || []);
         } catch (err) {
@@ -1562,7 +1564,9 @@ function passkeysTab(collection, data) {
             async () => {
                 local.isClearingAll = true;
                 try {
-                    const path = `/api/collections/${encodeURIComponent(collection.name)}/auth-with-webauthn/credentials-by-record/${encodeURIComponent(data.record.id)}`;
+                    const path = `/api/collections/${
+                        encodeURIComponent(collection.name)
+                    }/auth-with-webauthn/credentials-by-record/${encodeURIComponent(data.record.id)}`;
                     const result = await app.pb.send(path, { method: "DELETE" });
                     app.toasts.success(`Successfully removed ${result?.deleted ?? 0} passkey(s).`);
                     loadCredentials();
@@ -1650,7 +1654,10 @@ function passkeysTab(collection, data) {
                 return t.button(
                     {
                         type: "button",
-                        className: () => `btn btn-sm btn-danger btn-transparent ${local.isClearingAll ? "btn-loading btn-disabled" : ""}`,
+                        className: () =>
+                            `btn btn-sm btn-danger btn-transparent ${
+                                local.isClearingAll ? "btn-loading btn-disabled" : ""
+                            }`,
                         disabled: () => local.isClearingAll,
                         onclick: confirmAndClearAll,
                     },
