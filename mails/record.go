@@ -162,6 +162,44 @@ func SendRecordPasswordReset(app core.App, authRecord *core.Record) error {
 	})
 }
 
+// SendRecordPasskeyReset sends a passkey reset request email to the specified auth record.
+func SendRecordPasskeyReset(app core.App, authRecord *core.Record) error {
+	token, tokenErr := authRecord.NewPasskeyResetToken()
+	if tokenErr != nil {
+		return tokenErr
+	}
+
+	mailClient := app.NewMailClient()
+
+	subject, body, err := resolveEmailTemplate(app, authRecord, authRecord.Collection().PasskeyResetTemplate, map[string]any{
+		core.EmailPlaceholderToken: token,
+	})
+	if err != nil {
+		return err
+	}
+
+	message := &mailer.Message{
+		From: mail.Address{
+			Name:    app.Settings().Meta.SenderName,
+			Address: app.Settings().Meta.SenderAddress,
+		},
+		To:      []mail.Address{{Address: authRecord.Email()}},
+		Subject: subject,
+		HTML:    body,
+	}
+
+	event := new(core.MailerRecordEvent)
+	event.App = app
+	event.Mailer = mailClient
+	event.Message = message
+	event.Record = authRecord
+	event.Meta = map[string]any{"token": token}
+
+	return app.OnMailerRecordPasskeyResetSend().Trigger(event, func(e *core.MailerRecordEvent) error {
+		return e.Mailer.Send(e.Message)
+	})
+}
+
 // SendRecordVerification sends a verification request email to the specified auth record.
 func SendRecordVerification(app core.App, authRecord *core.Record) error {
 	token, tokenErr := authRecord.NewVerificationToken()

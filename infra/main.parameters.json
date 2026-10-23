@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "pbAdminEmail": {
+      "value": "${PB_ADMIN_EMAIL}"
+    },
+    "pbAdminPassword": {
+      "value": "${PB_ADMIN_PASSWORD}"
+    },
+    "customDomain": {
+      "value": "${CUSTOM_DOMAIN=}"
+    },
+    "bindCertificate": {
+      "value": "${BIND_CERT=false}"
+    },
+    "containerImage": {
+      "value": "${SERVICE_POCKETBASE_IMAGE_NAME=mcr.microsoft.com/k8se/quickstart:latest}"
+    },
+    "webauthnRpId": {
+      "value": "${WEBAUTHN_RP_ID=}"
+    },
+    "webauthnRpOrigins": {
+      "value": "${WEBAUTHN_RP_ORIGINS=}"
+    },
+    "otlpEndpoint": {
+      "value": "${OTLP_ENDPOINT=}"
+    },
+    "otlpAuthHeader": {
+      "value": "${OTLP_AUTH_HEADER=}"
+    },
+    "otelServiceName": {
+      "value": "${OTEL_SERVICE_NAME=}"
+    },
+    "otelEnvironment": {
+      "value": "${OTEL_ENVIRONMENT=}"
+    },
+    "otelMinLevel": {
+      "value": "${OTEL_MIN_LEVEL=}"
+    },
+    "resourceGroupName": {
+      "value": "${AZURE_RG_NAME=rg-${AZURE_ENV_NAME}}"
+    }
+  }
+}

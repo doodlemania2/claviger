@@ -86,6 +86,10 @@ export function collectionAuthOptionsTab(upsertData) {
                     title: "Default Login alert email template",
                     placeholders: ["{APP_NAME}", "{APP_URL}", "{RECORD:*}", "{ALERT_INFO}"],
                 }),
+                emailTemplateAccordion(upsertData.collection, "passkeyResetTemplate", {
+                    title: "Default Passkey reset email template",
+                    placeholders: ["{APP_NAME}", "{APP_URL}", "{RECORD:*}", "{TOKEN}"],
+                }),
             ),
             t.div(
                 { className: "col-12" },

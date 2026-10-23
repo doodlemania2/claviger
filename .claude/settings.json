@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(az account get-access-token *)",
+      "Bash(gh run watch *)"
+    ]
+  }
+}

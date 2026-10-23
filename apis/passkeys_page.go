@@ -168,7 +168,10 @@ export class PasskeysClient {
       method: "POST",
       body: JSON.stringify({ identity }),
     });
-    const publicKey = decodePublicKeyOptions(begin.options || begin.publicKey || begin);
+    let publicKey = begin.options || begin.publicKey || begin;
+    // go-webauthn wraps the options in { publicKey: {...} } — unwrap it.
+    if (publicKey && publicKey.publicKey) publicKey = publicKey.publicKey;
+    publicKey = decodePublicKeyOptions(publicKey);
     const cred = await navigator.credentials.get({ publicKey });
     return this._fetch(this._path() + "/login-finish", {
       method: "POST",
@@ -181,7 +184,9 @@ export class PasskeysClient {
 
   async register(name) {
     const begin = await this._fetch(this._path() + "/register-begin", { method: "POST" });
-    const publicKey = decodePublicKeyOptions(begin.options || begin.publicKey || begin);
+    let publicKey = begin.options || begin.publicKey || begin;
+    if (publicKey && publicKey.publicKey) publicKey = publicKey.publicKey;
+    publicKey = decodePublicKeyOptions(publicKey);
     const cred = await navigator.credentials.create({ publicKey });
     return this._fetch(this._path() + "/register-finish", {
       method: "POST",
