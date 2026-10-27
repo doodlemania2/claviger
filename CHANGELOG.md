@@ -1,3 +1,10 @@
+## v0.41.1 (WIP)
+
+- Added missing license info to the vendored fonts ([#8352](https://ganigeorgiev.com/pocketbase/discussions/8352)).
+
+- Updated npm Vite dev deps to silence security reports.
+
+
 ## v0.41.0
 
 - ⚠️ Migrated the Go module from GitHub to the new host `https://ganigeorgiev.com`.
