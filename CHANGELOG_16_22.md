@@ -2,6 +2,11 @@
 > For the most recent versions, please refer to [CHANGELOG.md](./CHANGELOG.md)
 ---
 
+## v0.22.58
+
+- (_Backported from v0.41.1_) Bumped `golang.org/x/net` since it has some [minor security fixes](https://groups.google.com/g/golang-announce/c/sqrs2vTx_Xs).
+
+
 ## v0.22.57
 
 - (_Backported from v0.40.6_) Added a global restriction for the max `WxH` pixels size when generating a thumb to reduce the risk of excessive memory usage.
