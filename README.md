@@ -15,7 +15,7 @@
 - convenient **Superuser dashboard UI**
 - and simple **REST-ish API**
 
-**For documentation and examples, please visit https://pocketbase.io/docs.**
+**For documentation and examples, please visit https://pocketbase.io/docs .**
 
 > **NB!** Please keep in mind that PocketBase is still under active development
 > and full backward compatibility is not guaranteed before reaching v1.0.0.

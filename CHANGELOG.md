@@ -1,8 +1,10 @@
-## v0.41.1 (WIP)
+## v0.41.1
 
 - Added missing license info to the vendored fonts ([#8352](https://ganigeorgiev.com/pocketbase/discussions/8352)).
 
-- Updated npm Vite dev deps to silence security reports.
+- Bumped `golang.org/x/net` since it has some [minor security fixes](https://groups.google.com/g/golang-announce/c/sqrs2vTx_Xs).
+
+- Other minor fixes (readme broken link fix, updated npm dev deps to silence security reports, etc.).
 
 
 ## v0.41.0
