@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/pocketbase/dbx"
-	validation "github.com/pocketbase/ozzo-validation/v4"
+	"ganigeorgiev.com/pocketbase/dbx"
+	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
 )
 
 // UniqueId checks whether a field string id already exists in the specified table.

@@ -4,19 +4,116 @@ How to keep this fork in sync with upstream PocketBase releases.
 
 ## Sync Status
 
-**Current:** synced to upstream **v0.40.6** (`9d281cca`) on 2026-10-23 (a
-single-version **patch** release, 29 files). `go-webauthn/webauthn` stays at
-**v0.18.2** (`x` v0.3.1) — Step 3b was a no-op. **Zero fork-side follow-ups
-required.** Tests: `go test ./...` green on both branches except the allowlisted
-macOS `fsnotify` watcher flakes (`TestNotifyWatcher_CollectionsUpdate` /
-`_SettingsUpdate`); both pass in isolation. `golangci-lint` **v2.14.0** and
-`gofmt -l`: **0 issues on both branches**. WebAuthn ceremony suite and
-`TestHooksBindsCount` green. A **native** binary smoke test passed
-(`/api/health`, `/passkeys` and `/_/` all 200; COOP, `Referrer-Policy` and
-`Permissions-Policy` headers present). Docker is still not installed locally, so
-the container smoke test is deferred to CI.
+> ### Upstream relocated off GitHub (found 2026-10-30) — v0.41.0 renames the Go module; **handled by the v0.41.1 sync below**
+>
+> Upstream moved from `github.com/pocketbase/pocketbase` to
+> **`https://ganigeorgiev.com/pocketbase/pocketbase`**. GitHub's last release is
+> v0.40.6; its `master` now holds only a README redirect banner (`7f2773ec`), and
+> that commit is **not** an ancestor of the new host's `master`, so GitHub is dead
+> as a sync source. The `upstream` remote now points at the new host (below).
+>
+> - **Clone/fetch URL:** `https://ganigeorgiev.com/git/pocketbase/pocketbase`.
+>   No `.git` suffix (`.../pocketbase.git` 404s). The browsable repo page is
+>   `https://ganigeorgiev.com/pocketbase/pocketbase`, a single-page app that
+>   answers HTTP 200 to *any* path, so a 200 there proves nothing; test with
+>   `git ls-remote`. SSH is `ssh://ganigeorgiev.com:8022/...`, but anonymous
+>   access is refused. Tag SHAs through v0.40.6 are identical to GitHub's.
+> - **Fork remote layout:** `upstream` fetch = the new host; push URL set to
+>   `DISABLED` so an accidental push cannot go anywhere.
+> - **New there:** `v0.41.0-rc.1`, **`v0.41.0`**, **`v0.41.1`** (plus a
+>   `v0.22_maintenance` branch, irrelevant to us). The fork is now synced to v0.41.1.
+> - **v0.41.0 migrated the Go module** to `ganigeorgiev.com/pocketbase/pocketbase`,
+>   and the helper libs moved with it: `ganigeorgiev.com/pocketbase/{dbx,
+>   ozzo-validation/v4,tygoja}` and `ganigeorgiev.com/fexpr`. 369 tracked files in
+>   the fork (Go sources, `Dockerfile`, `.goreleaser.yaml`) reference
+>   `github.com/pocketbase/pocketbase`, so **this sync is a
+>   mass import rewrite, not a patch bump.** The fork-added files on `feat`
+>   (`apis/record_auth_with_webauthn.go` etc.) and on `deploy/azure`
+>   (`apis/record_auth_passkey_reset_*.go`, `core/logger_otel.go`,
+>   `.goreleaser.yaml`'s `-X github.com/pocketbase/pocketbase.Version` ldflag,
+>   `examples/`) all need the new path, and `go.mod`/`go.sum` need the new
+>   `require`s. Expect near-total conflict on the usual rebase of `feat`; plan the
+>   rewrite as its own commit at the base of the stack so later syncs stay
+>   mechanical. Upstream's migration recipe: replace the import prefix, change the
+>   `require` to `ganigeorgiev.com/pocketbase v0.41.0`, `go mod tidy`.
+> - **Release downloads** (relevant to the `Dockerfile` if it ever pulls a
+>   binary): `https://ganigeorgiev.com/meta/pocketbase/pocketbase/download/{tag}/{filename}`.
+> - **Upstream's own `CHANGELOG.md` is mangled** by their search-and-replace
+>   (links read `.../pocketbase/discussions/N` and the migration recipe says
+>   "replace X with X"). Trust the module path in `go.mod`, not the prose.
+> - **`ui/dist`**: v0.41.0/v0.41.1 regenerated it; the usual "drop upstream's
+>   regenerate commits, run one fresh `vite build`" step still applies.
+> - **Substantive v0.40.6 -> v0.41.1 delta** (everything else is import-path and
+>   comment-URL churn; verified by normalising the module path on both sides and
+>   diffing; each item needs Derek's per-change approval): `Event.Extra` map on
+>   every hook event (`tools/hook/event.go` only; **no** jsvm bind-count change);
+>   `ServeEvent.StartBannerFunc` plus the startup banner moved into
+>   `defaultStartBannerFunc` with `├─ └─` replaced by `>` (`apis/serve.go`,
+>   `core/events.go`; also adds `serveEvent = e` inside the `OnServe` handler);
+>   thumbs `PB_THUMBS_MAX_SOURCE_PIXELS` default 250<<20 -> 100<<20
+>   (`tools/filesystem/filesystem.go`); mailer fixes for
+>   [#7871](https://github.com/pocketbase/pocketbase/issues/7871) (SMTP skips an empty HTML part; `sendmail` picks
+>   `text/plain` when HTML is empty, forwards `m.Headers`, adds a random
+>   `Message-ID`); removal of the `nullObject` goja workaround
+>   (`plugins/jsvm/binds.go`); deps goja 20261021->20261023, `x/net` 0.61->0.62,
+>   `fexpr` 0.6->0.7, `dbx` 1.12->1.13, `ozzo-validation` 4.3->4.4.1,
+>   `tygoja` 0.1->0.2; UI: font licence READMEs, minor fixes, `dprint` removed
+>   from `ui/`. `plugins/update` (added in v0.40.6) now fetches from the new
+>   host. Files the fork also changes and upstream touched: `core/base.go`,
+>   `core/collection_model_auth_options.go`, `core/events.go`,
+>   `core/record_tokens.go`, `pocketbase.go`, `tests/app.go`,
+>   `plugins/jsvm/binds_test.go`, `go.mod`/`go.sum` (most are import-order only).
+>   **After the rewrite, re-sort import blocks**: `ganigeorgiev.com/...` sorts
+>   before `github.com/...`, so `gofmt`/`goimports` regroups every file.
+>   The `upstream-check` workflow reads this host now.
 
-The previous sync (v0.40.5, 2026-10-14) was also a zero-follow-up patch release.
+**Current:** synced to upstream **v0.41.1** (`f70b24e1`) on 2026-10-30 (a
+**minor + patch** jump, v0.41.0 + v0.41.1, and the first sync from the **new
+upstream host**; see the relocation note above). The Go module is now
+**`ganigeorgiev.com/pocketbase/pocketbase`**; all of the fork's Go imports were
+rewritten, and the helper libs moved with it. `go-webauthn/webauthn` stays at
+**v0.18.2** (`x` v0.3.1) — Step 3b was a no-op. Every optional upstream change
+was approved by Derek (mailer #7871 fixes, `Event.Extra` + `StartBannerFunc`,
+thumb limit 250<<20 -> 100<<20, goja `nullObject` workaround removal, UI/font
+fixes). Tests: `go test ./...` green on both branches except the allowlisted
+macOS `fsnotify` watcher flake (`TestNotifyWatcher_SettingsUpdate` failed once in
+the full run and passed in isolation). `golangci-lint` **v2.14.0** and
+`gofmt -l`: **0 issues**. WebAuthn ceremony suite and `TestHooksBindsCount`
+green. A **native** binary smoke test passed (`/api/health`, `/passkeys`, `/_/`
+all 200; COOP, `Referrer-Policy`, `Permissions-Policy` present; the new `>`
+startup banner prints; `-X ganigeorgiev.com/pocketbase/pocketbase.Version=...`
+verified to stamp `--version`). Docker is still not installed locally, so the
+container smoke test is deferred to CI (the `Dockerfile` now runs
+`go mod download` against the vanity host, so watch that step).
+
+**Fork-side follow-ups this sync needed** (keep for the next one):
+
+1. **Import rewrite done on the feat commits before the rebase**, not after:
+   `git filter-branch --tree-filter` over `v0.40.6..HEAD`, limited to the 25 `.go`
+   files the fork touches, rewriting only quoted import strings
+   (`"github.com/pocketbase/{pocketbase,dbx,tygoja,ozzo-validation}` and
+   `"github.com/ganigeorgiev/fexpr` -> the `ganigeorgiev.com/...` paths). A
+   rewrite per commit with `rebase --exec ... --amend` fails: each amend changes
+   the context of the next commit. A tree-filter over the whole repo is also wrong
+   (it folds the 369-file rename into the fork's first commit).
+2. **Import-order conflicts on every fork-touched file** (`core/base.go`,
+   `plugins/jsvm/binds_test.go`, ...): `ganigeorgiev.com/...` sorts before
+   `github.com/...`, so upstream regrouped the blocks. Resolved by taking the
+   upstream side when a conflict hunk is import lines only; two fork-added files
+   then needed `gofmt -w`.
+3. **Upstream deleted `.github/` entirely.** `release.yaml` hit a modify/delete
+   conflict on `feat` (kept the fork's copy). The deploy layer re-adds the rest.
+4. **`Dockerfile` `-X github.com/pocketbase/pocketbase.Version=` repointed.** A
+   stale `-X` package path is **silently ignored** by the linker, so the container
+   binary would have reported the default version with no error.
+5. **`ui/package-lock.json`: take upstream's.** The deploy delta carried npm 10's
+   `libc`-stripping artifact; it was dropped (the rebuilt delta is 71 files vs 72
+   before, the difference being exactly that lockfile). Because upstream changed
+   `ui/package.json` (dropped `dprint`), `npm ci` was run for real in the worktree
+   rather than symlinking the primary's stale `node_modules`.
+6. **`README.md`: deploy's version wholesale**, as in v0.40.1.
+
+The previous sync (v0.40.6, 2026-10-23) was a zero-follow-up patch release, and v0.40.5 (2026-10-14) before it.
 Its CI lint pin bump (v2.13.2 -> v2.14.0) happened because the sync raised the
 resolved Go to 1.27.2 and v2.13.2 (built with Go 1.27.0) could not read its
 export data, failing `Test` before the Docker job; watch for this whenever
@@ -157,6 +254,7 @@ Workflows and what actually gates a push:
 
 | Synced to | Date | WebAuthn | Notes |
 | --- | --- | --- | --- |
+| v0.41.1 (`f70b24e1`) | 2026-10-30 | v0.18.2 | **Minor + patch** jump (v0.41.0 + v0.41.1) and the **first sync from the new host** `ganigeorgiev.com`; upstream left GitHub after v0.40.6. **v0.41.0 renamed the Go module** to `ganigeorgiev.com/pocketbase/pocketbase` (and `dbx`, `ozzo-validation/v4`, `tygoja`, `fexpr` moved to `ganigeorgiev.com/...`): 369 tracked fork files referenced the old path. Substantive changes (all adopted): `Event.Extra` on hook events (`tools/hook/event.go`), `ServeEvent.StartBannerFunc` + the banner moved to `defaultStartBannerFunc` (`apis/serve.go`, `core/events.go`), `PB_THUMBS_MAX_SOURCE_PIXELS` default 250<<20 -> 100<<20, mailer fixes [#7871](https://github.com/pocketbase/pocketbase/issues/7871) (SMTP empty-HTML, `sendmail` content type / headers / `Message-ID`), `nullObject` goja workaround removed. Deps: goja 20261021 -> 20261023, `x/net` 0.61 -> 0.62, `fexpr` 0.6 -> 0.7, `dbx` 1.12 -> 1.13, `ozzo-validation` 4.3 -> 4.4.1, `tygoja` 0.1 -> 0.2. UI: font licence READMEs, `dprint` removed, minor fixes (`ui/dist` rebuilt). `plugins/update` now fetches from the new host. **Step 3b was a no-op.** **Rebase conflicts** on `feat`: import-block ordering in `core/base.go`, `plugins/jsvm/binds_test.go` (took upstream's grouping), `.gitignore` (kept both), `go.mod`/`go.sum` (took upstream, re-added the webauthn pair, `go mod tidy`), and a modify/delete on `.github/workflows/release.yaml` (upstream deleted `.github/`; kept the fork's file). 14 commits -> 14 + 1 `style(webauthn)` gofmt commit. **Deploy-rebuild overlap**: `git apply --3way` of the import-rewritten delta exited 1 on `README.md` (took the fork's), `go.sum` (took upstream, tidy) and `ui/package-lock.json` (took upstream); `go.mod` merged cleanly and `go mod tidy` kept the OTLP/grpc pins. Verified post-rebuild: `PasskeyResetToken.Secret` redaction present, no `github.com/pocketbase/{pocketbase,dbx}` import left in any `.go` file, every deploy-only file present, upstream-only files byte-equal to the new feat tip, and the rebuilt deploy delta is the same 72-file set minus `ui/package-lock.json`. Upstream still has **no** `PasskeyResetToken`. |
 | v0.40.6 (`9d281cca`) | 2026-10-23 | v0.18.2 | Single-version **patch** release, 29 files. Backend: **new `plugins/update` package** (BugStage `update` command; `examples/base/main.go` switches from `ghupdate` to it — the fork does not register either), `plugins/ghupdate` gets a small note; `tools/filesystem` + `internal/fileblob` extra bucket-escape hardening and a max-original-image-dimension check before generating thumbs (OOM mitigation), with updated tests; `plugins/jsvm/binds.go` `nullObject` now returns a non-nil `JSONMap` (goja nil-map workaround, [goja#822](https://github.com/dop251/goja/issues/822)). Deps: goja 20260901 -> 20261021, `dlclark/regexp2/v2` 2.7.1 -> 2.9.1, `golang.org/x/{crypto 0.58, image 0.47, net 0.61, sync 0.24, mod 0.42, sys 0.49, text 0.43, tools 0.52}`, `google/pprof` bump; `modernc.org/sqlite` stays **v1.60.1** (upstream bumped to 1.61.0 then reverted it for a bug, so `modernc_versions_check.go` is unchanged). `release.yaml` min Go `>=1.27.2` -> `>=1.27.3`; `go` directive unchanged, so no `Dockerfile` change. UI: loader icon swap, cross-browser CSS workarounds (`form.css`, `vars.css`, `animations.css`), `superuserAccordion.js`. **Step 3b was a no-op.** **Rebase conflicts** on `feat`: `go.mod`/`go.sum` at six commits (resolved by taking upstream at each stop, then `go get` of the webauthn pair + `go mod tidy`; the v0.18.2 bump commit went empty, so it was re-committed as one `deps(webauthn)` fix-up; the final `go.mod` was diffed against pre-sync and differs only by upstream bumps). 17 commits became 13 + 1 fix-up. **Deploy-rebuild overlap: 3 files** (`.github/workflows/release.yaml`, `go.mod`, `go.sum`); `git apply --3way` exited 1 on `go.mod`/`go.sum` only (OTLP + grpc requires vs upstream bumps), resolved by keeping upstream versions for shared modules and the delta's extra requires, then `go mod tidy`; `release.yaml` carries both `permissions: contents: write` and `go-version: '>=1.27.3'`. No upstream hook added, so `binds_test.go` counts are unchanged (**feat 84 / deploy 85**). Verified post-rebuild: all 6 token-config secrets redacted, upstream-only files byte-equal to the new feat tip, every deploy-only file present, and the rebuilt deploy delta touches **exactly** the same 72-file set as before; the diff between old and new deploy trees (outside `ui/dist`) is exactly upstream's v0.40.5..v0.40.6 delta. Upstream still has **no** `PasskeyResetToken`. |
 | v0.40.5 (`6f370ea7`) | 2026-10-14 | v0.18.2 | Single-version **patch** release, 28 files (the 6k-line churn is the regenerated `plugins/jsvm/internal/types/generated/types.d.ts`). Backend: CORS quick-subdomain checks made stricter to prevent misuse (`apis/middlewares_cors.go`); `routine.SafeWrap` now records a panic stack trace and JSVM migrate arguments are wrapped so a failed migration returns a clean error naming the file ([#7781](https://github.com/pocketbase/pocketbase/issues/7781)); negative pool size normalized; `tools/search/sort.go` `strings.EqualFold`; new `apis/extensions.go` id for the UI extensions hook. Deps: **`modernc.org/sqlite` v1.57.0 -> v1.60.1** (via 1.59.0, 1.60.0, 1.60.1) with `modernc.org/libc` v1.74.4 -> v1.77.1 and `memory` v1.12.0 -> v1.12.1 — upstream bumped `modernc_versions_check.go` itself (driver `v1.60.1`, libc `v1.77.1`, matching `go.mod`); `golang.org/x/oauth2` 0.36 -> 0.37, `x/tools` 0.49 -> 0.50, `ncruces/go-strftime` 1.1.0, `go-humanize` 1.1.0. `release.yaml` min Go `>=1.27.1` -> `>=1.27.2`; `go` directive unchanged, so no `Dockerfile` change. UI: autocomplete accepts a Promise, code-editor content class renamed, scrollbar gutter on auto-expand fields. **Step 3b was a no-op.** **Rebase conflicts** on `feat`: `go.mod` x3 + `go.sum` x2 (standard "take upstream versions + re-add the webauthn indirects" — **note the two webauthn-bump commits conflict too, so a script that keeps the HEAD side will leave `fxamacker/cbor` at the old version; `go mod tidy` fixes it, and the result was diffed against the pre-sync `go.mod` to confirm only upstream bumps changed**). The three `ui/dist` regenerate commits were dropped and replaced by one fresh `vite build`. Dropping them needs `GIT_SEQUENCE_EDITOR` to match `^pick <sha> # chore\(ui\)` — **this git writes a `# ` before each subject in the todo**, so the Step 2 sed one-liner silently matches nothing. **Deploy-rebuild overlap: 3 files** (`.github/workflows/release.yaml`, `go.mod`, `go.sum`); `git apply --3way` exited 1 on `go.mod`/`go.sum` only (the OTLP requires vs upstream's libc/tools bumps), resolved the same way plus `go mod tidy`; `release.yaml` merged cleanly with both `permissions: contents: write` and `go-version: '>=1.27.2'`. No upstream hook was added, so `binds_test.go` counts are unchanged (**feat 84 / deploy 85**). Verified post-rebuild: all 6 token-config secrets redacted (5 upstream + fork `PasskeyResetToken`), upstream-only files byte-equal to the new feat tip, every deploy-only file present, no `go-ozzo` import, and the rebuilt deploy delta touches **exactly** the same 62-file set as before the sync. Upstream still has **no** `PasskeyResetToken`. |
 | v0.40.4 (`5cec579d`) | 2026-09-28 | v0.18.2 | Two-version **patch** jump (v0.40.3 + v0.40.4), 48 files. Backend: [#7836](https://github.com/pocketbase/pocketbase/issues/7836) migration-logs write deadlock fixed by making the batch log write non-blocking and adding `app.ClearBootstrap()` + the `OnBootstrapClear` hook (`ResetBootstrapState` deprecated; jsvm types regenerated); [#7834](https://github.com/pocketbase/pocketbase/issues/7834) a definition changed to an interface; JSON field validator + duplicate keys allowed when serializing records; nested self-referenced cascade delete fix; index validator fixes (expressions in `WHERE`, multiline columns); body-limit middleware avoids unnecessary reads; `geoDistance` arccos clamp; OIDC `id_token` assert; non-ASCII dash in the proxy header hint. Deps: `golang.org/x/{crypto 0.57, image 0.46, net 0.59, sync 0.23, mod 0.41, sys 0.48, text 0.42}`; `go` directive unchanged, so no `Dockerfile` change. UI: dark-mode primary button contrast. **Step 3b: go-webauthn v0.18.0 -> v0.18.2, x v0.3.0 -> v0.3.1** (plus `fxamacker/cbor` 2.9.3 -> 2.9.4); no call-site changes. **Rebase conflicts** on `feat`: `go.mod`/`go.sum` x2 (standard resolution + `go mod tidy`) and the `ui/dist` regenerate commit (replaced by a fresh `vite build`). **Deploy-rebuild overlap: 7 files** (`core/app.go`, `core/base.go`, `go.mod`, `go.sum`, `plugins/jsvm/binds_test.go`, `pocketbase.go`, `tests/app.go`). `git apply --3way` left `core/base.go` and `go.mod` conflicted, and `binds_test.go` merged to the wrong count without flagging a conflict. All three are covered in Sync Status above. No other caller of `ResetBootstrapState` exists in the deploy layer. Verified post-rebuild: all 6 token-config secrets redacted (5 upstream + fork `PasskeyResetToken`), upstream-only files byte-equal to the new feat tip, every deploy-only file present, and the rebuilt deploy delta touches **exactly** the same 61-file set as before the sync. Upstream still has **no** `PasskeyResetToken`. |
@@ -182,7 +280,7 @@ This clone uses the **conventional** remote layout:
 | Remote | URL | Role |
 | --- | --- | --- |
 | `origin` | `https://github.com/doodlemania2/pocketbase.git` | Our fork — push target |
-| `upstream` | `https://github.com/pocketbase/pocketbase.git` | Upstream — fetch only, never push |
+| `upstream` | `https://ganigeorgiev.com/git/pocketbase/pocketbase` | Upstream — fetch only, never push (push URL is `DISABLED`). Moved off GitHub 2026-10-30; no `.git` suffix |
 
 Verify with `git remote -v` before running any of the commands below. If your
 clone has the inverted layout (`origin` = upstream, `fork` = our fork — historical
@@ -192,16 +290,21 @@ on some clones), swap the remote names in every command accordingly.
 # One-time setup for a fresh clone matching this doc's layout:
 # git clone https://github.com/doodlemania2/pocketbase.git
 # cd pocketbase
-# git remote add upstream https://github.com/pocketbase/pocketbase.git
-# git fetch upstream
+# git remote add upstream https://ganigeorgiev.com/git/pocketbase/pocketbase
+# git remote set-url --push upstream DISABLED
+# git fetch upstream --tags
 ```
+
+An existing clone still pointing at `github.com/pocketbase/pocketbase` fetches
+nothing newer than v0.40.6. Repoint it:
+`git remote set-url upstream https://ganigeorgiev.com/git/pocketbase/pocketbase && git remote set-url --push upstream DISABLED`.
 
 ## Sync Procedure
 
 ### Step 1: Fetch upstream
 
 ```bash
-git fetch upstream   # pocketbase/pocketbase
+git fetch upstream --tags   # ganigeorgiev.com/git/pocketbase/pocketbase (NOT GitHub)
 git fetch origin     # our fork
 ```
 

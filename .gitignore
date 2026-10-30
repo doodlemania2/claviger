@@ -14,10 +14,12 @@ coverage.out
 
 # generated markdown previews
 README.html
+LICENSE.html
+SECURITY.html
 CHANGELOG.html
+CHANGELOG_22_39.html
 CHANGELOG_16_22.html
 CHANGELOG_8_15.html
-LICENSE.html
 
 # local dev planning docs
 WEBAUTHN_PLAN.md

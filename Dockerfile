@@ -11,7 +11,7 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-s -w -X github.com/pocketbase/pocketbase.Version=${VERSION}" \
+    -ldflags="-s -w -X ganigeorgiev.com/pocketbase/pocketbase.Version=${VERSION}" \
     -o /pocketbase \
     ./examples/base
 

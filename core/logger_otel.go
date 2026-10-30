@@ -38,7 +38,7 @@ import (
 	otellog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 
-	"github.com/pocketbase/pocketbase/tools/hook"
+	"ganigeorgiev.com/pocketbase/pocketbase/tools/hook"
 )
 
 const (
@@ -54,7 +54,7 @@ const (
 	defaultOTelServiceNamespace = "stfoa"
 
 	// otelScopeName identifies the emitting library on every record.
-	otelScopeName = "github.com/pocketbase/pocketbase/core"
+	otelScopeName = "ganigeorgiev.com/pocketbase/pocketbase/core"
 
 	// OTelSinkFailureMessage is exported when the local `_logs` sink starts
 	// rejecting writes, and OTelSinkRecoveryMessage when it starts accepting

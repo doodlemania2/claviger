@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pocketbase/pocketbase/tools/logger"
+	"ganigeorgiev.com/pocketbase/pocketbase/tools/logger"
 )
 
 var errSinkFailed = errors.New("sink failed")
