@@ -14,11 +14,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-webauthn/webauthn/protocol/webauthncbor"
 	"ganigeorgiev.com/pocketbase/pocketbase/apis"
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
 	"ganigeorgiev.com/pocketbase/pocketbase/tests"
 	"ganigeorgiev.com/pocketbase/pocketbase/tools/hook"
+	"github.com/go-webauthn/webauthn/protocol/webauthncbor"
 )
 
 // This file exercises the *successful* WebAuthn ceremonies end to end with a
