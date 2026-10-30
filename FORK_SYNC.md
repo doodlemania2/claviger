@@ -44,14 +44,29 @@ How to keep this fork in sync with upstream PocketBase releases.
 >   "replace X with X"). Trust the module path in `go.mod`, not the prose.
 > - **`ui/dist`**: v0.41.0/v0.41.1 regenerated it; the usual "drop upstream's
 >   regenerate commits, run one fresh `vite build`" step still applies.
-> - **Not yet done / needs Derek's per-change approval** (see runbook Step 2 and
->   his standing rule): v0.41.0 also adds `Event.Extra` on all hook events (touches
->   `core/app.go`, `core/base.go`, `plugins/jsvm/binds_test.go` bind counts, the
->   same files the deploy layer overlaps), `ServeEvent.StartBannerFunc`, a lower
->   `PB_THUMBS_MAX_SOURCE_PIXELS` default (250<<20 -> 100<<20), mailer fixes
->   ([#7871](https://github.com/pocketbase/pocketbase/issues/7871)), and the `plugins/update`
->   command now fetches from the new host. v0.41.1: font licence READMEs, `x/net` bump.
->   The `upstream-check` workflow reads this host now (see below).
+> - **Substantive v0.40.6 -> v0.41.1 delta** (everything else is import-path and
+>   comment-URL churn; verified by normalising the module path on both sides and
+>   diffing; each item needs Derek's per-change approval): `Event.Extra` map on
+>   every hook event (`tools/hook/event.go` only; **no** jsvm bind-count change);
+>   `ServeEvent.StartBannerFunc` plus the startup banner moved into
+>   `defaultStartBannerFunc` with `├─ └─` replaced by `>` (`apis/serve.go`,
+>   `core/events.go`; also adds `serveEvent = e` inside the `OnServe` handler);
+>   thumbs `PB_THUMBS_MAX_SOURCE_PIXELS` default 250<<20 -> 100<<20
+>   (`tools/filesystem/filesystem.go`); mailer fixes for
+>   [#7871](https://github.com/pocketbase/pocketbase/issues/7871) (SMTP skips an empty HTML part; `sendmail` picks
+>   `text/plain` when HTML is empty, forwards `m.Headers`, adds a random
+>   `Message-ID`); removal of the `nullObject` goja workaround
+>   (`plugins/jsvm/binds.go`); deps goja 20261021->20261023, `x/net` 0.61->0.62,
+>   `fexpr` 0.6->0.7, `dbx` 1.12->1.13, `ozzo-validation` 4.3->4.4.1,
+>   `tygoja` 0.1->0.2; UI: font licence READMEs, minor fixes, `dprint` removed
+>   from `ui/`. `plugins/update` (added in v0.40.6) now fetches from the new
+>   host. Files the fork also changes and upstream touched: `core/base.go`,
+>   `core/collection_model_auth_options.go`, `core/events.go`,
+>   `core/record_tokens.go`, `pocketbase.go`, `tests/app.go`,
+>   `plugins/jsvm/binds_test.go`, `go.mod`/`go.sum` (most are import-order only).
+>   **After the rewrite, re-sort import blocks**: `ganigeorgiev.com/...` sorts
+>   before `github.com/...`, so `gofmt`/`goimports` regroups every file.
+>   The `upstream-check` workflow reads this host now.
 
 **Current:** synced to upstream **v0.40.6** (`9d281cca`) on 2026-10-23 (a
 single-version **patch** release, 29 files). `go-webauthn/webauthn` stays at
