@@ -1,0 +1,34 @@
+services:
+  pocketbase:
+    build:
+      context: .
+      args:
+        - VERSION=dev
+    container_name: pocketbase
+    restart: unless-stopped
+    environment:
+      PB_HOST: 0.0.0.0
+      PB_PORT: 8090
+      # Optional: auto-create superuser on startup
+      # PB_ADMIN_EMAIL: admin@example.com
+      # PB_ADMIN_PASSWORD: changeme123
+      # Optional: enable settings encryption (generate with: openssl rand -hex 16)
+      # ENCRYPTION: ""
+      # Optional: Litestream backup to Azure Blob Storage
+      # LITESTREAM_REPLICA_URL: abs://pocketbase-backups
+      # LITESTREAM_ACCESS_KEY_ID: <storage-account-name>
+      # LITESTREAM_SECRET_ACCESS_KEY: <storage-account-key>
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./pb_data:/pb_data
+      - ./pb_public:/pb_public
+      - ./pb_hooks:/pb_hooks
+    # Optional: add encryption flag if using ENCRYPTION env var
+    # command: ["--encryptionEnv", "ENCRYPTION"]
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8090/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

@@ -15,6 +15,7 @@ const (
 	TokenTypeVerification  = "verification"
 	TokenTypePasswordReset = "passwordReset"
 	TokenTypeEmailChange   = "emailChange"
+	TokenTypePasskeyReset  = "passkeyReset"
 )
 
 // List with commonly used record token claims
@@ -115,6 +116,29 @@ func (m *Record) NewPasswordResetToken() (string, error) {
 		},
 		key,
 		m.Collection().PasswordResetToken.DurationTime(),
+	)
+}
+
+// NewPasskeyResetToken generates and returns a new auth record passkey reset request token.
+func (m *Record) NewPasskeyResetToken() (string, error) {
+	if !m.Collection().IsAuth() {
+		return "", ErrNotAuthRecord
+	}
+
+	key := (m.TokenKey() + m.Collection().PasskeyResetToken.Secret)
+	if key == "" {
+		return "", ErrMissingSigningKey
+	}
+
+	return security.NewJWT(
+		jwt.MapClaims{
+			TokenClaimType:         TokenTypePasskeyReset,
+			TokenClaimId:           m.Id,
+			TokenClaimCollectionId: m.Collection().Id,
+			TokenClaimEmail:        m.Email(),
+		},
+		key,
+		m.Collection().PasskeyResetToken.DurationTime(),
 	)
 }
 

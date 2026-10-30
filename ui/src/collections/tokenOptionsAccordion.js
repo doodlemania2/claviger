@@ -17,6 +17,7 @@ export function tokenOptionsAccordion(collection) {
                 { key: "passwordResetToken", label: "Password reset" },
                 { key: "emailChangeToken", label: "Email change" },
                 { key: "fileToken", label: "Protected file" },
+                { key: "passkeyResetToken", label: "Passkey reset" },
             ];
         },
     });

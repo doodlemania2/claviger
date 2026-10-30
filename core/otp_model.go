@@ -120,8 +120,8 @@ func (m *OTP) HasExpired(maxElapsed time.Duration) bool {
 func (app *BaseApp) registerOTPHooks() {
 	recordRefHooks[*OTP](app, CollectionNameOTPs, CollectionTypeAuth)
 
-	// run on every hour to cleanup expired otp sessions
-	app.Cron().Add("__pbOTPCleanup__", "0 * * * *", func() {
+	// run on every hour to cleanup expired otp sessions (fork: offset from :00, see #60)
+	app.Cron().Add("__pbOTPCleanup__", "37 * * * *", func() {
 		if err := app.DeleteExpiredOTPs(); err != nil {
 			app.Logger().Warn("Failed to delete expired OTP sessions", "error", err)
 		}

@@ -52,6 +52,7 @@ func (m *Collection) setDefaultAuthOptions() {
 		VerificationTemplate:       defaultVerificationTemplate,
 		ResetPasswordTemplate:      defaultResetPasswordTemplate,
 		ConfirmEmailChangeTemplate: defaultConfirmEmailChangeTemplate,
+		PasskeyResetTemplate:       defaultPasskeyResetTemplate,
 		AuthRule:                   types.Pointer(""),
 		AuthAlert: AuthAlertConfig{
 			Enabled:       true,
@@ -93,6 +94,10 @@ func (m *Collection) setDefaultAuthOptions() {
 		FileToken: TokenConfig{
 			Secret:   security.RandomString(50),
 			Duration: 180, // 3min
+		},
+		PasskeyResetToken: TokenConfig{
+			Secret:   security.RandomString(50),
+			Duration: 1800, // 30min
 		},
 	}
 }
@@ -147,12 +152,14 @@ type collectionAuthOptions struct {
 	EmailChangeToken   TokenConfig `form:"emailChangeToken" json:"emailChangeToken"`
 	VerificationToken  TokenConfig `form:"verificationToken" json:"verificationToken"`
 	FileToken          TokenConfig `form:"fileToken" json:"fileToken"`
+	PasskeyResetToken  TokenConfig `form:"passkeyResetToken" json:"passkeyResetToken"`
 
 	// Default email templates
 	// ---
 	VerificationTemplate       EmailTemplate `form:"verificationTemplate" json:"verificationTemplate"`
 	ResetPasswordTemplate      EmailTemplate `form:"resetPasswordTemplate" json:"resetPasswordTemplate"`
 	ConfirmEmailChangeTemplate EmailTemplate `form:"confirmEmailChangeTemplate" json:"confirmEmailChangeTemplate"`
+	PasskeyResetTemplate       EmailTemplate `form:"passkeyResetTemplate" json:"passkeyResetTemplate"`
 }
 
 func (o *collectionAuthOptions) validate(cv *collectionValidator) error {
@@ -179,9 +186,11 @@ func (o *collectionAuthOptions) validate(cv *collectionValidator) error {
 		validation.Field(&o.EmailChangeToken),
 		validation.Field(&o.VerificationToken),
 		validation.Field(&o.FileToken),
+		validation.Field(&o.PasskeyResetToken),
 		validation.Field(&o.VerificationTemplate, validation.Required),
 		validation.Field(&o.ResetPasswordTemplate, validation.Required),
 		validation.Field(&o.ConfirmEmailChangeTemplate, validation.Required),
+		validation.Field(&o.PasskeyResetTemplate, validation.Required),
 	)
 	if err != nil {
 		return err

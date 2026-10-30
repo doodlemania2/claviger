@@ -27,6 +27,10 @@ var logFilterFields = []string{
 	`^data\.[\w\.\:]*\w+$`,
 }
 
+// fork: surface the underlying error text in the message because rawErrData
+// serializes a plain Go error to `{}` (no exported fields), leaving the admin
+// dashboard with a useless generic banner. These endpoints are superuser-only,
+// so leaking the SQLite/query message to the response is intentional.
 func logsList(e *core.RequestEvent) error {
 	fieldResolver := search.NewSimpleFieldResolver(logFilterFields...)
 
@@ -35,7 +39,7 @@ func logsList(e *core.RequestEvent) error {
 		ParseAndExec(e.Request.URL.Query().Encode(), &[]*core.Log{})
 
 	if err != nil {
-		return e.BadRequestError("", err)
+		return e.BadRequestError("Failed to fetch logs: "+err.Error(), err)
 	}
 
 	return e.JSON(http.StatusOK, result)
@@ -51,13 +55,13 @@ func logsStats(e *core.RequestEvent) error {
 		var err error
 		expr, err = search.FilterData(filter).BuildExpr(fieldResolver)
 		if err != nil {
-			return e.BadRequestError("Invalid filter format.", err)
+			return e.BadRequestError("Invalid filter format: "+err.Error(), err)
 		}
 	}
 
 	stats, err := e.App.LogsStats(expr)
 	if err != nil {
-		return e.BadRequestError("Failed to generate logs stats.", err)
+		return e.BadRequestError("Failed to generate logs stats: "+err.Error(), err)
 	}
 
 	return e.JSON(http.StatusOK, stats)

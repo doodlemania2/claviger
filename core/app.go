@@ -1238,6 +1238,15 @@ type App interface {
 	// triggered and called only if their event data origin matches the tags.
 	OnMailerRecordAuthAlertSend(tags ...string) *hook.TaggedHook[*MailerRecordEvent]
 
+	// OnMailerRecordPasskeyResetSend hook is triggered when
+	// sending a passkey reset email to an auth record, allowing
+	// you to intercept and customize the email message that is being sent.
+	//
+	// If the optional "tags" list (Collection ids or names) is specified,
+	// then all event handlers registered via the created hook will be
+	// triggered and called only if their event data origin matches the tags.
+	OnMailerRecordPasskeyResetSend(tags ...string) *hook.TaggedHook[*MailerRecordEvent]
+
 	// OnMailerBeforeRecordResetPasswordSend hook is triggered when
 	// sending a password reset email to an auth record, allowing
 	// you to intercept and customize the email message that is being sent.

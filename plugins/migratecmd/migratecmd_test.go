@@ -160,6 +160,13 @@ migrate((app) => {
       "enabled": false,
       "length": 8
     },
+    "passkeyResetTemplate": {
+      "body": "<p>Hello,</p>\n<p>Click on the button below to register a new passkey on this device. This link will replace any previously registered passkeys for your account.</p>\n<p>\n  <a class=\"btn\" href=\"{APP_URL}/_/#/auth/confirm-passkey-reset/{TOKEN}\" target=\"_blank\" rel=\"noopener\">Reset passkey</a>\n</p>\n<p><i>If you didn't ask to reset your passkey, you can ignore this email.</i></p>\n<p>\n  Thanks,<br/>\n  {APP_NAME} team\n</p>",
+      "subject": "Reset your {APP_NAME} passkey"
+    },
+    "passkeyResetToken": {
+      "duration": 1800
+    },
     "passwordAuth": {
       "enabled": true,
       "identityFields": [
@@ -344,6 +351,13 @@ func init() {
 				},
 				"enabled": false,
 				"length": 8
+			},
+			"passkeyResetTemplate": {
+				"body": "<p>Hello,</p>\n<p>Click on the button below to register a new passkey on this device. This link will replace any previously registered passkeys for your account.</p>\n<p>\n  <a class=\"btn\" href=\"{APP_URL}/_/#/auth/confirm-passkey-reset/{TOKEN}\" target=\"_blank\" rel=\"noopener\">Reset passkey</a>\n</p>\n<p><i>If you didn't ask to reset your passkey, you can ignore this email.</i></p>\n<p>\n  Thanks,<br/>\n  {APP_NAME} team\n</p>",
+				"subject": "Reset your {APP_NAME} passkey"
+			},
+			"passkeyResetToken": {
+				"duration": 1800
 			},
 			"passwordAuth": {
 				"enabled": true,
@@ -619,6 +633,13 @@ migrate((app) => {
       "enabled": false,
       "length": 8
     },
+    "passkeyResetTemplate": {
+      "body": "<p>Hello,</p>\n<p>Click on the button below to register a new passkey on this device. This link will replace any previously registered passkeys for your account.</p>\n<p>\n  <a class=\"btn\" href=\"{APP_URL}/_/#/auth/confirm-passkey-reset/{TOKEN}\" target=\"_blank\" rel=\"noopener\">Reset passkey</a>\n</p>\n<p><i>If you didn't ask to reset your passkey, you can ignore this email.</i></p>\n<p>\n  Thanks,<br/>\n  {APP_NAME} team\n</p>",
+      "subject": "Reset your {APP_NAME} passkey"
+    },
+    "passkeyResetToken": {
+      "duration": 1800
+    },
     "passwordAuth": {
       "enabled": true,
       "identityFields": [
@@ -806,6 +827,13 @@ func init() {
 				},
 				"enabled": false,
 				"length": 8
+			},
+			"passkeyResetTemplate": {
+				"body": "<p>Hello,</p>\n<p>Click on the button below to register a new passkey on this device. This link will replace any previously registered passkeys for your account.</p>\n<p>\n  <a class=\"btn\" href=\"{APP_URL}/_/#/auth/confirm-passkey-reset/{TOKEN}\" target=\"_blank\" rel=\"noopener\">Reset passkey</a>\n</p>\n<p><i>If you didn't ask to reset your passkey, you can ignore this email.</i></p>\n<p>\n  Thanks,<br/>\n  {APP_NAME} team\n</p>",
+				"subject": "Reset your {APP_NAME} passkey"
+			},
+			"passkeyResetToken": {
+				"duration": 1800
 			},
 			"passwordAuth": {
 				"enabled": true,

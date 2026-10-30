@@ -571,6 +571,13 @@ func NewTestAppWithConfig(config core.BaseAppConfig) (*TestApp, error) {
 	// 	},
 	// 	Priority: -99999,
 	// })
+	t.OnMailerRecordPasskeyResetSend().Bind(&hook.Handler[*core.MailerRecordEvent]{
+		Func: func(e *core.MailerRecordEvent) error {
+			t.registerEventCall("OnMailerRecordPasskeyResetSend")
+			return e.Next()
+		},
+		Priority: -99999,
+	})
 
 	t.OnRealtimeConnectRequest().Bind(&hook.Handler[*core.RealtimeConnectRequestEvent]{
 		Func: func(e *core.RealtimeConnectRequestEvent) error {

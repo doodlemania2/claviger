@@ -1,155 +1,195 @@
-<p align="center">
-    <a href="https://pocketbase.io" target="_blank" rel="noopener">
-        <img src="https://i.imgur.com/aCBbjKx.png" alt="PocketBase - open source backend in 1 file" />
-    </a>
-</p>
+# PocketBase Fork: Enterprise Security, Minimal Overhead
 
-<p align="center">
-    <a href="https://pkg.go.dev/ganigeorgiev.com/pocketbase/pocketbase" target="_blank" rel="noopener"><img src="https://godoc.org/ganigeorgiev.com/pocketbase/pocketbase?status.svg" alt="Go package documentation" /></a>
-</p>
+[![PocketBase](https://i.imgur.com/aCBbjKx.png)](https://pocketbase.io)
 
-[PocketBase](https://pocketbase.io) is an open source Go backend that includes:
+[![Upstream build](https://github.com/pocketbase/pocketbase/actions/workflows/release.yaml/badge.svg)](https://github.com/pocketbase/pocketbase/actions/workflows/release.yaml)
+[![Upstream latest release](https://img.shields.io/github/release/pocketbase/pocketbase.svg)](https://github.com/pocketbase/pocketbase/releases)
+[![Go package documentation](https://godoc.org/github.com/pocketbase/pocketbase?status.svg)](https://pkg.go.dev/github.com/pocketbase/pocketbase)
 
-- embedded database (_SQLite_) with **realtime subscriptions**
-- built-in **files and users management**
-- convenient **Superuser dashboard UI**
-- and simple **REST-ish API**
+This repository is a maintained fork of [pocketbase/pocketbase](https://github.com/pocketbase/pocketbase).
 
-**For documentation and examples, please visit https://pocketbase.io/docs .**
+It is designed for teams that need stronger authentication and production reliability without introducing unnecessary platform sprawl.
 
-> **NB!** Please keep in mind that PocketBase is still under active development
-> and full backward compatibility is not guaranteed before reaching v1.0.0.
+## Who this is for
 
+- teams that want phishing-resistant authentication without a full identity-platform migration
+- organizations that need a simpler production footprint and fewer systems to operate
+- internal platforms that prefer SQLite durability plus continuous off-node backup replication
+- security-conscious teams adopting passkeys while staying close to upstream PocketBase
+
+PocketBase itself is an excellent open source Go backend with:
+
+- embedded SQLite with realtime subscriptions
+- built-in auth, files, and admin UI
+- straightforward REST-style APIs
+- a strong extension model in Go and JavaScript
+
+If you are new to PocketBase, start with the official docs at [pocketbase.io/docs](https://pocketbase.io/docs).
+
+## Why this fork exists
+
+This fork is focused on two things:
+
+1. Adding first-class WebAuthn/Passkey authentication support.
+2. Providing a practical Docker + Azure Container Apps deployment path for real-world operation.
+
+The goal is to stay close to upstream while adding security and operations features that reduce risk, overhead, and complexity.
+
+## Security + simplicity at a glance
+
+- phishing-resistant sign-in with passkeys
+- fewer moving parts (PocketBase + SQLite + Litestream)
+- no separate database cluster to operate
+- backup and restore built into the deployment model
+- fork changes kept intentionally scoped for easier upstream sync
+
+## What this fork adds
+
+### 1) WebAuthn / Passkey auth method
+
+This fork adds passkeys as a first-class auth method beside password, OAuth2, and OTP.
+
+Included API surface:
+
+- `POST /api/collections/{collection}/auth-with-webauthn/register-begin`
+- `POST /api/collections/{collection}/auth-with-webauthn/register-finish`
+- `POST /api/collections/{collection}/auth-with-webauthn/login-begin`
+- `POST /api/collections/{collection}/auth-with-webauthn/login-finish`
+- `GET /api/collections/{collection}/auth-with-webauthn/credentials`
+- `DELETE /api/collections/{collection}/auth-with-webauthn/credentials/{credentialId}`
+- `DELETE /api/collections/{collection}/auth-with-webauthn/credentials-by-record/{recordId}`
+
+Security highlights:
+
+- collection-level toggle (`webauthn.enabled`)
+- challenge-session handling with TTL
+- login-finish rate limiting
+- sign counter validation
+- RP/origin validation
+- MFA integration (`webauthn` as a valid MFA method)
+- credential cleanup hooks on user deletion
+
+### 2) Docker + Azure deployment stack
+
+This fork includes a deployment stack aimed at running PocketBase safely in production while keeping operations simple:
+
+- multi-stage `Dockerfile`
+- `docker-compose.yml` for local dev
+- `entrypoint.sh` for bootstrap/restore/startup orchestration
+- `litestream.yml` for continuous WAL replication to Azure Blob Storage
+- `azure.yaml` + Bicep in `infra/` for Azure Container Apps
+
+This enables a lean operational model: one service, one durable data path, continuous off-node backups, and straightforward disaster recovery.
+
+## Quick start
+
+You can start quickly and keep the same architecture from development to production.
+
+### Local (Docker)
+
+```sh
+docker compose up --build
+```
+
+Then open:
+
+- `http://127.0.0.1:8090/_/`
+- `http://127.0.0.1:8090/api/health`
+
+### Azure (azd)
+
+```sh
+azd up
+```
+
+Detailed production steps are documented in [DEPLOY.md](DEPLOY.md).
+
+## Upstream compatibility and sync model
+
+This fork is intentionally layered to minimize sync friction with upstream:
+
+- `feat/webauthn-passkey-support`: passkey feature branch (upstream-facing delta)
+- `deploy/azure`: container + infra + ops layer
+
+Sync workflow and conflict notes are documented in [FORK_SYNC.md](FORK_SYNC.md).
+
+Current sync workflow and branch maintenance guidance are documented in [FORK_SYNC.md](FORK_SYNC.md).
+
+## Using PocketBase as a Go framework
+
+PocketBase remains a regular Go package. You can build a custom app the same way as upstream.
+
+Minimal example:
+
+```go
+package main
+
+import (
+    "log"
+
+    "github.com/pocketbase/pocketbase"
+    "github.com/pocketbase/pocketbase/core"
+)
+
+func main() {
+    app := pocketbase.New()
+
+    app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+        se.Router.GET("/hello", func(re *core.RequestEvent) error {
+            return re.String(200, "Hello from PocketBase")
+        })
+
+        return se.Next()
+    })
+
+    if err := app.Start(); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+Run it:
+
+```sh
+go mod init myapp && go mod tidy
+go run main.go serve
+```
+
+For more, see [Extend with Go](https://pocketbase.io/docs/go-overview/).
 
 ## API SDK clients
 
-The easiest way to interact with the PocketBase Web APIs is to use one of the official SDK clients:
+The official SDKs remain the easiest way to call PocketBase APIs:
 
-- **JavaScript - [pocketbase/js-sdk](https://ganigeorgiev.com/pocketbase/js-sdk)** (_Browser, Node.js, React Native_)
-- **Dart - [pocketbase/dart-sdk](https://ganigeorgiev.com/pocketbase/dart-sdk)** (_Web, Mobile, Desktop, CLI_)
+- JavaScript: [pocketbase/js-sdk](https://github.com/pocketbase/js-sdk)
+- Dart: [pocketbase/dart-sdk](https://github.com/pocketbase/dart-sdk)
 
-You could also check the recommendations in https://pocketbase.io/docs/how-to-use/.
+## Testing
 
-
-## Overview
-
-### Use as standalone app
-
-You could download the prebuilt executable for your platform from the [Releases page](https://ganigeorgiev.com/pocketbase/pocketbase/releases).
-Once downloaded, extract the archive and run `./pocketbase serve` in the extracted directory.
-
-The prebuilt executables are based on the [`examples/base/main.go` file](https://ganigeorgiev.com/pocketbase/pocketbase/files/examples/base/main.go) and comes with the JS VM plugin enabled by default which allows to extend PocketBase with JavaScript (_for more details please refer to [Extend with JavaScript](https://pocketbase.io/docs/js-overview/)_).
-
-### Use as a Go framework/toolkit
-
-PocketBase is distributed as a regular Go library package which allows you to build
-your own custom app specific business logic and still have a single portable executable at the end.
-
-Here is a minimal example:
-
-0. [Install Go 1.27+](https://go.dev/doc/install) (_if you haven't already_)
-
-1. Create a new project directory with the following `main.go` file inside it:
-    ```go
-    package main
-
-    import (
-        "log"
-
-        "ganigeorgiev.com/pocketbase/pocketbase"
-        "ganigeorgiev.com/pocketbase/pocketbase/core"
-    )
-
-    func main() {
-        app := pocketbase.New()
-
-        app.OnServe().BindFunc(func(se *core.ServeEvent) error {
-            // registers new "GET /hello" route
-            se.Router.GET("/hello", func(re *core.RequestEvent) error {
-                return re.String(200, "Hello world!")
-            })
-
-            return se.Next()
-        })
-
-        if err := app.Start(); err != nil {
-            log.Fatal(err)
-        }
-    }
-    ```
-
-2. To init the dependencies, run `go mod init myapp && go mod tidy`.
-
-3. To start the application, run `go run main.go serve`.
-
-4. To build a statically linked executable, you can run `CGO_ENABLED=0 go build` and then start the created executable with `./myapp serve`.
-
-_For more details please refer to [Extend with Go](https://pocketbase.io/docs/go-overview/)._
-
-### Building and running the repo main.go example
-
-To build the minimal standalone executable, like the prebuilt ones in the releases page, you can simply run `go build` inside the `examples/base` directory:
-
-0. [Install Go 1.27+](https://go.dev/doc/install) (_if you haven't already_)
-1. Clone/download the repo
-2. Navigate to `examples/base`
-3. Run `CGO_ENABLED=0 go build` to build a binary for your current environment
-   _(or to target other platforms use `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build`; see https://go.dev/doc/install/source#environment)_
-4. Start the created executable by running `./base serve`.
-
-Note that the supported build targets by the pure Go SQLite driver at the moment are:
-
-| GOOS    | GOARCH  |
-|---------|---------|
-| darwin  | amd64   |
-| darwin  | arm64   |
-| freebsd | 386     |
-| freebsd | amd64   |
-| freebsd | arm     |
-| freebsd | arm64   |
-| linux   | 386     |
-| linux   | amd64   |
-| linux   | arm     |
-| linux   | arm64   |
-| linux   | loong64 |
-| linux   | ppc64le |
-| linux   | riscv64 |
-| linux   | s390x   |
-| netbsd  | amd64   |
-| openbsd | amd64   |
-| openbsd | arm64   |
-| windows | 386     |
-| windows | amd64   |
-| windows | arm64   |
-
-### Testing
-
-PocketBase comes with mixed bag of unit and integration tests.
-To run them, use the standard `go test` command:
+Run the full Go test suite:
 
 ```sh
 go test ./...
 ```
 
-Check also the [Testing guide](http://pocketbase.io/docs/testing) to learn how to write your own custom application tests.
+Additional WebAuthn implementation details and roadmap notes are tracked in [WEBAUTHN_PLAN.md](WEBAUTHN_PLAN.md).
 
+## License compliance
 
-## Security
-
-If you discover a security vulnerability within PocketBase, please submit a [private bug](https://ganigeorgiev.com/pocketbase/discussions/new/Bugs?private=1) OR send an e-mail to **support at pocketbase.io**.
-
-You could find more details in the project [Security policy](https://ganigeorgiev.com/pocketbase/pocketbase/files/SECURITY.md).
-
+- Project license: [LICENSE.md](LICENSE.md)
+- Third-party dependency notices: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- Regenerate notices: `make third-party-notices`
 
 ## Contributing
 
-PocketBase is free and open source project licensed under the [MIT License](https://ganigeorgiev.com/pocketbase/pocketbase/files/LICENSE.md).
+PocketBase is MIT licensed and this fork follows the same spirit.
 
-You are free to do whatever you want with it, even offering it as a paid service
-_(if you decide to do the latter, please make it clear that your service is not affiliated with the PocketBase project to avoid people wrongly submitting issues related to your service in the project's tracker)_.
+- Upstream project: [pocketbase/pocketbase](https://github.com/pocketbase/pocketbase)
+- Upstream contribution guidelines: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Fork sync docs: [FORK_SYNC.md](FORK_SYNC.md)
 
-You could help me by:
+If a contribution is generally applicable to PocketBase core, please consider proposing it upstream first.
 
-- [Report bugs and security issues](https://ganigeorgiev.com/pocketbase/discussions?category=Bugs)
-- [Suggesting new features](https://ganigeorgiev.com/pocketbase/discussions?category=Feature+requests)
-- [Help other people in the discussions](https://ganigeorgiev.com/pocketbase/discussions)
+## Credit
+
+Huge thanks to the upstream PocketBase project for the architecture, developer experience, and continued maintenance. This fork is built to extend that work respectfully and stay aligned with upstream as closely as practical.

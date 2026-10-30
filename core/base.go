@@ -150,6 +150,7 @@ type BaseApp struct {
 	onMailerRecordEmailChangeSend   *hook.Hook[*MailerRecordEvent]
 	onMailerRecordOTPSend           *hook.Hook[*MailerRecordEvent]
 	onMailerRecordAuthAlertSend     *hook.Hook[*MailerRecordEvent]
+	onMailerRecordPasskeyResetSend  *hook.Hook[*MailerRecordEvent]
 
 	// filesystem event hooks
 	//
@@ -311,6 +312,7 @@ func (app *BaseApp) initHooks() {
 	app.onMailerRecordEmailChangeSend = &hook.Hook[*MailerRecordEvent]{}
 	app.onMailerRecordOTPSend = &hook.Hook[*MailerRecordEvent]{}
 	app.onMailerRecordAuthAlertSend = &hook.Hook[*MailerRecordEvent]{}
+	app.onMailerRecordPasskeyResetSend = &hook.Hook[*MailerRecordEvent]{}
 
 	// filesystem event hooks
 	app._onFilesystemNewWriter = &hook.Hook[*FilesystemNewWriterEvent]{}
@@ -1084,9 +1086,12 @@ func (app *BaseApp) OnMailerRecordEmailChangeSend(tags ...string) *hook.TaggedHo
 func (app *BaseApp) OnMailerRecordOTPSend(tags ...string) *hook.TaggedHook[*MailerRecordEvent] {
 	return hook.NewTaggedHook(app.onMailerRecordOTPSend, tags...)
 }
-
 func (app *BaseApp) OnMailerRecordAuthAlertSend(tags ...string) *hook.TaggedHook[*MailerRecordEvent] {
 	return hook.NewTaggedHook(app.onMailerRecordAuthAlertSend, tags...)
+}
+
+func (app *BaseApp) OnMailerRecordPasskeyResetSend(tags ...string) *hook.TaggedHook[*MailerRecordEvent] {
+	return hook.NewTaggedHook(app.onMailerRecordPasskeyResetSend, tags...)
 }
 
 // -------------------------------------------------------------------
@@ -1513,10 +1518,21 @@ func (app *BaseApp) initLogger() error {
 
 	done := make(chan struct{}, 1)
 
+	// fork-local: assigned below, before the flush goroutine starts, and
+	// captured by runLogsWrite so that a local sink rejecting writes is reported
+	// on the independent OTLP sink instead of only to stderr.
+	// Nil (a no-op) whenever no collector is configured — see core/logger_otel.go
+	var sinkReporter *otelSinkReporter
+
 	runLogsWrite := func(logs []*logger.Log) {
 		if !app.IsBootstrapped() || app.Settings().Logs.MaxDays == 0 {
 			return
 		}
+
+		// fork-local: the per-row failure below is swallowed by design, so
+		// tally it and hand the aggregate to the OTLP sink afterwards.
+		var failedRecords int
+		var lastErr error
 
 		// write the accumulated logs
 		//
@@ -1535,11 +1551,16 @@ func (app *BaseApp) initLogger() error {
 
 				if err := txApp.AuxSave(model); err != nil {
 					log.Println("Failed to write log", model, err)
+					failedRecords++
+					lastErr = err
 				}
 			}
 
 			return nil
 		})
+
+		// fork-local: see core/logger_otel.go
+		sinkReporter.report(failedRecords, len(logs), lastErr)
 	}
 
 	handler := logger.NewBatchHandler(logger.BatchOptions{
@@ -1578,6 +1599,14 @@ func (app *BaseApp) initLogger() error {
 		},
 	})
 
+	// fork-local: tee to an OTLP collector when one is configured
+	// (no-op otherwise) — see core/logger_otel.go.
+	// Must run before the goroutine below, which is the other reader of
+	// sinkReporter.
+	otelHandler, reporter := app.initOTelLogger(handler)
+	sinkReporter = reporter
+	app.logger = slog.New(otelHandler)
+
 	routine.FireAndForget(func() {
 		ctx := context.Background()
 
@@ -1590,8 +1619,6 @@ func (app *BaseApp) initLogger() error {
 			}
 		}
 	})
-
-	app.logger = slog.New(handler)
 
 	// attempt to write all queued logs before clearing the application bootstrap state
 	app.OnBootstrapClear().Bind(&hook.Handler[*BootstrapEvent]{
@@ -1626,7 +1653,9 @@ func (app *BaseApp) initLogger() error {
 			}
 
 			if e.App.Logger() != nil {
-				if h, ok := e.App.Logger().Handler().(*logger.BatchHandler); ok {
+				// fork-local: an interface rather than *logger.BatchHandler, so the
+				// level also reaches the local sink through the OTLP fanoutHandler (#53)
+				if h, ok := e.App.Logger().Handler().(levelSetter); ok {
 					h.SetLevel(getLoggerMinLevel(e.App))
 				}
 			}

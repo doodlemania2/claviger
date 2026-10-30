@@ -143,6 +143,10 @@ app.routes.blank("#/auth/confirm-password-reset/{token}", async (route) => {
     const { pageConfirmPasswordReset } = await import("@/auth/pageConfirmPasswordReset");
     return pageConfirmPasswordReset(route);
 });
+app.routes.blank("#/auth/confirm-passkey-reset/{token}", async (route) => {
+    const { pageConfirmPasskeyReset } = await import("@/auth/pageConfirmPasskeyReset");
+    return pageConfirmPasskeyReset(route);
+});
 app.routes.blank("#/auth/confirm-verification/{token}", async (route) => {
     const { pageConfirmVerification } = await import("@/auth/pageConfirmVerification");
     return pageConfirmVerification(route);
