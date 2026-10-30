@@ -2,11 +2,7 @@
 
 [![PocketBase](https://i.imgur.com/aCBbjKx.png)](https://pocketbase.io)
 
-[![Upstream build](https://github.com/pocketbase/pocketbase/actions/workflows/release.yaml/badge.svg)](https://github.com/pocketbase/pocketbase/actions/workflows/release.yaml)
-[![Upstream latest release](https://img.shields.io/github/release/pocketbase/pocketbase.svg)](https://github.com/pocketbase/pocketbase/releases)
-[![Go package documentation](https://godoc.org/github.com/pocketbase/pocketbase?status.svg)](https://pkg.go.dev/github.com/pocketbase/pocketbase)
-
-This repository is a maintained fork of [pocketbase/pocketbase](https://github.com/pocketbase/pocketbase).
+This repository is a maintained fork of [PocketBase](https://ganigeorgiev.com/pocketbase/pocketbase). Upstream moved off GitHub after v0.40.6; the old [github.com/pocketbase/pocketbase](https://github.com/pocketbase/pocketbase) is no longer updated.
 
 It is designed for teams that need stronger authentication and production reliability without introducing unnecessary platform sprawl.
 
@@ -184,7 +180,7 @@ Additional WebAuthn implementation details and roadmap notes are tracked in [WEB
 
 PocketBase is MIT licensed and this fork follows the same spirit.
 
-- Upstream project: [pocketbase/pocketbase](https://github.com/pocketbase/pocketbase)
+- Upstream project: [pocketbase/pocketbase](https://ganigeorgiev.com/pocketbase/pocketbase) (clone: `https://ganigeorgiev.com/git/pocketbase/pocketbase`; formerly on GitHub)
 - Upstream contribution guidelines: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Fork sync docs: [FORK_SYNC.md](FORK_SYNC.md)
 

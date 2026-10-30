@@ -7,7 +7,7 @@ description: "Context for this PocketBase fork with WebAuthn/Passkey support and
 
 ## Fork Context
 
-This is a maintained fork of [pocketbase/pocketbase](https://github.com/pocketbase/pocketbase) that adds WebAuthn/Passkey authentication. The fork is designed to stay in sync with upstream via a layered branch strategy.
+This is a maintained fork of [pocketbase/pocketbase](https://ganigeorgiev.com/pocketbase/pocketbase) (upstream left GitHub after v0.40.6; the `upstream` remote is `https://ganigeorgiev.com/git/pocketbase/pocketbase`, and v0.41.0 renamed the Go module, see FORK_SYNC.md) that adds WebAuthn/Passkey authentication. The fork is designed to stay in sync with upstream via a layered branch strategy.
 
 **CRITICAL RULES for working in this repo:**
 
@@ -18,7 +18,7 @@ This is a maintained fork of [pocketbase/pocketbase](https://github.com/pocketba
 ## Branch Strategy
 
 ```
-upstream/master (pocketbase/pocketbase)
+upstream/master (ganigeorgiev.com/git/pocketbase/pocketbase)
     |
     |  git rebase upstream/master
     v

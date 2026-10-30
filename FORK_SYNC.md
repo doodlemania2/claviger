@@ -4,6 +4,55 @@ How to keep this fork in sync with upstream PocketBase releases.
 
 ## Sync Status
 
+> ### ⚠️ Upstream relocated off GitHub (found 2026-10-30) — v0.41.0 renames the Go module
+>
+> Upstream moved from `github.com/pocketbase/pocketbase` to
+> **`https://ganigeorgiev.com/pocketbase/pocketbase`**. GitHub's last release is
+> v0.40.6; its `master` now holds only a README redirect banner (`7f2773ec`), and
+> that commit is **not** an ancestor of the new host's `master`, so GitHub is dead
+> as a sync source. The `upstream` remote now points at the new host (below).
+>
+> - **Clone/fetch URL:** `https://ganigeorgiev.com/git/pocketbase/pocketbase`.
+>   No `.git` suffix (`.../pocketbase.git` 404s). The browsable repo page is
+>   `https://ganigeorgiev.com/pocketbase/pocketbase`, a single-page app that
+>   answers HTTP 200 to *any* path, so a 200 there proves nothing; test with
+>   `git ls-remote`. SSH is `ssh://ganigeorgiev.com:8022/...`, but anonymous
+>   access is refused. Tag SHAs through v0.40.6 are identical to GitHub's.
+> - **Fork remote layout:** `upstream` fetch = the new host; push URL set to
+>   `DISABLED` so an accidental push cannot go anywhere.
+> - **New there, not synced yet:** `v0.41.0-rc.1`, **`v0.41.0`**, **`v0.41.1`**
+>   (plus a `v0.22_maintenance` branch, irrelevant to us). The fork is still on
+>   v0.40.6.
+> - **v0.41.0 migrated the Go module** to `ganigeorgiev.com/pocketbase/pocketbase`,
+>   and the helper libs moved with it: `ganigeorgiev.com/pocketbase/{dbx,
+>   ozzo-validation/v4,tygoja}` and `ganigeorgiev.com/fexpr`. 369 tracked files in
+>   the fork (Go sources, `Dockerfile`, `.goreleaser.yaml`) reference
+>   `github.com/pocketbase/pocketbase`, so **this sync is a
+>   mass import rewrite, not a patch bump.** The fork-added files on `feat`
+>   (`apis/record_auth_with_webauthn.go` etc.) and on `deploy/azure`
+>   (`apis/record_auth_passkey_reset_*.go`, `core/logger_otel.go`,
+>   `.goreleaser.yaml`'s `-X github.com/pocketbase/pocketbase.Version` ldflag,
+>   `examples/`) all need the new path, and `go.mod`/`go.sum` need the new
+>   `require`s. Expect near-total conflict on the usual rebase of `feat`; plan the
+>   rewrite as its own commit at the base of the stack so later syncs stay
+>   mechanical. Upstream's migration recipe: replace the import prefix, change the
+>   `require` to `ganigeorgiev.com/pocketbase v0.41.0`, `go mod tidy`.
+> - **Release downloads** (relevant to the `Dockerfile` if it ever pulls a
+>   binary): `https://ganigeorgiev.com/meta/pocketbase/pocketbase/download/{tag}/{filename}`.
+> - **Upstream's own `CHANGELOG.md` is mangled** by their search-and-replace
+>   (links read `.../pocketbase/discussions/N` and the migration recipe says
+>   "replace X with X"). Trust the module path in `go.mod`, not the prose.
+> - **`ui/dist`**: v0.41.0/v0.41.1 regenerated it; the usual "drop upstream's
+>   regenerate commits, run one fresh `vite build`" step still applies.
+> - **Not yet done / needs Derek's per-change approval** (see runbook Step 2 and
+>   his standing rule): v0.41.0 also adds `Event.Extra` on all hook events (touches
+>   `core/app.go`, `core/base.go`, `plugins/jsvm/binds_test.go` bind counts, the
+>   same files the deploy layer overlaps), `ServeEvent.StartBannerFunc`, a lower
+>   `PB_THUMBS_MAX_SOURCE_PIXELS` default (250<<20 -> 100<<20), mailer fixes
+>   ([#7871](https://github.com/pocketbase/pocketbase/issues/7871)), and the `plugins/update`
+>   command now fetches from the new host. v0.41.1: font licence READMEs, `x/net` bump.
+>   The `upstream-check` workflow reads this host now (see below).
+
 **Current:** synced to upstream **v0.40.6** (`9d281cca`) on 2026-10-23 (a
 single-version **patch** release, 29 files). `go-webauthn/webauthn` stays at
 **v0.18.2** (`x` v0.3.1) — Step 3b was a no-op. **Zero fork-side follow-ups
@@ -182,7 +231,7 @@ This clone uses the **conventional** remote layout:
 | Remote | URL | Role |
 | --- | --- | --- |
 | `origin` | `https://github.com/doodlemania2/pocketbase.git` | Our fork — push target |
-| `upstream` | `https://github.com/pocketbase/pocketbase.git` | Upstream — fetch only, never push |
+| `upstream` | `https://ganigeorgiev.com/git/pocketbase/pocketbase` | Upstream — fetch only, never push (push URL is `DISABLED`). Moved off GitHub 2026-10-30; no `.git` suffix |
 
 Verify with `git remote -v` before running any of the commands below. If your
 clone has the inverted layout (`origin` = upstream, `fork` = our fork — historical
@@ -192,16 +241,21 @@ on some clones), swap the remote names in every command accordingly.
 # One-time setup for a fresh clone matching this doc's layout:
 # git clone https://github.com/doodlemania2/pocketbase.git
 # cd pocketbase
-# git remote add upstream https://github.com/pocketbase/pocketbase.git
-# git fetch upstream
+# git remote add upstream https://ganigeorgiev.com/git/pocketbase/pocketbase
+# git remote set-url --push upstream DISABLED
+# git fetch upstream --tags
 ```
+
+An existing clone still pointing at `github.com/pocketbase/pocketbase` fetches
+nothing newer than v0.40.6. Repoint it:
+`git remote set-url upstream https://ganigeorgiev.com/git/pocketbase/pocketbase && git remote set-url --push upstream DISABLED`.
 
 ## Sync Procedure
 
 ### Step 1: Fetch upstream
 
 ```bash
-git fetch upstream   # pocketbase/pocketbase
+git fetch upstream --tags   # ganigeorgiev.com/git/pocketbase/pocketbase (NOT GitHub)
 git fetch origin     # our fork
 ```
 
