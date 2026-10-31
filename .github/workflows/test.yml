@@ -9,9 +9,16 @@ on:
     # deploy/azure but NOT on feat/webauthn-passkey-support — the feat entry
     # below only takes effect once/if the file is carried there.
     branches: [master, deploy/azure, feat/webauthn-passkey-support]
+  # Runs CI on purpose on any branch, Dependabot's included.
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+# Runners: trusted runs (pushes, workflow_dispatch, PRs from branches of this repo) use
+# our k3s pool. A PR from a fork runs code we have not reviewed, so it never reaches our
+# runners, which sit inside our network: it runs on GitHub-hosted runners instead.
+# Outside contributors' runs also need approval first (repo setting).
 
 jobs:
   test:
@@ -20,7 +27,7 @@ jobs:
     if: >-
       github.event.pull_request.user.login != 'dependabot[bot]' ||
       contains(github.event.pull_request.labels.*.name, 'run-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || (vars.RUNNER_LIGHT || 'tdp-k3s-claviger') }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
@@ -46,7 +53,7 @@ jobs:
           args: -c ./golangci.yml
 
   docker-build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || (vars.RUNNER_LIGHT || 'tdp-k3s-claviger') }}
     needs: test
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -149,7 +156,8 @@ jobs:
   # there means the next sync or deploy starts broken. PR failures already show on the
   # PR, so only push events notify.
   notify-failure:
-    runs-on: ubuntu-latest
+    # Push events only, so always trusted.
+    runs-on: ${{ vars.RUNNER_LIGHT || 'tdp-k3s-claviger' }}
     needs: [test, docker-build]
     if: >-
       always() && github.event_name == 'push' && contains(needs.*.result, 'failure') &&
