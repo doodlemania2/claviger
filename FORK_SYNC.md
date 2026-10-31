@@ -232,7 +232,7 @@ Workflows and what actually gates a push:
 | --- | --- | --- |
 | `basebuild` | `.github/workflows/release.yaml` | push to all branches + tags — builds UI, `go test ./...`, GoReleaser |
 | `Test` | `.github/workflows/test.yml` | push/PR to `master`, `deploy/azure`, `feat/*` — `go test -v --cover`, **golangci-lint**, **Docker build + `/api/health` smoke test** |
-| *(none)* | — | Production deploys live in the private repo `doodlemania2/stfoa-auth` since #89. Its `Deploy to Azure` workflow builds the `deploy/azure` head of this repo (manually, on `repository_dispatch`, or when its 6-hourly check sees `deploy/azure` move). **Pushing `deploy/azure` therefore still reaches production**, within about 6 hours. |
+| *(none)* | — | Production deploys live in the private repo `doodlemania2/stfoa-auth` since #89. Its `Deploy to Azure` workflow builds the `deploy/azure` head of this repo **only when someone starts it** (Actions tab or `repository_dispatch`). Pushing `deploy/azure` no longer deploys by itself; after a sync, start a dry run, then the deploy, and watch `/api/health`. |
 
 > **Gotcha that hid a gap for many syncs.** A GitHub Actions workflow only runs
 > if the workflow file exists **on the branch being pushed**. `test.yml` is a
