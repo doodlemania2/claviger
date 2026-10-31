@@ -9,8 +9,7 @@ package core
 // in initLogger swallows per-row write errors. A second, independent sink makes
 // that failure visible the day it happens.
 //
-// Wire contract: docs/observability/otlp-onboarding.md in the STFoA-Church
-// repo. Load-bearing points:
+// Wire contract. Load-bearing points:
 //
 //   - OTLP/HTTP only. The collector sits behind a Cloudflare Tunnel carrying
 //     HTTP; gRPC on 4317 never arrives. The deployment must set
@@ -48,10 +47,11 @@ const (
 
 	// defaultOTelServiceName applies only when the deployment sets neither
 	// OTEL_SERVICE_NAME nor a service.name in OTEL_RESOURCE_ATTRIBUTES.
-	defaultOTelServiceName = "stfoa-auth"
+	defaultOTelServiceName = "claviger"
 
-	// defaultOTelServiceNamespace groups the parish apps in SigNoz.
-	defaultOTelServiceNamespace = "stfoa"
+	// defaultOTelServiceNamespace applies only when OTEL_RESOURCE_ATTRIBUTES
+	// carries no service.namespace.
+	defaultOTelServiceNamespace = "claviger"
 
 	// otelScopeName identifies the emitting library on every record.
 	otelScopeName = "ganigeorgiev.com/pocketbase/pocketbase/core"
