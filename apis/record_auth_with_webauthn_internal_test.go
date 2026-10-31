@@ -14,7 +14,7 @@ func newWebAuthnInitTestApp(t *testing.T) *core.BaseApp {
 	app := core.NewBaseApp(core.BaseAppConfig{})
 
 	app.Settings().Meta.AppName = "PocketBase Test"
-	app.Settings().Meta.AppURL = "https://auth.stfoafrisco.org"
+	app.Settings().Meta.AppURL = "https://auth.example.com"
 
 	return app
 }
@@ -30,47 +30,47 @@ func TestInitWebAuthnFallbackToAppURL(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if wa.Config.RPID != "auth.stfoafrisco.org" {
-		t.Fatalf("expected fallback RPID %q, got %q", "auth.stfoafrisco.org", wa.Config.RPID)
+	if wa.Config.RPID != "auth.example.com" {
+		t.Fatalf("expected fallback RPID %q, got %q", "auth.example.com", wa.Config.RPID)
 	}
 
-	if !reflect.DeepEqual(wa.Config.RPOrigins, []string{"https://auth.stfoafrisco.org"}) {
-		t.Fatalf("expected fallback RPOrigins %v, got %v", []string{"https://auth.stfoafrisco.org"}, wa.Config.RPOrigins)
+	if !reflect.DeepEqual(wa.Config.RPOrigins, []string{"https://auth.example.com"}) {
+		t.Fatalf("expected fallback RPOrigins %v, got %v", []string{"https://auth.example.com"}, wa.Config.RPOrigins)
 	}
 }
 
 func TestInitWebAuthnUsesEnvOverrides(t *testing.T) {
 	app := newWebAuthnInitTestApp(t)
 
-	t.Setenv("WEBAUTHN_RP_ID", "stfoafrisco.org")
-	t.Setenv("WEBAUTHN_RP_ORIGINS", "https://app.stfoafrisco.org")
+	t.Setenv("WEBAUTHN_RP_ID", "example.com")
+	t.Setenv("WEBAUTHN_RP_ORIGINS", "https://app.example.com")
 
 	wa, err := initWebAuthn(app)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if wa.Config.RPID != "stfoafrisco.org" {
-		t.Fatalf("expected override RPID %q, got %q", "stfoafrisco.org", wa.Config.RPID)
+	if wa.Config.RPID != "example.com" {
+		t.Fatalf("expected override RPID %q, got %q", "example.com", wa.Config.RPID)
 	}
 
-	if !reflect.DeepEqual(wa.Config.RPOrigins, []string{"https://app.stfoafrisco.org"}) {
-		t.Fatalf("expected override RPOrigins %v, got %v", []string{"https://app.stfoafrisco.org"}, wa.Config.RPOrigins)
+	if !reflect.DeepEqual(wa.Config.RPOrigins, []string{"https://app.example.com"}) {
+		t.Fatalf("expected override RPOrigins %v, got %v", []string{"https://app.example.com"}, wa.Config.RPOrigins)
 	}
 }
 
 func TestInitWebAuthnParsesCommaSeparatedOrigins(t *testing.T) {
 	app := newWebAuthnInitTestApp(t)
 
-	t.Setenv("WEBAUTHN_RP_ID", "stfoafrisco.org")
-	t.Setenv("WEBAUTHN_RP_ORIGINS", " https://app.stfoafrisco.org, , https://auth.stfoafrisco.org/ , ")
+	t.Setenv("WEBAUTHN_RP_ID", "example.com")
+	t.Setenv("WEBAUTHN_RP_ORIGINS", " https://app.example.com, , https://auth.example.com/ , ")
 
 	wa, err := initWebAuthn(app)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	expected := []string{"https://app.stfoafrisco.org", "https://auth.stfoafrisco.org"}
+	expected := []string{"https://app.example.com", "https://auth.example.com"}
 	if !reflect.DeepEqual(wa.Config.RPOrigins, expected) {
 		t.Fatalf("expected parsed RPOrigins %v, got %v", expected, wa.Config.RPOrigins)
 	}
@@ -79,8 +79,8 @@ func TestInitWebAuthnParsesCommaSeparatedOrigins(t *testing.T) {
 func TestInitWebAuthnCacheBustsOnOverrideChanges(t *testing.T) {
 	app := newWebAuthnInitTestApp(t)
 
-	t.Setenv("WEBAUTHN_RP_ID", "stfoafrisco.org")
-	t.Setenv("WEBAUTHN_RP_ORIGINS", "https://app.stfoafrisco.org")
+	t.Setenv("WEBAUTHN_RP_ID", "example.com")
+	t.Setenv("WEBAUTHN_RP_ORIGINS", "https://app.example.com")
 
 	wa1, err := initWebAuthn(app)
 	if err != nil {
@@ -97,7 +97,7 @@ func TestInitWebAuthnCacheBustsOnOverrideChanges(t *testing.T) {
 	}
 	cacheKey1 := entry1.cacheKey
 
-	t.Setenv("WEBAUTHN_RP_ORIGINS", "https://auth.stfoafrisco.org")
+	t.Setenv("WEBAUTHN_RP_ORIGINS", "https://auth.example.com")
 
 	wa2, err := initWebAuthn(app)
 	if err != nil {
@@ -121,8 +121,8 @@ func TestInitWebAuthnCacheBustsOnOverrideChanges(t *testing.T) {
 		t.Fatal("expected cache key to change when override values change")
 	}
 
-	if !reflect.DeepEqual(wa2.Config.RPOrigins, []string{"https://auth.stfoafrisco.org"}) {
-		t.Fatalf("expected updated RPOrigins %v, got %v", []string{"https://auth.stfoafrisco.org"}, wa2.Config.RPOrigins)
+	if !reflect.DeepEqual(wa2.Config.RPOrigins, []string{"https://auth.example.com"}) {
+		t.Fatalf("expected updated RPOrigins %v, got %v", []string{"https://auth.example.com"}, wa2.Config.RPOrigins)
 	}
 }
 

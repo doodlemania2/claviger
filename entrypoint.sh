@@ -98,7 +98,7 @@ otlp_event() {
     done
     IFS=$old_ifs
     if [ "$has_name" = "0" ]; then
-        res="{\"key\":\"service.name\",\"value\":{\"stringValue\":\"stfoa-auth\"}}${res:+,$res}"
+        res="{\"key\":\"service.name\",\"value\":{\"stringValue\":\"claviger\"}}${res:+,$res}"
     fi
 
     body="{\"resourceLogs\":[{\"resource\":{\"attributes\":[$res]},\"scopeLogs\":[{\"scope\":{\"name\":\"entrypoint.sh\"},\"logRecords\":[{\"timeUnixNano\":\"$now_ns\",\"severityNumber\":13,\"severityText\":\"WARN\",\"body\":{\"stringValue\":\"[entrypoint] $msg\"},\"attributes\":[{\"key\":\"instance\",\"value\":{\"stringValue\":\"$INSTANCE_ID\"}},{\"key\":\"source\",\"value\":{\"stringValue\":\"single-writer-handover\"}}]}]}]}]}"
