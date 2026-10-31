@@ -6,7 +6,8 @@
 </p>
 
 <p align="center"><b>Open the right doors.</b><br>
-A self-hosted backend in one file, with passkeys and identity built in.</p>
+A self-hosted backend in one file, with passkeys and identity built in.<br>
+<a href="https://claviger.app">claviger.app</a></p>
 
 ---
 
