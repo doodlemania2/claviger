@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 385.4 96" role="img" aria-labelledby="t">
+  <title id="t">Claviger</title>
+  <g transform="translate(48.0 48) scale(0.8)"><defs>
+    <mask id="l-cut" maskUnits="userSpaceOnUse" x="-70" y="-70" width="140" height="140">
+      <rect x="-70" y="-70" width="140" height="140" fill="#fff"/>
+      <path d="M-4.0 -55H4.0V22H-4.0ZM-8.5 14h17v4.5h-17ZM3.5 -55H21.0V-50H16.0V-45.0H21.0V-42H16.0V-37.0H21.0V-32H3.5ZM0 21a16 16 0 1 1 0 32a16 16 0 1 1 0 -32ZM0 30.4a6.6 6.6 0 1 0 0 13.2a6.6 6.6 0 1 0 0 -13.2Z" transform="rotate(45) translate(0 9)" fill="#000" stroke="#000" stroke-width="5" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  <g transform="translate(0 -7)">
+  <g mask="url(#l-cut)"><path d="M-4.0 -55H4.0V22H-4.0ZM-8.5 14h17v4.5h-17ZM3.5 -55H21.0V-50H16.0V-45.0H21.0V-42H16.0V-37.0H21.0V-32H3.5ZM0 21a16 16 0 1 1 0 32a16 16 0 1 1 0 -32ZM0 30.4a6.6 6.6 0 1 0 0 13.2a6.6 6.6 0 1 0 0 -13.2Z" transform="rotate(-45) scale(-1 1) translate(0 9)" fill="#7A8595" fill-rule="nonzero"/></g>
+  <path d="M-4.0 -55H4.0V22H-4.0ZM-8.5 14h17v4.5h-17ZM3.5 -55H21.0V-50H16.0V-45.0H21.0V-42H16.0V-37.0H21.0V-32H3.5ZM0 21a16 16 0 1 1 0 32a16 16 0 1 1 0 -32ZM0 30.4a6.6 6.6 0 1 0 0 13.2a6.6 6.6 0 1 0 0 -13.2Z" transform="rotate(45) translate(0 9)" fill="#B8862B" fill-rule="nonzero"/>
+  </g></g><path d="M27.89 33.29A16.0 16.0 0 1 0 27.89 54.71M39.59 10.0V60.0M68.79 28.0a16.0 16.0 0 1 0 0 32.0a16.0 16.0 0 1 0 0 -32.0ZM84.79 28.0V60.0M96.99 28.0L111.49 60.0L125.99 28.0M138.19 28.0V60.0M167.39 28.0a16.0 16.0 0 1 0 0 32.0a16.0 16.0 0 1 0 0 -32.0ZM183.39 28.0V62.0a16.0 13.12 0 0 1 -16.00 13.12a16.0 13.12 0 0 1 -13.76 -6.5M196.59 44.0H228.59A16.0 16.0 0 1 0 225.20 53.85M241.79 28.0V60.0M241.79 46.0V43.0a15.20 15.20 0 0 1 15.20 -15.20h2.4" transform="translate(118.0 8)" fill="none" stroke="#1B2540" stroke-width="7.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="256.19" cy="22.50" r="5.18" fill="#B8862B"/>
+</svg>

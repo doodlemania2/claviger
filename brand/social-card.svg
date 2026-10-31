@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-labelledby="t">
+  <title id="t">Claviger: open the right doors. An open-source backend with passkeys built in.</title>
+  <rect width="1200" height="630" fill="#1B2540"/>
+  <rect x="0" y="0" width="1200" height="630" fill="none" stroke="#2A3658" stroke-width="2"/>
+  <!-- faint large keys, right side -->
+  <g transform="translate(1040 360) scale(3.3)" opacity="0.09">
+    <path d="M-4 -55H4V22H-4ZM-8.5 14h17v4.5h-17ZM3.5 -55H21V-50H16V-45H21V-42H16V-37H21V-32H3.5ZM0 21a16 16 0 1 1 0 32a16 16 0 1 1 0 -32ZM0 30.4a6.6 6.6 0 1 0 0 13.2a6.6 6.6 0 1 0 0 -13.2Z" transform="rotate(-45) scale(-1 1) translate(0 9)" fill="#C2C9D3"/>
+    <path d="M-4 -55H4V22H-4ZM-8.5 14h17v4.5h-17ZM3.5 -55H21V-50H16V-45H21V-42H16V-37H21V-32H3.5ZM0 21a16 16 0 1 1 0 32a16 16 0 1 1 0 -32ZM0 30.4a6.6 6.6 0 1 0 0 13.2a6.6 6.6 0 1 0 0 -13.2Z" transform="rotate(45) translate(0 9)" fill="#C2C9D3" stroke="#1B2540" stroke-width="5" stroke-linejoin="round" paint-order="stroke"/>
+  </g>
+  <!-- mark -->
+  <g transform="translate(150 158) scale(1.05)">
+    <g transform="translate(0 -7)">
+      <path d="M-4 -55H4V22H-4ZM-8.5 14h17v4.5h-17ZM3.5 -55H21V-50H16V-45H21V-42H16V-37H21V-32H3.5ZM0 21a16 16 0 1 1 0 32a16 16 0 1 1 0 -32ZM0 30.4a6.6 6.6 0 1 0 0 13.2a6.6 6.6 0 1 0 0 -13.2Z" transform="rotate(-45) scale(-1 1) translate(0 9)" fill="#C2C9D3"/>
+      <path d="M-4 -55H4V22H-4ZM-8.5 14h17v4.5h-17ZM3.5 -55H21V-50H16V-45H21V-42H16V-37H21V-32H3.5ZM0 21a16 16 0 1 1 0 32a16 16 0 1 1 0 -32ZM0 30.4a6.6 6.6 0 1 0 0 13.2a6.6 6.6 0 1 0 0 -13.2Z" transform="rotate(45) translate(0 9)" fill="#E3B85C" stroke="#1B2540" stroke-width="5" stroke-linejoin="round" paint-order="stroke"/>
+    </g>
+  </g>
+  <!-- wordmark -->
+  <g transform="translate(232 103) scale(1.15)">
+    <path d="M27.89 33.29A16.0 16.0 0 1 0 27.89 54.71M39.59 10.0V60.0M68.79 28.0a16.0 16.0 0 1 0 0 32.0a16.0 16.0 0 1 0 0 -32.0ZM84.79 28.0V60.0M96.99 28.0L111.49 60.0L125.99 28.0M138.19 28.0V60.0M167.39 28.0a16.0 16.0 0 1 0 0 32.0a16.0 16.0 0 1 0 0 -32.0ZM183.39 28.0V62.0a16.0 13.12 0 0 1 -16.00 13.12a16.0 13.12 0 0 1 -13.76 -6.5M196.59 44.0H228.59A16.0 16.0 0 1 0 225.20 53.85M241.79 28.0V60.0M241.79 46.0V43.0a15.20 15.20 0 0 1 15.20 -15.20h2.4" transform="translate(6 0)" fill="none" stroke="#ECEEF3" stroke-width="7.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="144.19" cy="14.5" r="5.18" fill="#E3B85C"/>
+  </g>
+  <text x="96" y="370" fill="#ECEEF3" font-family="Newsreader, Georgia, 'Times New Roman', serif" font-size="84" font-weight="500" letter-spacing="-1">Open the right doors.</text>
+  <text x="98" y="440" fill="#A9B1C2" font-family="'Public Sans', system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="32">An open-source backend with passkeys built in.</text>
+  <rect x="98" y="500" width="56" height="4" rx="2" fill="#E3B85C"/>
+  <text x="98" y="552" fill="#E3B85C" font-family="'Public Sans', system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="24" font-weight="600" letter-spacing="2">MIT · SELF-HOSTED · BUILT ON POCKETBASE</text>
+</svg>

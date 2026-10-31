@@ -13,7 +13,7 @@ jobs:
   check-upstream:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Get latest upstream release
         id: upstream
@@ -52,7 +52,7 @@ jobs:
           echo "Fork is synced to: $SYNCED"
 
       - name: Reconcile upstream-sync issues
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           LATEST: ${{ steps.upstream.outputs.version }}
           SYNCED: ${{ steps.synced.outputs.version }}
@@ -137,9 +137,9 @@ jobs:
             });
             core.info(`filed #${created.data.number} for ${latest}`);
 
-      # Failure notice -> self-hosted ntfy (https://alert.thedoodleproject.net).
+      # Failure notice -> ntfy, when the NTFY_URL secret is set.
       # NTFY_URL is the FULL publish URL including the topic and ?auth=..., so it is a
-      # repo SECRET (see the Alerting block in CLAUDE.md). A notice that cannot be
+      # repo SECRET (never a variable). A notice that cannot be
       # delivered must never turn into a second failure, hence the unconditional exit 0.
       - name: Notify ntfy on failure
         if: failure()
