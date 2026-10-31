@@ -9,5 +9,8 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
-        # Majors arrive as separate PRs, each evaluated on its own.
         update-types: ["minor", "patch"]
+    # Majors are reviewed deliberately, by hand, not proposed by Dependabot.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
