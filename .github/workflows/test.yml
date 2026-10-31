@@ -15,6 +15,11 @@ permissions:
 
 jobs:
   test:
+    # Dependabot PRs are notices and never run CI; label one `run-ci` to test it.
+    # docker-build needs this job, so it is skipped too.
+    if: >-
+      github.event.pull_request.user.login != 'dependabot[bot]' ||
+      contains(github.event.pull_request.labels.*.name, 'run-ci')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -146,7 +151,10 @@ jobs:
   notify-failure:
     runs-on: ubuntu-latest
     needs: [test, docker-build]
-    if: ${{ always() && github.event_name == 'push' && contains(needs.*.result, 'failure') }}
+    if: >-
+      always() && github.event_name == 'push' && contains(needs.*.result, 'failure') &&
+      (github.event.pull_request.user.login != 'dependabot[bot]' ||
+      contains(github.event.pull_request.labels.*.name, 'run-ci'))
     steps:
       # Failure notice -> ntfy, when the NTFY_URL secret is set.
       # NTFY_URL is the FULL publish URL including the topic and ?auth=..., so it is a

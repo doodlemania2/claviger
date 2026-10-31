@@ -1,16 +1,17 @@
 version: 2
 updates:
   # Actions are pinned to full commit SHAs (a tag can be moved to malicious code).
-  # Dependabot bumps the SHA and its version comment together, in one grouped PR.
+  # Dependabot bumps the SHA and its version comment together. Its PRs are notices
+  # only: CI skips them (see the job guards in the workflows); label a PR `run-ci`
+  # to test it. Security updates and alerts stay on.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     groups:
-      github-actions:
+      minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
-    # Majors are reviewed deliberately, by hand, not proposed by Dependabot.
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
+      major:
+        patterns: ["*"]
+        update-types: ["major"]

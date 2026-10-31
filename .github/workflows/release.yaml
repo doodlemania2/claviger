@@ -3,12 +3,18 @@ name: basebuild
 on:
   pull_request:
   push:
+    # Dependabot never causes a CI run: its branches are notices only.
+    branches-ignore: ['dependabot/**']
 
 permissions:
   contents: write
 
 jobs:
   goreleaser:
+    # Dependabot PRs are notices and never run CI; label one `run-ci` to test it.
+    if: >-
+      github.event.pull_request.user.login != 'dependabot[bot]' ||
+      contains(github.event.pull_request.labels.*.name, 'run-ci')
     runs-on: ubuntu-latest
     env:
       flags: ""
