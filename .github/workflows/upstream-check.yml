@@ -137,9 +137,9 @@ jobs:
             });
             core.info(`filed #${created.data.number} for ${latest}`);
 
-      # Failure notice -> self-hosted ntfy (https://alert.thedoodleproject.net).
+      # Failure notice -> ntfy, when the NTFY_URL secret is set.
       # NTFY_URL is the FULL publish URL including the topic and ?auth=..., so it is a
-      # repo SECRET (see the Alerting block in CLAUDE.md). A notice that cannot be
+      # repo SECRET (never a variable). A notice that cannot be
       # delivered must never turn into a second failure, hence the unconditional exit 0.
       - name: Notify ntfy on failure
         if: failure()
