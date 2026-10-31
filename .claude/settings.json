@@ -4,5 +4,9 @@
       "Bash(az account get-access-token *)",
       "Bash(gh run watch *)"
     ]
+  },
+  "attribution": {
+    "pr": "",
+    "sessionUrl": false
   }
 }
