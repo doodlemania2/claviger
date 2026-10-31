@@ -195,15 +195,16 @@ roadmap out.
     upstream: 'PocketBase',
     license: 'MIT',
     spot: 'keys',
-    href: 'https://github.com/doodlemania2/claviger',
+    href: 'https://claviger.app',
     tagline: 'Open the right doors.',
     text: 'Claviger is our open source backend, built on PocketBase. It adds passkey sign-in next to password, OAuth2 and one-time codes. It sends warnings and errors to your own OpenTelemetry collector, and during a rolling deploy the new copy waits for the old one to let go of the database.',
     gives: 'Everything is public under the MIT licence. We still follow each PocketBase release and keep its API, so the PocketBase SDKs keep working.',
   },
 ```
 
-Link to `https://claviger.app` instead of GitHub once that site is live. The repository moves from
-`doodlemania2/pocketbase` to `doodlemania2/claviger`; GitHub redirects the old address.
+https://claviger.app is live (2026-10-31), so link there; the source is
+`https://github.com/doodlemania2/claviger`. GitHub redirects the old `doodlemania2/pocketbase`
+address.
 
 A `keys` spot for `src/lib/art.mjs`, drawn in the site's own classes (200 × 160) so it takes the TDP
 palette rather than Claviger's:
@@ -222,12 +223,12 @@ If the site later wants Claviger's own colours (for example on a product page), 
 Content-Security-Policy forbids inline styles and outside files, so inline the SVG paths and colour
 them with classes, as above.
 
-## Landing page mock
+## Website
 
-`site/index.html` is a single-file mock of the eventual claviger.app: hero, the two audiences, the
-feature grid (Available / Roadmap / Being fixed), how it works, a comparison table, FAQ and footer.
-It uses the tokens above, works in light and dark, and holds at 360 px. Open it straight from disk.
-Command names in it (`./claviger serve`) are shown as they will be after the binary is renamed.
+The public site, https://claviger.app, lives in its own private repository,
+`doodlemania2/claviger-site` (static pages behind nginx on doodlessd). It uses the tokens above and
+self-hosts the three typefaces, because its Content-Security-Policy allows no outside files. Change
+the site there, and keep its palette in step with `tokens.css`.
 
 ## Credit
 
