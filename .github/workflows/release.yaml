@@ -5,6 +5,8 @@ on:
   push:
     # Dependabot never causes a CI run: its branches are notices only.
     branches-ignore: ['dependabot/**']
+  # Runs CI on purpose on any branch, Dependabot's included.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -15,7 +17,9 @@ jobs:
     if: >-
       github.event.pull_request.user.login != 'dependabot[bot]' ||
       contains(github.event.pull_request.labels.*.name, 'run-ci')
-    runs-on: ubuntu-latest
+    # Trusted runs use our k3s pool. A PR from a fork runs unreviewed code, so it stays on
+    # GitHub-hosted runners and never reaches our network.
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || (vars.RUNNER_LIGHT || 'tdp-k3s-claviger') }}
     env:
       flags: ""
     steps:
