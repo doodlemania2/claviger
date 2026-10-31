@@ -186,7 +186,7 @@ One behaviour change did need handling: **v0.18.0 rejects an IP address as the
 RP-ID**, which v0.17.4 accepted. `isLocalWebAuthnHost` allows `127.0.0.1`/`::1`
 so local dev can run over plain http, so `AppURL=http://127.0.0.1:8090` would
 now fail on every WebAuthn endpoint. Production is unaffected
-(`auth.stfoafrisco.org` is a domain) and an IP RP-ID could never complete a real
+(a production RP-ID is a domain) and an IP RP-ID could never complete a real
 ceremony anyway (browsers refuse one). `initWebAuthn` now rejects it itself with
 an actionable message, which also makes the behaviour independent of the library
 version; the check runs *after* the `WEBAUTHN_RP_ID` override, so an IP-bound
@@ -232,7 +232,7 @@ Workflows and what actually gates a push:
 | --- | --- | --- |
 | `basebuild` | `.github/workflows/release.yaml` | push to all branches + tags — builds UI, `go test ./...`, GoReleaser |
 | `Test` | `.github/workflows/test.yml` | push/PR to `master`, `deploy/azure`, `feat/*` — `go test -v --cover`, **golangci-lint**, **Docker build + `/api/health` smoke test** |
-| `Deploy to Azure` | `.github/workflows/deploy.yml` | push to `deploy/azure` — real Container Apps deploy |
+| *(none)* | — | Production deploys live in the private repo `doodlemania2/stfoa-auth` since #89. Its `Deploy to Azure` workflow builds the `deploy/azure` head of this repo (manually, on `repository_dispatch`, or when its 6-hourly check sees `deploy/azure` move). **Pushing `deploy/azure` therefore still reaches production**, within about 6 hours. |
 
 > **Gotcha that hid a gap for many syncs.** A GitHub Actions workflow only runs
 > if the workflow file exists **on the branch being pushed**. `test.yml` is a
@@ -279,7 +279,7 @@ This clone uses the **conventional** remote layout:
 
 | Remote | URL | Role |
 | --- | --- | --- |
-| `origin` | `https://github.com/doodlemania2/pocketbase.git` | Our fork — push target |
+| `origin` | `https://github.com/doodlemania2/claviger.git` | Our fork — push target |
 | `upstream` | `https://ganigeorgiev.com/git/pocketbase/pocketbase` | Upstream — fetch only, never push (push URL is `DISABLED`). Moved off GitHub 2026-10-30; no `.git` suffix |
 
 Verify with `git remote -v` before running any of the commands below. If your
@@ -288,7 +288,7 @@ on some clones), swap the remote names in every command accordingly.
 
 ```bash
 # One-time setup for a fresh clone matching this doc's layout:
-# git clone https://github.com/doodlemania2/pocketbase.git
+# git clone https://github.com/doodlemania2/claviger.git
 # cd pocketbase
 # git remote add upstream https://ganigeorgiev.com/git/pocketbase/pocketbase
 # git remote set-url --push upstream DISABLED
@@ -421,7 +421,7 @@ If a newer version is available:
 
 Instead, **rebuild** `deploy/azure` as a single clean delta on top of the freshly
 rebased WebAuthn branch. This works because the deploy layer's *genuine*
-customizations (Docker, Bicep infra, entrypoint, litestream, passkey self-service
+customizations (Docker, entrypoint, litestream, passkey self-service
 reset flow, FORK docs) touch **zero** files that upstream changed — verify this
 holds each sync before trusting the shortcut.
 
@@ -464,8 +464,9 @@ comm -12 /tmp/upstream_changed.txt /tmp/deploy_files.txt   # for each shown file
 # (b) upstream-only files in the rebuilt tree must equal the new feat tip (= vX.Y.1):
 git diff --quiet HEAD feat/webauthn-passkey-support -- apis/realtime.go core/mfa_model.go && echo "upstream files = v-bumped"
 
-# (c) deploy-only files (Dockerfile, infra/, passkey-reset) must still be present:
-git ls-files Dockerfile infra/main.bicep apis/record_auth_passkey_reset_request.go
+# (c) deploy-layer files (Dockerfile, entrypoint, passkey-reset) must still be present
+#     (infra/ moved to the private doodlemania2/stfoa-auth repo in #89):
+git ls-files Dockerfile entrypoint.sh apis/record_auth_passkey_reset_request.go
 ```
 
 ### Step 5: Validate deploy branch

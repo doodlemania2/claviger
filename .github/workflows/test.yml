@@ -26,9 +26,6 @@ jobs:
       - name: Run tests
         run: go test ./... -v --cover
 
-      - name: SigNoz alert rule tests
-        run: python3 -m unittest discover -s scripts/signoz -v
-
       - name: Run linter
         # golangci.yml is schema `version: "2"`, which requires golangci-lint v2
         # (action v7+). The old action@v6 installs v1 and fails to parse it.
@@ -151,9 +148,9 @@ jobs:
     needs: [test, docker-build]
     if: ${{ always() && github.event_name == 'push' && contains(needs.*.result, 'failure') }}
     steps:
-      # Failure notice -> self-hosted ntfy (https://alert.thedoodleproject.net).
+      # Failure notice -> ntfy, when the NTFY_URL secret is set.
       # NTFY_URL is the FULL publish URL including the topic and ?auth=..., so it is a
-      # repo SECRET (see the Alerting block in CLAUDE.md). A notice that cannot be
+      # repo SECRET (never a variable). A notice that cannot be
       # delivered must never turn into a second failure, hence the unconditional exit 0.
       - name: Notify ntfy on failure
         env:
@@ -165,7 +162,7 @@ jobs:
             exit 0
           fi
           curl -sS -m 15 --retry 2 -X POST "$NTFY_URL" \
-            -H "Title: pocketbase CI FAILED on ${GITHUB_REF_NAME}" \
+            -H "Title: claviger CI FAILED on ${GITHUB_REF_NAME}" \
             -H "Priority: high" \
             -H "Tags: x,test_tube" \
             -H "Click: $RUN_URL" \
