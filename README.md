@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<p align="center"><b>The key-bearer for your apps.</b><br>
+<p align="center"><b>Open the right doors.</b><br>
 A self-hosted backend in one file, with passkeys and identity built in.</p>
 
 ---

@@ -1,0 +1,68 @@
+/*
+  Claviger design tokens. Source of truth: tokens.json (contrast ratios live there).
+  Fonts (Google Fonts):
+  https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400..700&family=Public+Sans:wght@400..700&family=JetBrains+Mono:wght@400;600&display=swap
+  Gold and silver are graphic colours. Use --cv-gold-text for any gold text.
+*/
+:root {
+  color-scheme: light dark;
+  --cv-bg: #FAF7F0;
+  --cv-band: #F2EEE3;
+  --cv-surface: #FFFFFF;
+  --cv-line: #E3DED0;
+  --cv-ink: #1B2540;
+  --cv-muted: #4A556B;
+  --cv-link: #2F4F8F;
+  --cv-gold-text: #86621A;
+  --cv-gold: #B8862B;
+  --cv-silver: #7A8595;
+  --cv-button-bg: #1B2540;
+  --cv-button-ink: #FAF7F0;
+  --cv-focus: #B8862B;
+
+  --cv-font-display: "Newsreader", Georgia, "Times New Roman", serif;
+  --cv-font-body: "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --cv-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --cv-radius-sm: 8px;
+  --cv-radius-md: 14px;
+  --cv-radius-lg: 22px;
+  --cv-wrap: 72rem;
+  --cv-wrap-read: 44rem;
+  --cv-shadow: 0 1px 2px rgba(27, 37, 64, 0.06), 0 18px 40px -20px rgba(27, 37, 64, 0.28);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --cv-bg: #0F1522;
+    --cv-band: #131B2B;
+    --cv-surface: #172033;
+    --cv-line: #263048;
+    --cv-ink: #ECEEF3;
+    --cv-muted: #A9B1C2;
+    --cv-link: #9DB6F0;
+    --cv-gold-text: #E3B85C;
+    --cv-gold: #E3B85C;
+    --cv-silver: #C2C9D3;
+    --cv-button-bg: #E3B85C;
+    --cv-button-ink: #1B2540;
+    --cv-focus: #E3B85C;
+    --cv-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 18px 40px -20px rgba(0, 0, 0, 0.7);
+  }
+}
+
+:root[data-theme="dark"] {
+  --cv-bg: #0F1522;
+  --cv-band: #131B2B;
+  --cv-surface: #172033;
+  --cv-line: #263048;
+  --cv-ink: #ECEEF3;
+  --cv-muted: #A9B1C2;
+  --cv-link: #9DB6F0;
+  --cv-gold-text: #E3B85C;
+  --cv-gold: #E3B85C;
+  --cv-silver: #C2C9D3;
+  --cv-button-bg: #E3B85C;
+  --cv-button-ink: #1B2540;
+  --cv-focus: #E3B85C;
+}

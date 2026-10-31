@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-60 -60 120 120" role="img" aria-labelledby="t">
+  <title id="t">Claviger</title>
+  <rect x="-60" y="-60" width="120" height="120" rx="26" fill="#1B2540"/><g transform="scale(0.86)"><defs>
+    <mask id="f-cut" maskUnits="userSpaceOnUse" x="-70" y="-70" width="140" height="140">
+      <rect x="-70" y="-70" width="140" height="140" fill="#fff"/>
+      <path d="M-8.0 -52H8.0V18H-8.0ZM7.5 -52H24.0V-30H7.5ZM0 16a20 20 0 1 1 0 40a20 20 0 1 1 0 -40ZM0 29.5a6.5 6.5 0 1 0 0 13.0a6.5 6.5 0 1 0 0 -13.0Z" transform="rotate(45) translate(0 6)" fill="#000" stroke="#000" stroke-width="7" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  <g transform="translate(0 -6)">
+  <g mask="url(#f-cut)"><path d="M-8.0 -52H8.0V18H-8.0ZM7.5 -52H24.0V-30H7.5ZM0 16a20 20 0 1 1 0 40a20 20 0 1 1 0 -40ZM0 29.5a6.5 6.5 0 1 0 0 13.0a6.5 6.5 0 1 0 0 -13.0Z" transform="rotate(-45) scale(-1 1) translate(0 6)" fill="#C2C9D3" fill-rule="nonzero"/></g>
+  <path d="M-8.0 -52H8.0V18H-8.0ZM7.5 -52H24.0V-30H7.5ZM0 16a20 20 0 1 1 0 40a20 20 0 1 1 0 -40ZM0 29.5a6.5 6.5 0 1 0 0 13.0a6.5 6.5 0 1 0 0 -13.0Z" transform="rotate(45) translate(0 6)" fill="#E3B85C" fill-rule="nonzero"/>
+  </g></g>
+</svg>
