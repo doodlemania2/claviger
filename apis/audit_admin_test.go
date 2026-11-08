@@ -139,7 +139,8 @@ func TestAuditCollectionSchemaChanges(t *testing.T) {
 				`"collectionName":"auditupd"`,
 				`"added":[{"name":"brandnew"`,
 				`"removed":[{"name":"gone"`,
-				`"renamed":[{"from":"oldname","to":"newname"}]`,
+				`"from":"oldname"`, // jsonb orders the keys of an object by length and name
+				`"to":"newname"`,
 				`"modified":[{"name":"typed","properties":["required"]}]`,
 				`idx_audit_new`,
 			} {

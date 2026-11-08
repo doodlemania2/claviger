@@ -141,7 +141,7 @@ func TestKeyRotationKeepsOldTokensVerifiable(t *testing.T) {
 
 	// once the grace period is over, the old key leaves the JWKS
 	past := time.Now().Add(-time.Minute).UTC().Format("2006-01-02 15:04:05.000Z")
-	if _, err := e.app.NonconcurrentDB().NewQuery("UPDATE _signingKeys SET retiresAt = '" + past + "' WHERE retiresAt != ''").Execute(); err != nil {
+	if _, err := e.app.NonconcurrentDB().NewQuery("UPDATE {{_signingKeys}} SET [[retiresAt]] = '" + past + "' WHERE [[retiresAt]] != ''").Execute(); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(e.jwks().Keys); n != 1 {
@@ -256,7 +256,7 @@ func TestDisabledWithoutEncryptionOutsideDevMode(t *testing.T) {
 	}
 
 	var n int
-	_ = e.app.ConcurrentDB().NewQuery("SELECT COUNT(*) FROM _signingKeys").Row(&n)
+	_ = e.app.ConcurrentDB().NewQuery("SELECT COUNT(*) FROM {{_signingKeys}}").Row(&n)
 	if n != 0 {
 		t.Fatalf("%d signing keys exist", n)
 	}

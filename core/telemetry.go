@@ -130,3 +130,13 @@ func openTelemetryDB(dbPath, pragmas string) (*dbx.DB, error) {
 	}
 	return t.OpenDB("sqlite", dbPath+pragmas, filepath.Base(dbPath))
 }
+
+// openTelemetryPostgres is [openTelemetryDB] for the Postgres data database
+// (fork, #106): (nil, nil) when telemetry is not active.
+func openTelemetryPostgres(url string) (*dbx.DB, error) {
+	t := telemetry.Active()
+	if t == nil {
+		return nil, nil
+	}
+	return t.OpenDB("pgx", url, "postgres")
+}

@@ -32,16 +32,26 @@ func (t *Telemetry) OpenDB(driverName, dsn, namespace string) (*dbx.DB, error) {
 	drv := probe.Driver()
 	_ = probe.Close()
 
-	sqlDB := sql.OpenDB(&connector{t: t, drv: drv, dsn: dsn, ns: namespace})
+	sqlDB := sql.OpenDB(&connector{t: t, drv: drv, dsn: dsn, ns: namespace, system: dbSystem(driverName)})
 
 	return dbx.NewFromDB(sqlDB, driverName), nil
 }
 
+// dbSystem is the db.system.name attribute value of a database/sql driver.
+func dbSystem(driverName string) string {
+	switch driverName {
+	case "pgx", "postgres":
+		return "postgresql"
+	}
+	return "sqlite"
+}
+
 type connector struct {
-	t   *Telemetry
-	drv driver.Driver
-	dsn string
-	ns  string
+	t      *Telemetry
+	drv    driver.Driver
+	dsn    string
+	ns     string
+	system string
 }
 
 func (c *connector) Connect(context.Context) (driver.Conn, error) {
@@ -49,15 +59,16 @@ func (c *connector) Connect(context.Context) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &tconn{Conn: conn, t: c.t, ns: c.ns}, nil
+	return &tconn{Conn: conn, t: c.t, ns: c.ns, system: c.system}, nil
 }
 
 func (c *connector) Driver() driver.Driver { return c.drv }
 
 type tconn struct {
 	driver.Conn
-	t  *Telemetry
-	ns string
+	t      *Telemetry
+	ns     string
+	system string
 }
 
 func (c *tconn) PrepareContext(ctx context.Context, q string) (driver.Stmt, error) {
@@ -149,7 +160,7 @@ func (c *tconn) observe(query string, start time.Time, err error) {
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithTimestamp(start),
 		trace.WithAttributes(
-			attribute.String("db.system.name", "sqlite"),
+			attribute.String("db.system.name", c.system),
 			attribute.String("db.namespace", c.ns),
 			attribute.String("db.operation.name", strings.ToUpper(op)),
 			// placeholders only: bound values never reach this layer

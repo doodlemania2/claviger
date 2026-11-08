@@ -364,7 +364,7 @@ func TestAuditLogAppendOnlyViaRecordsAPI(t *testing.T) {
 			s.BeforeTestFunc = func(t testing.TB, app *tests.TestApp, e *core.ServeEvent) {
 				prev(t, app, e)
 				// re-key the seeded entry with raw SQL (test setup only)
-				if _, err := app.NonconcurrentDB().NewQuery("UPDATE `" + core.CollectionNameAuditLog + "` SET id='seededauditentry1'").Execute(); err != nil {
+				if _, err := app.NonconcurrentDB().NewQuery("UPDATE {{" + core.CollectionNameAuditLog + "}} SET id='seededauditentry1'").Execute(); err != nil {
 					t.Fatal(err)
 				}
 				seededId = "seededauditentry1"

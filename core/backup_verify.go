@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/types"
 )
 
@@ -76,7 +77,20 @@ type BackupManifest struct {
 	Version   int                         `json:"version"`
 	CreatedAt string                      `json:"createdAt"`
 	Tables    map[string]map[string]int64 `json:"tables"` // db filename -> table -> row count
+
+	// DataDatabase is set when the archive has no copy of the app data database
+	// (fork, #106): "postgres" means that the data lives in PostgreSQL, which a
+	// zip backup does not contain (use pg_dump or the provider's point-in-time
+	// recovery). The archive then holds the local files only (storage, the
+	// auxiliary logs database).
+	DataDatabase string `json:"dataDatabase,omitempty"`
+	// Note explains DataDatabase to a human reading the archive.
+	Note string `json:"note,omitempty"`
 }
+
+// backupVerifyPostgresSkip is the reason of the "skipped" verification of an
+// archive without the data database because the app uses PostgreSQL.
+const backupVerifyPostgresSkip = "skipped: database is Postgres (the archive holds the storage files only; back the database up with pg_dump or your provider's point-in-time recovery)"
 
 func newBackupManifest() *BackupManifest {
 	return &BackupManifest{
@@ -278,7 +292,11 @@ func VerifyBackup(ctx context.Context, app App, key string) (*BackupVerification
 			slog.Bool(OTelAlwaysAttr, true),
 		)
 	case BackupVerifyStatusSkipped:
-		app.Logger().Warn(
+		logSkipped := app.Logger().Warn
+		if result.Error == backupVerifyPostgresSkip {
+			logSkipped = app.Logger().Info // expected on every Postgres install, not a warning
+		}
+		logSkipped(
 			"[Backup verify] Backup verification skipped",
 			slog.String("name", key),
 			slog.String("error", result.Error),
@@ -374,6 +392,18 @@ func runBackupVerification(
 	}
 
 	if entries[dataDBFilename] == nil {
+		// fork (#106): a Postgres install archives the files only
+		if f := entries[BackupManifestName]; f != nil {
+			if raw, rerr := readZipEntry(f, maxBackupManifestSize); rerr == nil {
+				var m BackupManifest
+				if json.Unmarshal(raw, &m) == nil && m.DataDatabase == dialect.PostgresName {
+					result.HasManifest = true
+					result.Message = "no data database in the archive"
+					return errors.New(backupVerifyPostgresSkip), true
+				}
+			}
+		}
+
 		return fmt.Errorf("%s is missing from the archive", dataDBFilename), false
 	}
 

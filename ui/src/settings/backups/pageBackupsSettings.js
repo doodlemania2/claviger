@@ -8,14 +8,31 @@ export function pageBackupsSettings(route) {
 
     const data = store({
         resetList: null,
+        database: "",
     });
+
+    // Claviger: zip backups do not contain a Postgres database
+    async function loadDatabase() {
+        try {
+            const health = await app.pb.health.check({ requestKey: null });
+            data.database = health?.data?.database || "";
+        } catch (err) {
+            console.warn("failed to load the database engine", err);
+        }
+    }
 
     function resetBackupsList() {
         data.resetList = Date.now();
     }
 
     return t.div(
-        { pbEvent: "pageBackupsSettings", className: "page page-backups-settings" },
+        {
+            pbEvent: "pageBackupsSettings",
+            className: "page page-backups-settings",
+            onmount: () => {
+                loadDatabase();
+            },
+        },
         settingsSidebar(),
         t.div(
             { className: "page-content full-height" },
@@ -33,6 +50,29 @@ export function pageBackupsSettings(route) {
                     {
                         className: "grid",
                     },
+                    t.div(
+                        {
+                            hidden: () => data.database != "postgres",
+                            className: "col-lg-12",
+                        },
+                        t.div(
+                            { className: "alert warning" },
+                            t.div(
+                                { className: "content" },
+                                t.p(
+                                    {},
+                                    t.strong({}, "The database is PostgreSQL, so zip backups do not contain it."),
+                                ),
+                                t.p(
+                                    {},
+                                    "A backup holds the storage files only (and says so in its manifest), and restoring one is not available. ",
+                                    "Back the database up with ",
+                                    t.code({}, "pg_dump"),
+                                    " or your provider's point-in-time recovery.",
+                                ),
+                            ),
+                        ),
+                    ),
                     t.div(
                         { className: "col-lg-12" },
                         t.div(

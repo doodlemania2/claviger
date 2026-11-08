@@ -462,7 +462,7 @@ func TestSessionLastSeenThrottled(t *testing.T) {
 	sid := sidOf(t, token)
 
 	setLastSeen := func(d time.Duration) {
-		if _, err := env.app.NonconcurrentDB().NewQuery("UPDATE _sessions SET lastSeen={:t} WHERE id={:id}").
+		if _, err := env.app.NonconcurrentDB().NewQuery("UPDATE {{_sessions}} SET [[lastSeen]]={:t} WHERE id={:id}").
 			Bind(dbx.Params{"t": types.NowDateTime().Add(d).String(), "id": sid}).Execute(); err != nil {
 			t.Fatal(err)
 		}
