@@ -91,6 +91,10 @@ func newEnv(t testing.TB, opts ...envOpts) *env {
 
 	var mux http.Handler
 	err = app.OnServe().Trigger(se, func(e *core.ServeEvent) error {
+		// the catch-all the example app serves its public directory with: the
+		// provider's routes must coexist with it (a method-less pattern panics the mux)
+		e.Router.GET("/{path...}", func(re *core.RequestEvent) error { return re.NotFoundError("", nil) })
+
 		// no rate limiting in tests
 		e.Router.Bind(&hook.Handler[*core.RequestEvent]{
 			Func:     func(re *core.RequestEvent) error { return re.Next() },

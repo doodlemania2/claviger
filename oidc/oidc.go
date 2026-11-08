@@ -196,17 +196,24 @@ func (m *module) bindRoutes(se *core.ServeEvent) {
 	se.Router.GET(mountPath+discoveryPath, m.serveDiscovery)
 
 	// the callback only resumes the browser that started the sign-in
-	se.Router.Any(mountPath+"/authorize/callback", func(e *core.RequestEvent) error {
-		// every method, not just GET: the library would answer a POST too
+	callback := func(e *core.RequestEvent) error {
 		req, err := m.store.requestByID(e.Request.FormValue("id"))
 		if err != nil || !m.checkBinding(e, req) {
 			return m.errorPage(e, http.StatusBadRequest, "This sign-in could not be resumed. Return to the app and start again.")
 		}
 
 		return m.serveLibrary(e)
-	})
+	}
 
-	se.Router.Any(mountPath+"/{path...}", m.serveLibrary)
+	// Explicit methods, never Router.Any: a pattern without a method conflicts
+	// with the "GET /{path...}" catch-all that serves the public directory
+	// ("matches more methods ... but has a more specific path") and makes the
+	// mux panic when the server starts.
+	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodOptions} {
+		// the methods the library answers (a GET pattern also serves HEAD)
+		se.Router.Route(method, mountPath+"/authorize/callback", callback)
+		se.Router.Route(method, mountPath+"/{path...}", m.serveLibrary)
+	}
 }
 
 // serveLibrary hands the request to the zitadel provider.

@@ -277,7 +277,7 @@ func TestEveryProtocolEndpointIsLimited(t *testing.T) {
 		}},
 		{"userinfo", 300, func(b *browser) *httptest.ResponseRecorder {
 			// a different token each time, so only the per-IP budget is in play
-			return b.do("GET", "/oidc/userinfo", map[string]string{"Authorization": "Bearer t-" + strconv.Itoa(len(b.cookies)+int(b.counter()))}, nil)
+			return b.do("GET", "/oidc/userinfo", map[string]string{"Authorization": "Bearer t-" + strconv.Itoa(len(b.cookies)+b.counter())}, nil)
 		}},
 	}
 

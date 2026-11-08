@@ -50,10 +50,10 @@ func (b *browser) authorizeSilently(clientID string, o authOpts) ssoOutcome {
 		b.env.t.Fatalf("login page: %d %s", page.Code, page.Body.String())
 	}
 
-	switch {
-	case next.Path == "/oidc/consent":
+	switch next.Path {
+	case "/oidc/consent":
 		return ssoOutcome{kind: "consent", to: next, req: reqID, pkce: p}
-	case next.Path == "/oidc/authorize/callback":
+	case "/oidc/authorize/callback":
 		final := b.resume(next.String())
 
 		return ssoOutcome{kind: kindOf(final), to: final, req: reqID, pkce: p}
