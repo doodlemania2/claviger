@@ -782,6 +782,7 @@ func TestCollectionSerializeNotModifyingCache(t *testing.T) {
 		"PasswordResetToken.Secret": c.PasswordResetToken.Secret,
 		"EmailChangeToken.Secret":   c.EmailChangeToken.Secret,
 		"VerificationToken.Secret":  c.VerificationToken.Secret,
+		"PasskeyResetToken.Secret":  c.PasskeyResetToken.Secret,
 	}
 
 	if len(c.OAuth2.Providers) == 0 {
