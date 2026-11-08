@@ -100,6 +100,26 @@ DELETE /api/collections/{collection}/auth-with-webauthn/credentials-by-record/{r
 Set `WEBAUTHN_RP_ID` and `WEBAUTHN_RP_ORIGINS` to scope passkeys to a parent domain while
 the server runs on a subdomain; otherwise they follow the app URL.
 
+## Captcha and persistent rate limits
+
+Both are off or invisible until you use them, so a default install behaves as before.
+
+**Captcha.** In Settings > Captcha, pick Cloudflare Turnstile, hCaptcha or Google
+reCAPTCHA (v2, or v3 with a minimum score), enter the site and secret keys, and switch on the
+actions that need it: sign-up, password sign-in, OTP request, password and passkey reset
+request, verification request, passkey login-begin. Clients send the token in the
+`X-Captcha-Token` header or the `captchaToken` body field. A missing or rejected token is a
+`400` whose `data.captchaToken.code` is `captcha_failed`. The collection's `auth-methods`
+response gains `captcha: {provider, siteKey, required: [...]}` (never the secret) so clients
+know to render the widget; the `/passkeys` page and the admin login do it themselves, loading
+the provider script only when it is required. If the provider is unreachable, requests are let
+through by default (a WARN log and `claviger_captcha_verifications_total{outcome="outage_open"}`),
+so an outage cannot lock a congregation out; set `failClosed` to refuse them instead.
+
+**Rate limits.** Rate limit counters (Settings > Application rules and the built-in
+passkey, API-key and TOTP limits) are kept in `auxiliary.db`, flushed every few seconds and on
+shutdown, so a restart does not hand an attacker a fresh budget.
+
 ## SDKs and compatibility
 
 Claviger keeps PocketBase's HTTP API, so the official
