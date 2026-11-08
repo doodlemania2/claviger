@@ -435,3 +435,34 @@ func TestInvitationsRegister(t *testing.T) {
 		},
 	}})
 }
+
+func TestOrgTags(t *testing.T) {
+	t.Parallel()
+
+	const base = "/api/orgs/" + orgP1 + "/tags"
+
+	runInvCases(t, []orgCase{
+		{name: "guest", url: base, status: 401},
+		{name: "members list", who: "carol", url: base, status: 200, has: []string{`"name":"youth"`}},
+		{name: "outsiders", who: "frank", url: base, status: 404},
+		{name: "members cannot create", who: "carol", method: http.MethodPost, url: base, body: `{"name":"choir"}`, status: 403},
+		{name: "admins create", who: "bob", method: http.MethodPost, url: base, body: `{"name":"choir","description":"Sings"}`, status: 200,
+			has: []string{`"name":"choir"`},
+			after: func(t testing.TB, app *tests.TestApp) {
+				if got := auditEntries(t, app, "targetCollection='_orgRoles' && action='create' && actorId='"+orgUserID("bob")+"'"); len(got) != 1 {
+					t.Fatalf("expected an audit entry, got %d", len(got))
+				}
+			}},
+		{name: "duplicate", who: "bob", method: http.MethodPost, url: base, body: `{"name":"youth"}`, status: 409},
+		{name: "invalid name", who: "bob", method: http.MethodPost, url: base, body: `{"name":"a\"b"}`, status: 400},
+		{name: "members cannot delete", who: "carol", method: http.MethodDelete, url: base + "/tagyouthp1aaaaa", status: 403},
+		{name: "another org's tag", who: "ivan", method: http.MethodDelete, url: "/api/orgs/" + orgP2 + "/tags/tagyouthp1aaaaa", status: 404},
+		{name: "deleting a tag removes it from the members", who: "bob", method: http.MethodDelete, url: base + "/tagyouthp1aaaaa", status: 204,
+			after: func(t testing.TB, app *tests.TestApp) {
+				m, _ := app.FindRecordById(core.CollectionNameOrgMembers, "mem00000000000c")
+				if m == nil || len(m.GetStringSlice("tags")) != 0 {
+					t.Fatalf("expected the tag to leave the member, got %v", m)
+				}
+			}},
+	})
+}

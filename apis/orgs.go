@@ -43,6 +43,7 @@ func bindOrgsApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 	sub.PATCH("/{id}/members/{member}", orgMembersUpdate)
 	sub.DELETE("/{id}/members/{member}", orgMembersRemove)
 	bindInvitationsApi(app, rg, sub) // fork-local (#79b)
+	bindOrgTagsApi(sub)              // fork-local (#79b)
 }
 
 func orgHTTP(e *core.RequestEvent, err error) error {
