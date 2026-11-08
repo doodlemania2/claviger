@@ -13,7 +13,7 @@ import (
 func TestCollectionsImport(t *testing.T) {
 	t.Parallel()
 
-	totalCollections := 21
+	totalCollections := 22
 
 	scenarios := []tests.ApiScenario{
 		{

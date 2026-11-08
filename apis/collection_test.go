@@ -47,7 +47,7 @@ func TestCollectionsList(t *testing.T) {
 			ExpectedContent: []string{
 				`"page":1`,
 				`"perPage":30`,
-				`"totalItems":21`,
+				`"totalItems":22`,
 				`"items":[{`,
 				`"name":"` + core.CollectionNameSuperusers + `"`,
 				`"name":"` + core.CollectionNameAuthOrigins + `"`,
@@ -55,6 +55,7 @@ func TestCollectionsList(t *testing.T) {
 				`"name":"` + core.CollectionNameMFAs + `"`,
 				`"name":"` + core.CollectionNameOTPs + `"`,
 				`"name":"` + core.CollectionNameWebAuthnCredentials + `"`,
+				`"name":"` + core.CollectionNameTOTPs + `"`,
 				`"name":"users"`,
 				`"name":"nologin"`,
 				`"name":"clients"`,
@@ -86,7 +87,7 @@ func TestCollectionsList(t *testing.T) {
 			ExpectedContent: []string{
 				`"page":2`,
 				`"perPage":2`,
-				`"totalItems":21`,
+				`"totalItems":22`,
 				`"items":[{`,
 				`"name":"` + core.CollectionNameAPIKeys + `"`,
 			},

@@ -89,9 +89,7 @@ func recordAuthResponse(e *core.RequestEvent, authRecord *core.Record, token str
 		if mfaId != "" {
 			// eagerly write the mfa response and return an err so that
 			// external middlewars are aware that the auth response requires an extra step
-			e.JSON(http.StatusUnauthorized, map[string]string{
-				"mfaId": mfaId,
-			})
+			e.JSON(http.StatusUnauthorized, mfaRequiredBody(e.App, e.Record, mfaId))
 			return ErrMFA
 		}
 		// ---
@@ -199,16 +197,33 @@ func wantsMFA(e *core.RequestEvent, record *core.Record) (bool, error) {
 //
 // (note: all auth methods are treated as equal and there is no requirement for "pairing").
 func checkMFA(e *core.RequestEvent, authRecord *core.Record, currentAuthMethod string) (string, error) {
-	if !authRecord.Collection().MFA.Enabled || currentAuthMethod == "" {
+	if currentAuthMethod == "" {
 		return "", nil
 	}
 
-	ok, err := wantsMFA(e, authRecord)
+	// per-account TOTP enforcement (fork, #90): an account with an active
+	// TOTP enrollment needs it as second factor even if the collection's MFA is off
+	totpOn, err := core.HasActiveTOTP(e.App, authRecord)
 	if err != nil {
-		return "", e.BadRequestError("Failed to authenticate.", fmt.Errorf("MFA rule failure: %w", err))
+		return "", e.InternalServerError("Failed to authenticate.", fmt.Errorf("TOTP state failure: %w", err))
 	}
-	if !ok {
+
+	collectionWantsMFA := false
+	if authRecord.Collection().MFA.Enabled {
+		ok, err := wantsMFA(e, authRecord)
+		if err != nil {
+			return "", e.BadRequestError("Failed to authenticate.", fmt.Errorf("MFA rule failure: %w", err))
+		}
+		collectionWantsMFA = ok
+	}
+
+	if !collectionWantsMFA && !totpOn {
 		return "", nil // no mfa needed for this auth record
+	}
+
+	// a passkey sign-in is strong on its own (fork): it does not need TOTP
+	if !collectionWantsMFA && currentAuthMethod == core.MFAMethodWebAuthn {
+		return "", nil
 	}
 
 	// read the mfaId either from the qyery params or request body
@@ -249,7 +264,7 @@ func checkMFA(e *core.RequestEvent, authRecord *core.Record, currentAuthMethod s
 			}
 		}
 	}
-	if err != nil || mfa.HasExpired(authRecord.Collection().MFA.DurationTime()) {
+	if err != nil || mfa.HasExpired(mfaSessionDuration(authRecord.Collection())) {
 		deleteMFA()
 		return "", e.BadRequestError("Invalid or expired MFA session.", err)
 	}
@@ -260,6 +275,12 @@ func checkMFA(e *core.RequestEvent, authRecord *core.Record, currentAuthMethod s
 
 	if mfa.Method() == currentAuthMethod {
 		return "", e.BadRequestError("A different authentication method is required.", nil)
+	}
+
+	// an enrolled account completes the session with its authenticator app
+	// (or a passkey), never with a weaker method such as an emailed OTP
+	if totpOn && currentAuthMethod != core.MFAMethodTOTP && currentAuthMethod != core.MFAMethodWebAuthn {
+		return "", e.BadRequestError("An authenticator app code is required.", nil)
 	}
 
 	deleteMFA()
