@@ -58,7 +58,7 @@ jobs:
   # PostgreSQL storage (experimental, #106): the tagged integration tests against a
   # real server. Runs after `test` so a broken SQLite suite stops here first.
   postgres:
-    timeout-minutes: 15
+    timeout-minutes: 30
     runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || (vars.RUNNER_LIGHT || 'tdp-k3s-claviger') }}
     needs: test
     services:
@@ -103,7 +103,15 @@ jobs:
             echo "::error::a Postgres test was skipped"
             exit 1
           fi
-          test "$(grep -c -- '--- PASS' pg-test.log)" -ge 400
+          test "$(grep -c -- '--- PASS' pg-test.log)" -ge 430
+
+      # The regular core, apis, oidc, cmd, forms, mails and jsvm suites on Postgres: the test
+      # fixture is converted to a template database (tests/app_postgres.go) and every test app
+      # is a clone of it. The tests in tests/postgres_skip.txt (SQLite specific expectations,
+      # each with its reason) are the only ones skipped, any other skip fails the job, and so
+      # does a run that passes too few tests or one that ran on SQLite.
+      - name: Run the regular suites on Postgres
+        run: scripts/test_postgres_suites.sh
 
   docker-build:
     timeout-minutes: 15

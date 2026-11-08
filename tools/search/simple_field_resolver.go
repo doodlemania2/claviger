@@ -2,11 +2,11 @@ package search
 
 import (
 	"fmt"
-	"github.com/doodlemania2/claviger/tools/dialect"
 	"strconv"
 	"strings"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/inflector"
 	"github.com/doodlemania2/claviger/tools/list"
 )

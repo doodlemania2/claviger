@@ -519,3 +519,67 @@ func (postgresDialect) QuoteIdent(name string) string { return quoteIdent(name) 
 func quoteIdent(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
+
+func (postgresDialect) DropSuffix() string { return " CASCADE" }
+
+// DetachDependentViews drops the views that select (transitively) from the
+// named view, in reverse dependency order, and returns the func that recreates
+// them in dependency order.
+func (postgresDialect) DetachDependentViews(db dbx.Builder, view string) (func() error, error) {
+	noop := func() error { return nil }
+
+	var dependents []string
+	err := db.NewQuery(`
+		WITH RECURSIVE deps(oid) AS (
+			SELECT c.oid FROM pg_class c
+			JOIN pg_namespace n ON n.oid = c.relnamespace
+			WHERE n.nspname = current_schema() AND c.relname = {:view}
+			UNION
+			SELECT r.ev_class FROM deps d
+			JOIN pg_depend dep ON dep.refobjid = d.oid AND dep.deptype = 'n'
+			JOIN pg_rewrite r ON r.oid = dep.objid
+			WHERE r.ev_class <> d.oid
+		)
+		SELECT c.relname::text FROM deps d
+		JOIN pg_class c ON c.oid = d.oid
+		WHERE c.relkind = 'v' AND c.relname <> {:view}
+	`).Bind(dbx.Params{"view": view}).Column(&dependents)
+	if err != nil {
+		return noop, err
+	}
+	if len(dependents) == 0 {
+		return noop, nil
+	}
+
+	all, err := pgListViews(db)
+	if err != nil {
+		return noop, err
+	}
+
+	isDependent := make(map[string]bool, len(dependents))
+	for _, name := range dependents {
+		isDependent[name] = true
+	}
+
+	var detached []ViewDef // dependency (creation) order
+	for _, v := range all {
+		if isDependent[v.Name] {
+			detached = append(detached, v)
+		}
+	}
+
+	for i := len(detached) - 1; i >= 0; i-- {
+		if _, err := db.NewQuery("DROP VIEW " + quoteIdent(detached[i].Name)).Execute(); err != nil {
+			return noop, err
+		}
+	}
+
+	return func() error {
+		for _, v := range detached {
+			if _, err := db.NewQuery(v.CreateSQL).Execute(); err != nil {
+				return fmt.Errorf("failed to recreate the dependent view %s: %w", v.Name, err)
+			}
+		}
+		return nil
+	}, nil
+}

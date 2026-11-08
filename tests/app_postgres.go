@@ -164,8 +164,20 @@ func preparePostgres(config *core.BaseAppConfig, srcDataDir, dataDir string) (fu
 
 	config.DBConnect = core.PostgresDBConnect(withDatabase(testPG.adminURL, name))
 	config.AuxDBConnect = core.DefaultDBConnect
+	limitTestPGConns(config)
 
 	return testPGDBs.release(name, dataDir), nil
+}
+
+// limitTestPGConns keeps the pool of a test app small: the default (120)
+// times the parallel tests would exceed the max_connections of a stock server.
+func limitTestPGConns(config *core.BaseAppConfig) {
+	if config.DataMaxOpenConns <= 0 {
+		config.DataMaxOpenConns = 6
+	}
+	if config.DataMaxIdleConns <= 0 {
+		config.DataMaxIdleConns = 2
+	}
 }
 
 func withDatabase(rawURL, name string) string {
@@ -287,7 +299,7 @@ func (p *testPostgres) fill() (err error) {
 	if err := src.Bootstrap(); err != nil {
 		return fmt.Errorf("open fixture: %w", err)
 	}
-	defer src.ResetBootstrapState()
+	defer src.ClearBootstrap()
 	if err := src.RunAllMigrations(); err != nil {
 		return fmt.Errorf("fixture migrations: %w", err)
 	}
@@ -299,17 +311,19 @@ func (p *testPostgres) fill() (err error) {
 	}
 	defer os.RemoveAll(dstDir)
 
-	dst := core.NewBaseApp(core.BaseAppConfig{
+	dstConfig := core.BaseAppConfig{
 		DataDir: dstDir,
 		// no settings encryption: the template must not depend on the env of the first test
 		EncryptionEnv: "",
 		DBConnect:     core.PostgresDBConnect(withDatabase(p.adminURL, p.tplName)),
 		AuxDBConnect:  core.DefaultDBConnect,
-	})
+	}
+	limitTestPGConns(&dstConfig)
+	dst := core.NewBaseApp(dstConfig)
 	if err := dst.Bootstrap(); err != nil {
 		return fmt.Errorf("open postgres: %w", err)
 	}
-	defer dst.ResetBootstrapState()
+	defer dst.ClearBootstrap()
 
 	// import the collections from the raw _collections rows: the public JSON
 	// of a collection hides the secrets (token secrets, OAuth2 client secrets)

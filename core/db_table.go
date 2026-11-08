@@ -32,8 +32,9 @@ func (app *BaseApp) TableIndexes(tableName string) (map[string]string, error) {
 // "dangerousTableName" argument must come only from trusted input!
 func (app *BaseApp) DeleteTable(dangerousTableName string) error {
 	_, err := app.NonconcurrentDB().NewQuery(fmt.Sprintf(
-		"DROP TABLE IF EXISTS {{%s}}",
+		"DROP TABLE IF EXISTS {{%s}}%s",
 		dangerousTableName,
+		dialectOf(app).DropSuffix(), // fork (#106)
 	)).Execute()
 
 	return err
