@@ -51,7 +51,7 @@ window.app.store = store({
         {
             href: import.meta.env.PB_RELEASES,
             icon: "ri-git-pull-request-line",
-            label: `PocketBase ${import.meta.env.PB_VERSION}`,
+            label: "Claviger",
         },
     ],
 
