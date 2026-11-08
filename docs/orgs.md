@@ -2,17 +2,18 @@
 
 Organizations (#79a) let one Claviger instance serve several groups (parishes, ministries, tenants), each with its own members and roles. With no organization created nothing changes: no extra checks run, and the new collections stay empty.
 
-Design notes and the evidence behind the rules are in `docs/specs/79-orgs-roles-scim.md`. Invitations (79b) and SCIM (79c) are not part of this release.
+Design notes and the evidence behind the rules are in `docs/specs/79-orgs-roles-scim.md`. Invitations (79b, below) and the hosted org page ship with this release. SCIM (79c) does not.
 
 ## Model
 
-Three hidden system collections:
+Four hidden system collections:
 
 | Collection | Holds |
 |---|---|
 | `_orgs` | `name`, `slug` (unique, `^[a-z0-9-]{2,64}$`), `parent` (optional, one level), `archived`, `settings` |
 | `_orgMembers` | `org`, `user`, `role`, `status`, `tags`, `source`; unique on `(org, user)` |
 | `_orgRoles` | free-form labels (`org`, `name`, `description`), the targets of `_orgMembers.tags` |
+| `_invitations` | email invitations (`org`, `email`, `role`, `tags`, `invitedBy`, `tokenHash`, `expires`, `status`, ...), see [Invitations](#invitations) |
 
 - **Roles** are fixed and ranked: `owner` > `admin` > `member` > `viewer`. `viewer` has no special meaning to the engine; the rule presets simply leave viewers out of write rules.
 - **Status** is `active` or `suspended`. A suspended member loses all access that goes through the rules, immediately.
@@ -43,6 +44,10 @@ All routes need authentication. API keys can read but never change organizations
 | `POST /api/orgs/{id}/members` | owner/admin | `{user, role?, status?, tags?}`; `user` is an email or id of an existing account |
 | `PATCH /api/orgs/{id}/members/{member}` | owner/admin | `{role?, status?, tags?}` |
 | `DELETE /api/orgs/{id}/members/{member}` | owner/admin, or the member themself (leave) | |
+| `GET /api/orgs/{id}/tags` | members | the tags of the org |
+| `POST /api/orgs/{id}/tags` | owner/admin | `{name, description?}` |
+| `DELETE /api/orgs/{id}/tags/{tag}` | owner/admin | the tag leaves every member that carried it |
+| invitation routes | see [Invitations](#invitations) | |
 | `GET /api/orgs/rule-templates` | superuser | the presets below, for a relation field named `?field=` (default `org`) |
 
 Guards, enforced for every caller and backed by model hooks for any app-level write:
@@ -56,6 +61,60 @@ Guards, enforced for every caller and backed by model hooks for any app-level wr
 Note that the `user` lookup by email answers 404 for every miss, but an org admin can still probe which emails have an account. Treat org admins as trusted for that.
 
 Writes through the records API (`/api/collections/_orgMembers/records`) are superuser-only (null rules) and hit the same model-hook guards, but skip the hierarchy checks. Prefer the routes.
+
+## Invitations
+
+Org admins invite people by email. The invitee follows a link to a hosted page, signs in (or creates an account), and is added with the invited role. With no invitation created nothing changes.
+
+### Routes
+
+| Route | Who | |
+|---|---|---|
+| `POST /api/orgs/{id}/invitations` | owner/admin | `{email, role?, tags?}`. Creates the invitation and sends the email. Response carries `emailSent`; the token is never returned |
+| `GET /api/orgs/{id}/invitations` | owner/admin | `?status=pending\|accepted\|revoked\|expired`, paged. A pending invitation past its expiry reads as `expired` |
+| `POST /api/orgs/{id}/invitations/{inv}/resend` | owner/admin | new token, new expiry, email again. Also renews an expired invitation |
+| `DELETE /api/orgs/{id}/invitations/{inv}` | owner/admin | revoke; the link stops working |
+| `POST /api/invitations/accept` | the signed-in invitee | `{token}` |
+| `POST /api/invitations/register` | the invitee without an account | `{token, password, passwordConfirm, name?}` (+ captcha token when sign-up captcha is on) |
+
+API keys can read but never change invitations; `_invitations` is on the API-key forbidden list and has no API rules (superusers only), so the routes above are the way in.
+
+### Rules
+
+- **Roles.** Nobody invites above their own role (an admin can invite admins, members and viewers, not owners). The same holds for resend and revoke.
+- **Token.** 32 random bytes, base64url, in the emailed link only. The database holds the SHA-256, so a database read does not give a working link. Single use: the status moves `pending` to `accepted`, `revoked` or `expired` and a used, revoked or expired token fails with one generic error ("This invitation is invalid or has expired.").
+- **Expiry.** 7 days; `settings.invitationExpiryDays` (1 to 30) on the org changes it. A resend restarts the clock.
+- **Limits.** One resend per minute per invitation, 20 new invitations per hour per org (`settings.invitationsPerHour`, 1 to 200). Both answer 429. The limits count rows, so a restart does not reset them. Token guesses on the hosted page and the accept/register routes are also limited per client IP.
+- **One live invitation per email and org.** A second create answers 409 (resend instead). Inviting someone who is already a member (any status) answers 409.
+- **Account linking.** An existing account is linked only when its email equals the invited address (case-insensitive) **and is verified**. Otherwise accept answers 403 with `data.invitation.code` of `email_mismatch` or `email_not_verified`, and the invitation stays usable. The hosted page offers to send the verification email.
+- **Accept** adds the membership with `source: "invitation"` and the invited role and tags and marks the invitation accepted, in one transaction. An invitee who is already a member gets 409 and nothing changes.
+- **Register** is for an invitee with no account: it creates the account in the member collection with the invited email, `verified = true` (the link proved the mailbox) and the given password, and accepts the invitation, all in one transaction. A weak password rolls everything back. It answers 409 `account_exists` when the email already has an account, so a leaked link cannot overwrite one. It does not sign the browser in; the page signs in right after through the ordinary endpoint, so every sign-in rule of the collection still applies. It needs password auth on the member collection (a passkey-only collection cannot use it) and honors the sign-up captcha.
+- **Archived orgs** refuse create, resend and accept.
+
+### The email
+
+Sent through the app mailer (`Settings > Mail`, `meta.senderName` / `senderAddress`), to the invited address, with a link to `{meta.appURL}/orgs/invite/{token}`. Set `meta.appURL` to the public URL of the server or the links point at the default.
+
+The default subject is "You are invited to join {ORG_NAME} on {APP_NAME}". An org overrides either part in its `settings` JSON (superuser edit of `_orgs`):
+
+```json
+{ "invitationEmail": { "subject": "Welcome to {ORG_NAME}", "body": "<p>{INVITER} invited you as {ROLE}.</p><p><a href=\"{INVITE_URL}\">Join</a></p>" } }
+```
+
+Placeholders: `{ORG_NAME}`, `{ORG_SLUG}`, `{ROLE}`, `{INVITER}`, `{INVITE_URL}`, `{EXPIRES}`, `{APP_NAME}`, `{APP_URL}`. Values are HTML-escaped in the body. The body goes inside the standard mail layout; the text part is derived from the HTML.
+
+### Hosted pages
+
+Both pages are served by Claviger, have no inline script or style, and use a strict Content-Security-Policy (`default-src 'none'`, same-origin scripts and styles; only when a captcha is required are that provider's domains opened). They sign in through the ordinary auth endpoints of the member collection: password, TOTP second factor, passkey, and the email code when OTP is enabled.
+
+- `/orgs/invite/{token}` shows the org, the role and the invited address. With an account it offers sign-in then "Accept"; without one it offers account creation. Unknown, expired, revoked and used links show the generic message.
+- `/orgs/{slug}` is the page for the people who run an org, so a parish coordinator needs no custom client and no access to `/_/`. After sign-in, members see who is in the org; owners and admins can change roles, status and tags of members, remove them, send, resend and revoke invitations, and add or delete tags. It is a shell until sign-in: it does not look the slug up, so slugs cannot be probed. Everything it does is a call to the routes above, so every guard applies.
+
+Superusers manage the same things on the Organizations page of the admin UI (members, invitations, a link to the hosted page).
+
+### Housekeeping
+
+A daily job (05:13) marks pending invitations past their expiry as `expired` and deletes accepted, revoked and expired invitations that have not changed for 90 days. Every create, resend, revoke and accept is an audit entry (`_invitations` create or update with `meta.orgId`, the actor being the admin, or the invitee for accept and register); `tokenHash` is redacted. Webhooks fire from the collection events (`_invitations:create`, `_invitations:update`).
 
 ## Audit, webhooks, OIDC
 

@@ -11,6 +11,7 @@ export function pageOrgs(route) {
     const state = store({
         orgs: [],
         members: [],
+        invitations: [],
         presets: [],
         showArchived: false,
         search: "",
@@ -56,6 +57,69 @@ export function pageOrgs(route) {
             }
         }
         state.isLoadingMembers = false;
+    }
+
+    // #79b: invitations of the active org
+    async function loadInvitations() {
+        const org = active();
+        if (!org || org.archived) {
+            state.invitations = [];
+            return;
+        }
+        try {
+            const res = await app.pb.send(`/api/orgs/${org.id}/invitations`, { query: { perPage: 200 } });
+            state.invitations = res.items;
+        } catch (err) {
+            if (!err.isAbort) {
+                app.checkApiError(err);
+            }
+        }
+    }
+
+    function inviteMember() {
+        const org = active();
+        app.modals.openOrgForm({
+            title: "Invite by email",
+            submitLabel: "Send invitation",
+            fields: [
+                { id: "email", label: "Email", required: true },
+                { id: "role", label: "Role", type: "select", options: ROLES, value: "member" },
+                { id: "tags", label: "Tags (comma separated)", hint: "Applied when the invitation is accepted." },
+            ],
+            onsubmit: (v) =>
+                app.pb.send(`/api/orgs/${org.id}/invitations`, {
+                    method: "POST",
+                    body: { email: v.email, role: v.role, tags: splitTags(v.tags) },
+                }),
+            onsave: () => loadInvitations(),
+        });
+    }
+
+    async function resendInvitation(inv) {
+        const org = active();
+        try {
+            const res = await app.pb.send(`/api/orgs/${org.id}/invitations/${inv.id}/resend`, { method: "POST" });
+            if (res.emailSent === false) {
+                app.toasts.error("Renewed, but the email could not be sent.");
+            } else {
+                app.toasts.success("Invitation sent again.");
+            }
+            await loadInvitations();
+        } catch (err) {
+            app.checkApiError(err);
+        }
+    }
+
+    function revokeInvitation(inv) {
+        const org = active();
+        app.modals.confirm(`Revoke the invitation for ${inv.email}?`, async () => {
+            try {
+                await app.pb.send(`/api/orgs/${org.id}/invitations/${inv.id}`, { method: "DELETE" });
+                await loadInvitations();
+            } catch (err) {
+                app.checkApiError(err);
+            }
+        });
     }
 
     async function loadPresets() {
@@ -204,11 +268,12 @@ export function pageOrgs(route) {
             pbEvent: "pageOrgs",
             className: "page page-orgs",
             onmount() {
-                loadOrgs().then(loadMembers);
+                loadOrgs().then(loadMembers).then(loadInvitations);
                 watchers.push(
                     watch(() => state.activeId, () => {
                         app.utils.replaceHashQueryParams({ org: state.activeId });
                         loadMembers();
+                        loadInvitations();
                     }),
                     watch(() => state.showArchived, () => loadOrgs()),
                     watch(() => state.showRules, (v) => {
@@ -354,6 +419,71 @@ export function pageOrgs(route) {
                                         { className: "inline-flex gap-xs" },
                                         btn("ri-pencil-line", "Edit", () => editMember(m)),
                                         btn("ri-user-unfollow-line", "Remove", () => removeMember(m), "danger"),
+                                    ),
+                                ),
+                            )
+                        );
+                    }),
+                ),
+                t.div(
+                    { className: "flex m-t-20 m-b-10" },
+                    t.h6({ className: "m-r-auto" }, "Invitations"),
+                    t.a(
+                        {
+                            className: "btn sm secondary m-r-5",
+                            hidden: () => !active() || active().archived,
+                            href: () => `/orgs/${active()?.slug}`,
+                            target: "_blank",
+                            rel: "noopener",
+                        },
+                        t.i({ className: "ri-external-link-line", ariaHidden: true }),
+                        t.span({ className: "txt" }, "Org admin page"),
+                    ),
+                    t.button(
+                        { type: "button", className: "btn sm", hidden: () => !active() || active().archived, onclick: inviteMember },
+                        t.i({ className: "ri-mail-send-line", ariaHidden: true }),
+                        t.span({ className: "txt" }, "Invite"),
+                    ),
+                ),
+                t.table(
+                    { className: "org-invitations-table" },
+                    t.thead(
+                        null,
+                        t.tr(
+                            null,
+                            t.th(null, "Email"),
+                            t.th(null, "Role"),
+                            t.th(null, "Tags"),
+                            t.th(null, "Status"),
+                            t.th(null, "Expires"),
+                            t.th({ className: "col-meta" }),
+                        ),
+                    ),
+                    t.tbody(null, () => {
+                        if (!state.invitations.length) {
+                            return t.tr(null, t.td({ colSpan: 99 }, t.div({ className: "txt-center txt-hint" }, "No invitations.")));
+                        }
+
+                        return state.invitations.map((inv) =>
+                            t.tr(
+                                null,
+                                t.td(null, inv.email),
+                                t.td(null, inv.role),
+                                t.td(null, (inv.tags || []).join(", ")),
+                                t.td(
+                                    null,
+                                    t.span(
+                                        { className: `label sm ${inv.status == "accepted" ? "success" : inv.status == "pending" ? "" : "warning"}` },
+                                        inv.status,
+                                    ),
+                                ),
+                                t.td(null, inv.status == "accepted" ? "" : String(inv.expires || "").slice(0, 16)),
+                                t.td(
+                                    { className: "col-meta" },
+                                    t.div(
+                                        { className: "inline-flex gap-xs" },
+                                        inv.status == "pending" || inv.status == "expired" ? btn("ri-mail-send-line", "Resend", () => resendInvitation(inv)) : null,
+                                        inv.status == "pending" ? btn("ri-close-line", "Revoke", () => revokeInvitation(inv), "danger") : null,
                                     ),
                                 ),
                             )
