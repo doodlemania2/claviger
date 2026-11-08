@@ -31,7 +31,7 @@ func bindInvitationsApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]
 	orgs.POST("/{id}/invitations/{inv}/resend", invitationsResend)
 	orgs.DELETE("/{id}/invitations/{inv}", invitationsRevoke)
 
-	limiter := newInvitationTokenLimiter(app)
+	limiter := invitationLimiter(app)
 
 	inv := rg.Group("/invitations")
 	inv.POST("/accept", invitationsAccept(limiter)).Bind(RequireAuth())
