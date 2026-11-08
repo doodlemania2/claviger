@@ -7,7 +7,6 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/doodlemania2/claviger/core"
 )
 
 // View queries are user SQL: they run as written, in the SQL dialect of the
@@ -201,5 +200,3 @@ func fieldTypes(body any) map[string]string {
 	}
 	return out
 }
-
-var _ = core.CollectionTypeView

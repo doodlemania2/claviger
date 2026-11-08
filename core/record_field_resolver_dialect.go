@@ -68,6 +68,12 @@ func (r *RecordFieldResolver) groupJoinedOrderBy(query *dbx.SelectQuery) {
 	for i, term := range info.OrderBy {
 		terms[i] = term
 
+		// not part of the select list either, but fine with a GROUP BY
+		if strings.EqualFold(strings.TrimSpace(term), "RANDOM()") {
+			rewritten = true
+			continue
+		}
+
 		m := orderTermRegex.FindStringSubmatch(term)
 		if m == nil {
 			continue

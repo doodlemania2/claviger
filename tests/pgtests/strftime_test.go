@@ -124,7 +124,6 @@ func TestStrftimeMatchesSQLite(t *testing.T) {
 			t.Errorf("zone %s: %q", zone, got)
 		}
 	}
-	_ = core.DialectOf
 }
 
 func check(t *testing.T, sqliteApp, pgApp *core.BaseApp, fb dialect.FunctionBuilder, format, date string, mods []string) {

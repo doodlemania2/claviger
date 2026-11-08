@@ -155,10 +155,6 @@ type apiCase struct {
 	gap string
 }
 
-func get(name, url string) apiCase {
-	return apiCase{name: name, method: "GET", url: url, auth: "super", status: 200}
-}
-
 func runAPICases(t *testing.T, cases []apiCase, setup func(t testing.TB, app core.App)) {
 	sqliteApp := newSQLiteApp(t)
 	seedRecords(t, sqliteApp)
@@ -298,6 +294,7 @@ func TestRecordsList(t *testing.T) {
 		{name: "sort back relation", method: "GET", url: "/api/collections/posts/records?sort=comments_via_post.text,id", auth: "super", status: 200,
 			gap: "sorting by a back relation field: SQLite uses the first scanned related record, Postgres the smallest (ASC) or largest (DESC) value"},
 		list("sort multi relation field desc id only", "sort=-tags:length,id", nil),
+		{name: "sort random with join", method: "GET", url: "/api/collections/posts/records?sort=@random&filter=" + url.QueryEscape(`tags.name ?~ "o"`), auth: "super", status: 200, countOnly: true, check: expectTotal(4)},
 		{name: "sort random", method: "GET", url: "/api/collections/posts/records?sort=@random", auth: "super", status: 200, countOnly: true, check: func(t *testing.T, res apiResult) {
 			if len(itemIds(res)) != 8 {
 				t.Fatalf("expected 8 items, got %v", itemIds(res))
