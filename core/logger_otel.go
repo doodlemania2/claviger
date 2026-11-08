@@ -32,12 +32,12 @@ import (
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	otellog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 
 	"github.com/doodlemania2/claviger/tools/hook"
+	"github.com/doodlemania2/claviger/tools/telemetry"
 )
 
 const (
@@ -47,11 +47,11 @@ const (
 
 	// defaultOTelServiceName applies only when the deployment sets neither
 	// OTEL_SERVICE_NAME nor a service.name in OTEL_RESOURCE_ATTRIBUTES.
-	defaultOTelServiceName = "claviger"
+	defaultOTelServiceName = telemetry.DefaultServiceName
 
 	// defaultOTelServiceNamespace applies only when OTEL_RESOURCE_ATTRIBUTES
 	// carries no service.namespace.
-	defaultOTelServiceNamespace = "claviger"
+	defaultOTelServiceNamespace = telemetry.DefaultServiceNamespace
 
 	// otelScopeName identifies the emitting library on every record.
 	otelScopeName = "github.com/doodlemania2/claviger/core"
@@ -117,44 +117,7 @@ func otlpMinLevel() slog.Level {
 // deployment.environment spellings. The defaults only fill gaps, so an
 // unconfigured app never lands in SigNoz as "unknown_service".
 func newOTelResource(ctx context.Context) (*resource.Resource, error) {
-	base, err := resource.New(ctx,
-		resource.WithFromEnv(),
-		resource.WithTelemetrySDK(),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	var hasServiceName, hasNamespace bool
-	for _, attr := range base.Attributes() {
-		switch string(attr.Key) {
-		case "service.name":
-			// WithFromEnv substitutes a synthetic "unknown_service:<binary>"
-			// when nothing is configured; treat that as absent.
-			hasServiceName = !strings.HasPrefix(attr.Value.AsString(), "unknown_service")
-		case "service.namespace":
-			hasNamespace = true
-		}
-	}
-
-	fallbacks := []attribute.KeyValue{}
-	if !hasServiceName {
-		fallbacks = append(fallbacks, attribute.String("service.name", defaultOTelServiceName))
-	}
-	if !hasNamespace {
-		fallbacks = append(fallbacks, attribute.String("service.namespace", defaultOTelServiceNamespace))
-	}
-	if len(fallbacks) == 0 {
-		return base, nil
-	}
-
-	defaults, err := resource.New(ctx, resource.WithAttributes(fallbacks...))
-	if err != nil {
-		return nil, err
-	}
-
-	// base wins on conflict — a configured value is never overridden.
-	return resource.Merge(defaults, base)
+	return telemetry.NewResource(ctx)
 }
 
 // initOTelLogger wraps the local slog handler with an OTLP exporter when a

@@ -27,6 +27,7 @@ func NewRouter(app core.App) (*router.Router[*core.RequestEvent], error) {
 	})
 
 	// register default middlewares
+	pbRouter.Bind(telemetryMiddleware()) // fork-local
 	pbRouter.Bind(activityLogger())
 	pbRouter.Bind(panicRecover())
 	pbRouter.Bind(rateLimit())
@@ -49,6 +50,7 @@ func NewRouter(app core.App) (*router.Router[*core.RequestEvent], error) {
 	bindRealtimeApi(app, apiGroup)
 	bindHealthApi(app, apiGroup)
 	bindSQLApi(app, apiGroup)
+	bindMetricsApi(app, apiGroup) // fork-local
 
 	// UI routes
 	bindUIExtensions(app)

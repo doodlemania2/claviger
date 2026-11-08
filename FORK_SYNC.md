@@ -93,6 +93,9 @@ Files the fork modifies that upstream also owns (expect conflicts here):
 | `core/collection_model.go` | **HIGH** | `MarshalJSON` redaction. See the checklist. |
 | `core/collection_model_auth_options.go` | MEDIUM | Our addition is the `WebAuthn` field. |
 | `core/app.go`, `core/base.go` | LOW/MEDIUM | Our hook methods and fields. `core/base.go` also has the OTLP `slog` tee and the logger sink-failure tally inside `runLogsWrite`. |
+| `core/base.go` (traces/metrics) | LOW | One call, `app.initTelemetry()`, in `Bootstrap` just before `initDataDB` (#76). Must stay before the DB connections. |
+| `core/db_connect.go` | LOW | Four lines at the top of `DefaultDBConnect`: `openTelemetryDB` returns the instrumented driver only while telemetry is active (#76). |
+| `apis/base.go` | LOW | Two lines in `NewRouter`: `telemetryMiddleware()` bound first, and `bindMetricsApi` after `bindSQLApi` (#76). |
 | `core/events.go`, `core/record_tokens.go`, `pocketbase.go` | LOW | Mostly import-order conflicts. |
 | `tests/app.go`, `tests/api.go` | LOW | Race fix (#49): `EventCallsSnapshot()` in `tests/app.go`, and `tests/api.go` reads events through it instead of `EventCalls`. Kept in the fork, not sent upstream. If upstream rewrites those reads, keep the snapshot call. |
 | `apis/record_auth.go` | LOW | Our route bindings. |
