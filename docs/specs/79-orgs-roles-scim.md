@@ -37,7 +37,7 @@ Non-goals:
 - No `@request.auth.hasRole(org, "admin")` helper. That needs a resolver change. The issue text should be edited to say "rule snippets" instead.
 - No custom permission strings in v1 (see section 2.3).
 - No per-org billing, quotas, branding or custom domains.
-- No cross-org record sharing beyond the multi-org relation shown in 3.6.
+- No cross-org record sharing beyond the multi-org relation shown in 3.5.
 - No automatic tenant isolation of the whole database. Isolation is per collection that opts in.
 
 ### 79b: invitations
@@ -101,7 +101,7 @@ Index: unique on `slug`; non-unique on `parent`.
 | `source` | select `manual`, `invitation`, `scim`, `sso` | who created the row. Lets SCIM manage only what it made |
 | `created`, `updated` | autodate | |
 
-Indexes (all three are needed, section 3.8 has the evidence):
+Indexes (all three are needed, section 3.6 has the evidence):
 
 - unique on `(org, user)`: one membership per person per org, and it is the index the rule join uses.
 - on `user`: for "my orgs" and the auth-side rule form.
@@ -187,7 +187,7 @@ The membership-only form (no `status`) was run as form A below. The `status` cla
 | 3.2.1 list/view/create: `org._orgMembers_via_org.user ?= @request.auth.id` | alice sees only P1 doc; carol sees P1 and P2 docs; erin sees only P2; frank and guests see nothing. Create: carol in P1 OK, bob in P1 OK, bob in P2 denied (400), frank in P1 denied (400). **Works.** |
 | 3.2.2 update/delete admin form: `org._orgMembers_via_org.user ?= @request.auth.id && (org._orgMembers_via_org.role ?= "admin" \|\| org._orgMembers_via_org.role ?= "owner")` | bob updates P1 doc: 200. carol updates the P1 doc: **404**, although P1 has an admin (bob) and carol is an admin of P2. carol updates the P2 doc: 200. dave (viewer) and erin (member, other org): 404. alice deletes P1 doc: 204; carol deletes it: 404. **Works, and the same-row property is proven by the carol case.** |
 | 3.2.3 same intent with `@collection` and an alias: `@collection._orgMembers:m.org ?= org && @collection._orgMembers:m.user ?= @request.auth.id && @collection._orgMembers:m.role ?= "admin"` | Same outcomes as 3.2.1 and 3.2.2 for list, update and create. **Works.** It is longer and its join is not tied to the record's path, so prefer 3.2.1 for new work. |
-| 3.2.4 auth-side back-relation: `@request.auth._orgMembers_via_user.org ?= org` | alice sees P1 only; carol sees both; erin P2; frank nothing. **Works.** It reads the same data from the user's side. It cannot also test the role of that same row against the record's org with a second `?=` shortcut, so use it for member-only rules. |
+| 3.2.4 auth-side back-relation: `@request.auth._orgMembers_via_user.org ?= org` | alice sees P1 only; carol sees both; erin P2; frank nothing. **Works.** It reads the same data from the user's side. |
 | 3.2.5 create by body org, admins only: `@request.auth.id != "" && @collection._orgMembers:m.org ?= @request.body.org && @collection._orgMembers:m.user ?= @request.auth.id && @collection._orgMembers:m.role ?= "admin"` | bob in P1: 200. bob in P2: 400. carol in P2 (admin there): 200. carol in P1 (member only): 400. **Works.** Use this form when the create must depend on the submitted org, not the stored one. |
 | 3.2.6 update that stops moving a record to an org you do not belong to: `<member rule> && (@request.body.org:isset = false \|\| @collection._orgMembers:n.org ?= @request.body.org && @collection._orgMembers:n.user ?= @request.auth.id)` | carol (member of P1 and P2) moves a P1 record to P2: 200. erin (P2 only) moves a P2 record to P1: **404**. erin editing a field without `org` in the body: 200. **Works.** Use a distinct alias (`n`) from the one in the create rule. |
 | 3.2.7 suspended members: `org._orgMembers_via_org.user ?= @request.auth.id && org._orgMembers_via_org.status ?= "active"` | erin's P2 row is `suspended` while carol's is `active` in the same org. erin sees nothing, carol sees both docs. **Works** (same-row again). |
