@@ -15,8 +15,8 @@ cd "$(dirname "$0")/.."
 : "${CLAVIGER_TEST_PG_URL:?set CLAVIGER_TEST_PG_URL to a Postgres 16+ server on which the role may CREATE DATABASE}"
 export CLAVIGER_TEST_DB=postgres
 
-MIN_PASS="${PG_SUITES_MIN_PASS:-2500}"
-PACKAGES="${PG_SUITES_PACKAGES:-./core ./apis ./oidc ./cmd ./forms ./mails ./plugins/jsvm ./plugins/migratecmd}"
+MIN_PASS="${PG_SUITES_MIN_PASS:-4000}"
+PACKAGES="${PG_SUITES_PACKAGES:-./tests ./core ./apis ./oidc ./cmd ./forms ./mails ./plugins/jsvm ./plugins/migratecmd}"
 SKIP_FILE=tests/postgres_skip.txt
 
 skip_regex="$(grep -v '^[[:space:]]*#' "$SKIP_FILE" | awk -F'\t' 'NF>=2 {printf "%s%s", sep, $1; sep="|"}')"

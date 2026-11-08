@@ -163,7 +163,7 @@ The tests that cannot pass on Postgres are listed in `tests/postgres_skip.txt`, 
 ### Next milestones
 
 - **M5, `claviger migrate-db`.** The row copy of the test fixture converter (`copyFixtureRows` and `adaptFixtureValue` in `tests/app_postgres.go`) is the prototype: collections first (so the tables, indexes and views are built for Postgres), then the rows of every table in `rowid` order, with SQLite's loose values adapted to the column types (0/1 to boolean, numeric text to double, empty JSON to `NULL`, non-string values in text columns to text). `_params.value` is `TEXT` on Postgres, `_collections` is copied as stored, and the zip backups, `auxiliary.db` and `_migrations` are not copied. Verify with the per-table row counts and the `claviger keys check`.
-- **M6, the CI matrix.** Today one `postgres` job runs `tests/pgtests` and the regular suites through `scripts/test_postgres_suites.sh` (about 2 minutes on a laptop). M6 turns that into a SQLite/Postgres matrix (also Postgres 17), runs the suites that are not selected yet (`tools/...` do not use a database), and shrinks `tests/postgres_skip.txt`.
+- **M6, the CI matrix.** Today one `postgres` job runs `tests/pgtests` and the regular suites through `scripts/test_postgres_suites.sh` (about 4200 passing tests, 3 to 4 minutes on a laptop). M6 turns that into a SQLite/Postgres matrix (also Postgres 17), runs the suites that are not selected yet (`tools/...` do not use a database), and shrinks `tests/postgres_skip.txt`.
 
 ### For developers
 

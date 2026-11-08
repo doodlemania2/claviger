@@ -50,4 +50,5 @@ TestSQLRun	asserts SQLite error text and column types; the Postgres behavior is 
 
 # --- one pool, and a watcher that needs the SQLite data dir -----------------------------------
 TestBaseAppDBDualBuilder	checks the separate read and write pools of SQLite; Postgres uses one pool
+TestNotifyWatcher_CollectionsUpdate	cross process collections reload through pb_data/.pb_notify files; a multi replica concern (M7), also flaky on macOS (fsnotify duplicate events)
 TestNotifyWatcher_SettingsUpdate	cross process settings reload through pb_data/.pb_notify files; a multi replica concern (M7), also flaky on macOS
