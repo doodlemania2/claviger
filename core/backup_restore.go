@@ -143,6 +143,9 @@ func (app *BaseApp) RestoreBackup(ctx context.Context, name string) error {
 			return fmt.Errorf("data.db file is missing or invalid: %w", err)
 		}
 
+		// the verification manifest is metadata and not part of pb_data
+		_ = os.Remove(filepath.Join(extractedDataDir, BackupManifestName))
+
 		oldTempDataDir := filepath.Join(localTempDir, "old_pb_data_"+security.PseudorandomString(8))
 
 		replaceErr := e.App.RunInTransaction(func(txApp App) error {

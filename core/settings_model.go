@@ -485,6 +485,13 @@ type BackupsConfig struct {
 	// This field works only when the cron config has valid cron expression.
 	CronMaxKeep int `form:"cronMaxKeep" json:"cronMaxKeep"`
 
+	// DisableVerify turns off the automatic restore verification that
+	// runs after each auto (cron) backup.
+	//
+	// It is intentionally a "disable" flag so that settings persisted
+	// by older versions (without this field) keep verification ON.
+	DisableVerify bool `form:"disableVerify" json:"disableVerify"`
+
 	// S3 is an optional S3 storage config specifying where to store the app backups.
 	S3 S3Config `form:"s3" json:"s3"`
 }

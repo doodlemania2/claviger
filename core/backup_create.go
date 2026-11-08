@@ -161,6 +161,10 @@ func createZip(be *BackupEvent, tempZipPath string) error {
 	for _, name := range be.Exclude {
 		excluded.Set(normalizePathExclude(name), struct{}{})
 	}
+	// never copy a stale manifest (eg. left by an old binary's restore)
+	excluded.Set(normalizePathExclude(BackupManifestName), struct{}{})
+
+	manifest := newBackupManifest()
 
 	// init deleted files tracker
 	// ---------------------------------------------------------------
@@ -225,6 +229,7 @@ func createZip(be *BackupEvent, tempZipPath string) error {
 		_ = os.Remove(tempDataDBPath)
 		return err
 	}
+	manifest.addDatabase(be.App, dataDBFilename, tempDataDBPath)
 	_ = os.Remove(tempDataDBPath)
 
 	excluded.Set(normalizePathExclude(dataDBFilename), struct{}{})
@@ -268,6 +273,7 @@ func createZip(be *BackupEvent, tempZipPath string) error {
 		_ = os.Remove(tempAuxDBPath)
 		return err
 	}
+	manifest.addDatabase(be.App, auxDBFilename, tempAuxDBPath)
 	_ = os.Remove(tempAuxDBPath)
 
 	excluded.Set(normalizePathExclude(auxDBFilename), struct{}{})
@@ -286,6 +292,11 @@ func createZip(be *BackupEvent, tempZipPath string) error {
 	err = zipper.copyDirToZip(os.DirFS(be.App.DataDir()), excluded)
 	if err != nil {
 		return err
+	}
+
+	// the manifest is best effort - it must never fail the backup
+	if err := zipper.copyBytesToZip(BackupManifestName, manifest.encode()); err != nil {
+		be.App.Logger().Warn(logPrefix+"failed to write the backup manifest", slog.String("error", err.Error()))
 	}
 
 	return zipper.close()
@@ -370,6 +381,28 @@ func (z *zipWriter) copyFileToZip(localPath string, zipPath string) error {
 	defer f.Close()
 
 	_, err = io.Copy(fw, f)
+
+	return err
+}
+
+func (z *zipWriter) copyBytesToZip(zipPath string, content []byte) error {
+	z.mu.Lock()
+	defer z.mu.Unlock()
+
+	if z.closed {
+		return errors.New("zip writer is already closed")
+	}
+
+	fw, err := z.w.CreateHeader(&zip.FileHeader{
+		Name:     zipPath,
+		Method:   zip.Deflate,
+		Modified: time.Now(),
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = fw.Write(content)
 
 	return err
 }
