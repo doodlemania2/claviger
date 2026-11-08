@@ -95,6 +95,7 @@ type BaseApp struct {
 	onServe          *hook.Hook[*ServeEvent]
 	onTerminate      *hook.Hook[*TerminateEvent]
 	onBackupCreate   *hook.Hook[*BackupEvent]
+	onAuditEntry     *hook.Hook[*AuditEntryEvent]
 	onBackupRestore  *hook.Hook[*BackupEvent]
 
 	// db model hooks
@@ -257,6 +258,7 @@ func (app *BaseApp) initHooks() {
 	app.onServe = &hook.Hook[*ServeEvent]{}
 	app.onTerminate = &hook.Hook[*TerminateEvent]{}
 	app.onBackupCreate = &hook.Hook[*BackupEvent]{}
+	app.onAuditEntry = &hook.Hook[*AuditEntryEvent]{}
 	app.onBackupRestore = &hook.Hook[*BackupEvent]{}
 
 	// db model hooks
@@ -427,6 +429,9 @@ func (app *BaseApp) Bootstrap() error {
 		if err := os.MkdirAll(app.DataDir(), os.ModePerm); err != nil {
 			return err
 		}
+
+		// fork-local: must precede the DB connections (see core/telemetry.go)
+		app.initTelemetry()
 
 		if err := app.initDataDB(); err != nil {
 			return err
@@ -891,6 +896,10 @@ func (app *BaseApp) OnServe() *hook.Hook[*ServeEvent] {
 
 func (app *BaseApp) OnTerminate() *hook.Hook[*TerminateEvent] {
 	return app.onTerminate
+}
+
+func (app *BaseApp) OnAuditEntry() *hook.Hook[*AuditEntryEvent] {
+	return app.onAuditEntry
 }
 
 func (app *BaseApp) OnBackupCreate() *hook.Hook[*BackupEvent] {
@@ -1487,6 +1496,7 @@ func (app *BaseApp) registerBaseHooks() {
 	app.registerAuthOriginHooks()
 	app.registerNotifyWatcherHooks()
 	app.registerWebAuthnCredentialHooks()
+	app.registerAuditHooks()
 }
 
 // getLoggerMinLevel returns the logger min level based on the

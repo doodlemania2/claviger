@@ -128,6 +128,7 @@ func verifyBackupContent(app core.App, path string) error {
 		"data.db",
 		"auxiliary.db",
 		".gitignore",
+		core.BackupManifestName, // Claviger: verification manifest
 	}
 
 	entries, err := os.ReadDir(dir)

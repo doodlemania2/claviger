@@ -736,6 +736,14 @@ type App interface {
 	// Note that the app could be terminated abruptly without awaiting the hook completion.
 	OnTerminate() *hook.Hook[*TerminateEvent]
 
+	// OnAuditEntry hook is triggered right before an audit log entry
+	// is written to the _auditLog collection (fork-local, see #74).
+	//
+	// Handlers can enrich (e.Entry.Meta, ...) or skip the entry (by not calling e.Next()).
+	// If the audited change is part of a transaction, e.App is the transaction app
+	// and the entry is written in the same transaction.
+	OnAuditEntry() *hook.Hook[*AuditEntryEvent]
+
 	// OnBackupCreate hook is triggered on each [App.CreateBackup] call.
 	OnBackupCreate() *hook.Hook[*BackupEvent]
 

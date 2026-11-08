@@ -73,15 +73,23 @@ func (l *webauthnLoginBeginLimiters) maybeClean() {
 	}
 }
 
-// checkWebAuthnLoginBeginLimits enforces both budgets and returns the same 429
-// ApiError shape the upstream rate limiter produces. It ignores
-// Settings.RateLimits on purpose.
-func checkWebAuthnLoginBeginLimits(e *core.RequestEvent, identity string) error {
+// webauthnLoginBeginLimitersFor returns the process-wide limiters.
+func webauthnLoginBeginLimitersFor(e *core.RequestEvent) *webauthnLoginBeginLimiters {
 	limiters := e.App.Store().GetOrSet(webauthnLoginBeginLimitersKey, func() any {
 		return newWebAuthnLoginBeginLimiters()
 	}).(*webauthnLoginBeginLimiters)
 
 	limiters.maybeClean()
+
+	return limiters
+}
+
+// checkWebAuthnLoginBeginIPLimit enforces only the per-IP budget. The
+// discoverable (usernameless) login-begin has no identity in the request, so
+// it spends from the very same per-IP budget as identity-bound login-begin:
+// the two cannot be combined to exceed the cap.
+func checkWebAuthnLoginBeginIPLimit(e *core.RequestEvent) error {
+	limiters := webauthnLoginBeginLimitersFor(e)
 
 	// same client IP resolution as upstream's checkRateLimit (honors the
 	// trusted proxy settings); like upstream, an empty key is not throttled
@@ -90,6 +98,19 @@ func checkWebAuthnLoginBeginLimits(e *core.RequestEvent, identity string) error 
 			return e.TooManyRequestsError("", errors.New("triggered rate limit rule: webauthn login-begin per IP"))
 		}
 	}
+
+	return nil
+}
+
+// checkWebAuthnLoginBeginLimits enforces both budgets and returns the same 429
+// ApiError shape the upstream rate limiter produces. It ignores
+// Settings.RateLimits on purpose.
+func checkWebAuthnLoginBeginLimits(e *core.RequestEvent, identity string) error {
+	if err := checkWebAuthnLoginBeginIPLimit(e); err != nil {
+		return err
+	}
+
+	limiters := webauthnLoginBeginLimitersFor(e)
 
 	// hash the key to bound its size regardless of what is submitted
 	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(identity))))

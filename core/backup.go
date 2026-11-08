@@ -72,6 +72,12 @@ func (app *BaseApp) registerAutobackupHooks() {
 					slog.String("name", name),
 					slog.Bool(OTelAlwaysAttr, true),
 				)
+
+				// restore-verify the fresh archive in the background
+				// (the backup lock is already released at this point)
+				if !app.Settings().Backups.DisableVerify {
+					startAutoBackupVerify(app, name)
+				}
 			}
 
 			maxKeep := app.Settings().Backups.CronMaxKeep

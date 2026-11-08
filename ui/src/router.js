@@ -1,5 +1,6 @@
 import { pageSuperuserLogin } from "@/auth/pageSuperuserLogin";
 import { pageCollections } from "@/collections/pageCollections";
+import { pageAudit } from "@/audit/pageAudit";
 import { pageLogs } from "@/logs/pageLogs";
 import { pageApplicationSettings } from "@/settings/application/pageApplicationSettings";
 import { pageBackupsSettings } from "@/settings/backups/pageBackupsSettings";
@@ -168,6 +169,7 @@ app.routes.blank("#/auth/oauth2-redirect-failure", async (route) => {
 
 app.routes.superuserOnly("#/collections", pageCollections);
 app.routes.superuserOnly("#/logs", pageLogs);
+app.routes.superuserOnly("#/audit", pageAudit);
 app.routes.superuserOnly("#/settings", pageApplicationSettings);
 app.routes.superuserOnly("#/settings/mail", pageMailSettings);
 app.routes.superuserOnly("#/settings/storage", pageStorageSettings);

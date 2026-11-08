@@ -68,6 +68,11 @@ window.app.store = store({
             label: "Logs",
         },
         {
+            href: "#/audit",
+            icon: "ri-shield-check-line",
+            label: "Audit log",
+        },
+        {
             href: "#/settings",
             icon: "ri-settings-3-line",
             label: "Settings",

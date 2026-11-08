@@ -53,7 +53,7 @@ func recordConfirmPasskeyResetBegin(e *core.RequestEvent) error {
 		credentials: existingCreds,
 	}
 
-	options, session, err := wa.BeginRegistration(user)
+	options, session, err := wa.BeginRegistration(user, webauthnRegistrationOptions(collection)...)
 	if err != nil {
 		return e.InternalServerError("Failed to begin WebAuthn registration.", err)
 	}
@@ -98,7 +98,7 @@ func recordConfirmPasskeyResetFinish(e *core.RequestEvent) error {
 	}
 	defer deleteWebAuthnSession(e.App, form.SessionToken)
 
-	if entry.RecordId != record.Id {
+	if entry.Purpose != webauthnPurposeDefault || entry.RecordId != record.Id {
 		return e.BadRequestError("Session does not match the token owner.", nil)
 	}
 

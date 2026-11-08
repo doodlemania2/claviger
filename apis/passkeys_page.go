@@ -22,6 +22,8 @@ import (
 //	import { withPasskeys } from 'https://auth.example.com/api/passkeys-client.js'
 //	const pb = withPasskeys(new PocketBase('https://auth.example.com'))
 //	await pb.collection('users').authWithPasskey('alice@example.com')
+//	await pb.collection('users').authWithPasskeyAutofill(abortSignal) // conditional UI, no identity
+//	await pb.collection('users').stepUpPasskey() // fresh passkey assertion for gated actions
 //	await pb.collection('users').registerPasskey('My MacBook')
 //	await pb.collection('users').listPasskeys()
 //	await pb.collection('users').renamePasskey(id, 'New name')
@@ -128,12 +130,33 @@ const encodeAssertion = (cred) => ({
 export const helpers = { b64uToBuf, bufToB64u, decodePublicKeyOptions, encodeAttestation, encodeAssertion };
 
 export class PasskeysClient {
-  constructor({ baseUrl, collection, authToken } = {}) {
+  constructor({ baseUrl, collection, authToken, onToken } = {}) {
     if (!baseUrl) throw new Error("baseUrl is required");
     if (!collection) throw new Error("collection is required");
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.collection = collection;
     this.authToken = authToken || null;
+    // called with the replacement token after a successful step-up
+    this.onToken = onToken || null;
+  }
+
+  _collectionPath() {
+    return this.baseUrl + "/api/collections/" + encodeURIComponent(this.collection);
+  }
+
+  // methods() returns the collection's auth methods (includes webauthn.discoverable
+  // and webauthn.passkeyOnly).
+  methods() {
+    return this._fetch(this._collectionPath() + "/auth-methods", { method: "GET" });
+  }
+
+  // requestReset(email) asks for the emailed passkey recovery link. The server
+  // answers 204 whether or not the address is registered.
+  requestReset(email) {
+    return this._fetch(this._collectionPath() + "/request-passkey-reset", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
   }
 
   setAuthToken(token) { this.authToken = token || null; }
@@ -182,6 +205,53 @@ export class PasskeysClient {
     });
   }
 
+  // autofillLogin() runs a usernameless sign-in through the browser's
+  // conditional UI (an <input autocomplete="username webauthn"> offers the
+  // saved passkeys). It resolves once the user picks one, and rejects with an
+  // AbortError if the signal is aborted. Needs webauthn.discoverable on the
+  // collection and a browser with conditional mediation.
+  async autofillLogin(signal) {
+    const begin = await this._fetch(this._path() + "/login-begin-discoverable", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    let publicKey = begin.options || begin.publicKey || begin;
+    if (publicKey && publicKey.publicKey) publicKey = publicKey.publicKey;
+    publicKey = decodePublicKeyOptions(publicKey);
+    const cred = await navigator.credentials.get({ publicKey, mediation: "conditional", signal });
+    return this._fetch(this._path() + "/login-finish-discoverable", {
+      method: "POST",
+      body: JSON.stringify(Object.assign(
+        { sessionToken: begin.sessionToken },
+        encodeAssertion(cred),
+      )),
+    });
+  }
+
+  // stepUp() proves a fresh passkey assertion for the signed-in user and
+  // switches this client (and the onToken callback) to the replacement token.
+  // Gated actions, such as deleting a passkey, require one made in the last
+  // few minutes.
+  async stepUp() {
+    const begin = await this._fetch(this._path() + "/step-up-begin", { method: "POST" });
+    let publicKey = begin.options || begin.publicKey || begin;
+    if (publicKey && publicKey.publicKey) publicKey = publicKey.publicKey;
+    publicKey = decodePublicKeyOptions(publicKey);
+    const cred = await navigator.credentials.get({ publicKey });
+    const res = await this._fetch(this._path() + "/step-up-finish", {
+      method: "POST",
+      body: JSON.stringify(Object.assign(
+        { sessionToken: begin.sessionToken },
+        encodeAssertion(cred),
+      )),
+    });
+    if (res && res.token) {
+      this.authToken = res.token;
+      if (this.onToken) this.onToken(res.token);
+    }
+    return res;
+  }
+
   async register(name) {
     const begin = await this._fetch(this._path() + "/register-begin", { method: "POST" });
     let publicKey = begin.options || begin.publicKey || begin;
@@ -208,10 +278,20 @@ export class PasskeysClient {
     });
   }
 
-  remove(credentialId) {
-    return this._fetch(this._path() + "/credentials/" + encodeURIComponent(credentialId), {
-      method: "DELETE",
-    });
+  // remove() deletes a passkey. The server wants a passkey assertion from the
+  // last few minutes first; when it asks (403 passkey_step_up_required) this
+  // runs the step-up prompt once and retries.
+  async remove(credentialId) {
+    const url = this._path() + "/credentials/" + encodeURIComponent(credentialId);
+    try {
+      return await this._fetch(url, { method: "DELETE" });
+    } catch (err) {
+      const code = err && err.response && err.response.data && err.response.data.passkey
+        && err.response.data.passkey.code;
+      if (err.status !== 403 || code !== "passkey_step_up_required") throw err;
+      await this.stepUp();
+      return this._fetch(url, { method: "DELETE" });
+    }
   }
 
   static isSupported() {
@@ -236,6 +316,9 @@ export function withPasskeys(pb) {
       baseUrl: pb.baseUrl || pb.baseURL || "",
       collection: collectionName,
       authToken: pb.authStore && pb.authStore.token ? pb.authStore.token : null,
+      onToken: (token) => {
+        if (pb.authStore && pb.authStore.save) pb.authStore.save(token, pb.authStore.record || pb.authStore.model);
+      },
     });
 
     service.authWithPasskey = async function (identity) {
@@ -246,6 +329,15 @@ export function withPasskeys(pb) {
       return result;
     };
 
+    service.authWithPasskeyAutofill = async function (signal) {
+      const result = await client().autofillLogin(signal);
+      if (result && result.token && result.record && pb.authStore && pb.authStore.save) {
+        pb.authStore.save(result.token, result.record);
+      }
+      return result;
+    };
+
+    service.stepUpPasskey   = function ()    { return client().stepUp(); };
     service.registerPasskey = function (name) { return client().register(name); };
     service.listPasskeys    = function ()    { return client().list(); };
     service.renamePasskey   = function (id, n) { return client().rename(id, n); };
@@ -303,9 +395,22 @@ const passkeysPageHTML = `<!DOCTYPE html>
     <input type="text" id="identity" autocomplete="username webauthn" autofocus>
   </label>
   <button id="btnLogin">Sign in with passkey</button>
-  <p class="muted" style="margin-top:1.5em;">
+  <p class="muted" id="pwHint" style="margin-top:1.5em;">
     No passkey yet? <a href="#" id="linkPasswordLogin">Sign in with password to register one.</a>
   </p>
+
+  <div id="recovery" hidden>
+    <p class="muted" style="margin-top:1.5em;">
+      Lost your passkey, or setting up for the first time?
+      <a href="#" id="linkRecovery">Email me a link to set one up.</a>
+    </p>
+    <div id="recoveryForm" hidden>
+      <label>Email
+        <input type="email" id="recoveryEmail" autocomplete="email">
+      </label>
+      <button id="btnRecovery">Send link</button>
+    </div>
+  </div>
 
   <div id="pwForm" hidden>
     <hr>
@@ -355,11 +460,70 @@ function client() {
     baseUrl: BASE_URL,
     collection: COLLECTION,
     authToken: auth ? auth.token : null,
+    // a step-up replaces the token; keep the stored session in step
+    onToken: (token) => {
+      const cur = loadAuth();
+      if (cur) saveAuth({ token, record: cur.record });
+    },
   });
+}
+
+let autofillAbort = null;
+
+// Conditional UI: the identity input carries autocomplete="username webauthn",
+// so when the collection allows usernameless sign-in the browser offers saved
+// passkeys right in the field. Picking one signs in with no typing.
+async function startAutofill() {
+  if (autofillAbort) return;
+  try {
+    if (!window.PublicKeyCredential || !PublicKeyCredential.isConditionalMediationAvailable) return;
+    if (!(await PublicKeyCredential.isConditionalMediationAvailable())) return;
+    autofillAbort = new AbortController();
+    const result = await client().autofillLogin(autofillAbort.signal);
+    autofillAbort = null;
+    saveAuth({ token: result.token, record: result.record });
+    render();
+    showMsg("Signed in.", "ok");
+  } catch (e) {
+    autofillAbort = null;
+    if (e && e.name === "AbortError") return;
+    // autofill is best effort: stay quiet and leave the manual button working
+  }
+}
+
+function stopAutofill() {
+  if (autofillAbort) { autofillAbort.abort(); autofillAbort = null; }
+}
+
+async function setupMethods() {
+  try {
+    const methods = await client().methods();
+    const wa = (methods && methods.webauthn) || {};
+    if (wa.passkeyOnly) {
+      // no password to fall back on: offer the emailed link instead
+      $("pwHint").hidden = true;
+      $("pwForm").hidden = true;
+      $("recovery").hidden = false;
+    }
+    if (wa.discoverable) startAutofill();
+  } catch (e) {
+    // leave the defaults in place
+  }
+}
+
+async function sendRecovery() {
+  showMsg("");
+  try {
+    await client().requestReset($("recoveryEmail").value);
+    showMsg("If that address has an account, a link is on its way.", "ok");
+  } catch (e) {
+    showMsg("Could not send the link: " + e.message, "err");
+  }
 }
 
 async function loginWithPasskey() {
   showMsg("");
+  stopAutofill();
   try {
     const result = await client().login($("identity").value);
     saveAuth({ token: result.token, record: result.record });
@@ -421,6 +585,7 @@ async function loadCredentials() {
       name.textContent = c.name || "Unnamed passkey";
       const sub = document.createElement("small");
       sub.textContent = (c.created ? "Registered: " + c.created : "") +
+        (c.lastUsed ? " · Last used: " + c.lastUsed : " · Not used yet") +
         (c.signCount !== undefined ? " · Uses: " + c.signCount : "");
       meta.appendChild(name);
       meta.appendChild(sub);
@@ -473,12 +638,15 @@ $("btnLogin").addEventListener("click", loginWithPasskey);
 $("btnPwLogin").addEventListener("click", passwordLogin);
 $("btnRegister").addEventListener("click", registerPasskey);
 $("linkPasswordLogin").addEventListener("click", (e) => { e.preventDefault(); $("pwForm").hidden = false; });
-$("linkLogout").addEventListener("click", (e) => { e.preventDefault(); saveAuth(null); render(); });
+$("linkLogout").addEventListener("click", (e) => { e.preventDefault(); saveAuth(null); render(); setupMethods(); });
+$("linkRecovery").addEventListener("click", (e) => { e.preventDefault(); $("recoveryForm").hidden = false; });
+$("btnRecovery").addEventListener("click", sendRecovery);
 
 if (!window.PublicKeyCredential) {
   showMsg("This browser does not support WebAuthn / passkeys.", "err");
 }
 render();
+if (!loadAuth()) setupMethods();
 </script>
 </body>
 </html>

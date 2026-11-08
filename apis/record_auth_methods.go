@@ -23,6 +23,14 @@ type mfaResponse struct {
 
 type webauthnResponse struct {
 	Enabled bool `json:"enabled"`
+
+	// Discoverable reports that usernameless (conditional UI / autofill)
+	// sign-in is available.
+	Discoverable bool `json:"discoverable"`
+
+	// PasskeyOnly reports that passkeys are the collection's only sign-in
+	// method, so clients should not offer password, OAuth2 or OTP forms.
+	PasskeyOnly bool `json:"passkeyOnly"`
 }
 
 type passwordResponse struct {
@@ -105,7 +113,9 @@ func recordAuthMethods(e *core.RequestEvent) error {
 			Enabled: collection.MFA.Enabled,
 		},
 		WebAuthn: webauthnResponse{
-			Enabled: collection.WebAuthn.Enabled,
+			Enabled:      collection.WebAuthn.Enabled,
+			Discoverable: collection.WebAuthn.Enabled && collection.WebAuthn.Discoverable,
+			PasskeyOnly:  collection.IsPasskeyOnly(),
 		},
 	}
 

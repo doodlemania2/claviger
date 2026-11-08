@@ -430,7 +430,7 @@ func TestRecordAuthMethodsWebAuthn(t *testing.T) {
 			},
 			ExpectedStatus: 200,
 			ExpectedContent: []string{
-				`"webauthn":{"enabled":false}`,
+				`"webauthn":{"enabled":false,"discoverable":false,"passkeyOnly":false}`,
 			},
 			ExpectedEvents: map[string]int{"*": 0},
 		},
@@ -450,7 +450,34 @@ func TestRecordAuthMethodsWebAuthn(t *testing.T) {
 			},
 			ExpectedStatus: 200,
 			ExpectedContent: []string{
-				`"webauthn":{"enabled":true}`,
+				`"webauthn":{"enabled":true,"discoverable":false,"passkeyOnly":false}`,
+			},
+			ExpectedEvents: map[string]int{"*": 0},
+		},
+		{
+			Name:   "webauthn passkey-only and discoverable",
+			Method: http.MethodGet,
+			URL:    "/api/collections/users/auth-methods",
+			BeforeTestFunc: func(t testing.TB, app *tests.TestApp, e *core.ServeEvent) {
+				usersCol, err := app.FindCollectionByNameOrId("users")
+				if err != nil {
+					t.Fatal(err)
+				}
+				usersCol.WebAuthn.Enabled = true
+				usersCol.WebAuthn.Discoverable = true
+				usersCol.PasswordAuth.Enabled = false
+				usersCol.OAuth2.Enabled = false
+				usersCol.OTP.Enabled = false
+				usersCol.MFA.Enabled = false
+				usersCol.Fields.GetByName(core.FieldNameEmail).(*core.EmailField).Required = true
+				if err := app.Save(usersCol); err != nil {
+					t.Fatal(err)
+				}
+			},
+			ExpectedStatus: 200,
+			ExpectedContent: []string{
+				`"password":{"identityFields":[],"enabled":false}`,
+				`"webauthn":{"enabled":true,"discoverable":true,"passkeyOnly":true}`,
 			},
 			ExpectedEvents: map[string]int{"*": 0},
 		},
@@ -538,7 +565,7 @@ func TestRecordWebAuthnDeleteCredential(t *testing.T) {
 			Method: http.MethodDelete,
 			URL:    "/api/collections/users/auth-with-webauthn/credentials/nonexistent",
 			Headers: map[string]string{
-				"Authorization": "eyJhbGciOiJIUzI1NiJ9.eyJpZCI6IjRxMXhsY2xtZmxva3UzMyIsInR5cGUiOiJhdXRoIiwiY29sbGVjdGlvbklkIjoiX3BiX3VzZXJzX2F1dGhfIiwiZXhwIjoyNTI0NjA0NDYxLCJyZWZyZXNoYWJsZSI6dHJ1ZX0.ZT3F0Z3iM-xbGgSG3LEKiEzHrPHr8t8IuHLZGGNuxLo",
+				"Authorization": freshUserToken(t),
 			},
 			BeforeTestFunc: func(t testing.TB, app *tests.TestApp, e *core.ServeEvent) {
 				usersCol, err := app.FindCollectionByNameOrId("users")

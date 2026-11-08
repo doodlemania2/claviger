@@ -13,6 +13,12 @@ func DefaultDBConnect(dbPath string) (*dbx.DB, error) {
 	// is set in case it hasn't been already set by another connection.
 	pragmas := "?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=journal_size_limit(200000000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-32000)&_defensive=1"
 
+	// fork-local: instrumented driver while traces/metrics are active
+	// (nil, nil otherwise — see core/telemetry.go).
+	if db, err := openTelemetryDB(dbPath, pragmas); db != nil || err != nil {
+		return db, err
+	}
+
 	db, err := dbx.Open("sqlite", dbPath+pragmas)
 	if err != nil {
 		return nil, err

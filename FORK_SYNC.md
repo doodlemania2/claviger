@@ -91,12 +91,21 @@ Files the fork modifies that upstream also owns (expect conflicts here):
 | --- | --- | --- |
 | `go.mod` / `go.sum` | MEDIUM | Take upstream's, then re-add `go-webauthn/webauthn` and the OTLP/grpc pins. Run `go mod tidy`. |
 | `core/collection_model.go` | **HIGH** | `MarshalJSON` redaction. See the checklist. |
-| `core/collection_model_auth_options.go` | MEDIUM | Our addition is the `WebAuthn` field. |
-| `core/app.go`, `core/base.go` | LOW/MEDIUM | Our hook methods and fields. `core/base.go` also has the OTLP `slog` tee and the logger sink-failure tally inside `runLogsWrite`. |
-| `core/events.go`, `core/record_tokens.go`, `pocketbase.go` | LOW | Mostly import-order conflicts. |
+| `core/collection_model_auth_options.go` | MEDIUM | Our addition is the `WebAuthn` field (`WebAuthnConfig.Discoverable`) and one `o.validateSignInMethods(cv)` call in `validate` (logic lives in the fork-only `core/collection_webauthn_validate.go`). |
+| `core/app.go`, `core/base.go` | LOW/MEDIUM | Our hook methods and fields (incl. `OnAuditEntry`, #74: interface method, `onAuditEntry` field/init/accessor, and `app.registerAuditHooks()` at the end of `registerBaseHooks`). `core/base.go` also has the OTLP `slog` tee and the logger sink-failure tally inside `runLogsWrite`. |
+| `core/base.go` (traces/metrics) | LOW | One call, `app.initTelemetry()`, in `Bootstrap` just before `initDataDB` (#76). Must stay before the DB connections. |
+| `core/db_connect.go` | LOW | Four lines at the top of `DefaultDBConnect`: `openTelemetryDB` returns the instrumented driver only while telemetry is active (#76). |
+| `apis/base.go` | LOW | Two lines in `NewRouter`: `telemetryMiddleware()` bound first, and `bindMetricsApi` after `bindSQLApi` (#76). |
+| `core/events.go`, `core/record_tokens.go`, `pocketbase.go` | LOW | Mostly import-order conflicts. `core/record_tokens.go` also carries `TokenClaimPasskeyAt` and `NewPasskeyAuthToken` (passkey step-up, #73). |
 | `tests/app.go`, `tests/api.go` | LOW | Race fix (#49): `EventCallsSnapshot()` in `tests/app.go`, and `tests/api.go` reads events through it instead of `EventCalls`. Kept in the fork, not sent upstream. If upstream rewrites those reads, keep the snapshot call. |
-| `apis/record_auth.go` | LOW | Our route bindings. |
-| `core/collection_model_test.go` | LOW | JSON snapshot: keep the `webauthn` field and any new upstream `*ResetToken`/`*Template` fixture keys. |
+| `apis/record_auth.go` | LOW | Our route bindings, including the discoverable login and step-up routes and `RequireFreshPasskey` on credential delete (#73). |
+| `core/record_model.go` | LOW | Audit log (#74): `cascadeRecordDelete`/`deleteRefRecords` take a leading `ctx` and use `DeleteWithContext`/`SaveNoValidateWithContext`, so cascade deletes keep the audit actor. Re-apply if upstream touches those two functions. |
+| `apis/record_crud.go` | LOW | Audit log (#74): `form.SetContext(auditContext(e))` after both `NewRecordUpsert` calls and `DeleteWithContext(auditContext(...))` in `recordDelete`. Without them every API change is attributed to `system`. |
+| `apis/sql.go` | LOW | Audit log (#74): write queries mentioning `_auditLog` are rejected in `executeQuery`. |
+| `tests/api.go` | LOW | Audit log (#74): `OnAuditEntry` is dropped from the "no other events" check unless the scenario lists it. |
+| `apis/collection_test.go`, `apis/collection_import_test.go`, `core/collection_query_test.go` | LOW | System collection count is one higher again (`_auditLog`); the paging scenario in `collection_test.go` expects `_authOrigins` on page 2. |
+| `core/collection_model_test.go`, `plugins/migratecmd/migratecmd_test.go` | LOW | JSON snapshots: keep the `webauthn` field (incl. `discoverable`) and any new upstream `*ResetToken`/`*Template` fixture keys. |
+| `apis/record_auth_methods.go` | LOW | `webauthn` response gained `discoverable` and `passkeyOnly` (#73). |
 | `core/collection_query_test.go` | LOW | System collection count is upstream's plus one. |
 | `plugins/jsvm/binds_test.go` | LOW | Hook count. See the checklist. |
 | `.gitignore` | LOW | Keep both sides. |
@@ -109,6 +118,7 @@ Files the fork modifies that upstream also owns (expect conflicts here):
 - [ ] **Passkey reset token type.** `core/record_query.go` `FindAuthRecordByToken` must keep the fork's `case TokenTypePasskeyReset` (secret `PasskeyResetToken.Secret`); upstream has no such type and a merge can drop the case. Check with `grep -n TokenTypePasskeyReset core/record_query.go`, and run `go test -run 'PasskeyReset' ./core/... ./apis/...`. Without it every emailed reset link is rejected (#39).
 - [ ] **modernc SQLite.** `apis/TestSQLRun/single_write_query` expects `affectedRows: 1` for DDL. modernc reports 1, upstream's mattn reports 0. Keep the fork's value.
 - [ ] **`modernc_versions_check.go`** pins the expected sqlite/libc versions. Keep it in step with `go.mod` when they change.
+- [ ] **Audit log guards.** `core/audit_model.go` must stay intact after a merge: the `__pbAuditGuard__` model hooks (create only with the unexported writer context, never update/delete), the `_auditLog` collection update/delete guards, and the `OnRecord{Create,Update,Delete}Execute` capture hooks at priority 100 (they must stay *inside* upstream's priority-99 execute handlers). Run `go test -run 'Audit' ./core/... ./apis/...`. If upstream adds another write path for records that bypasses `Save`/`Delete`, it bypasses the audit too.
 - [ ] **`plugins/jsvm/binds_test.go`** asserts exact hook counts. If the merge adds or removes a hook on `core.App`, update the count (`TestHooksBindsCount`).
 - [ ] **`ui/dist` rebuild.** Use Node 24. `rm -rf ui/dist && cd ui && npm ci && ./node_modules/.bin/vite build`. Always `npm ci`, never `npm install` (npm 10 strips the `libc` fields from the lockfile and breaks the Linux CI install). Run vite directly, not `npm run build`. Then `git diff --quiet ui/package-lock.json`. Commit the regenerated `ui/dist`.
 - [ ] **Module path ldflag.** `Dockerfile` and `.goreleaser.yaml` use `-X github.com/doodlemania2/claviger.Version=`. A stale `-X` package is silently ignored by the linker, so the binary would report the default version. Verify with a built binary: `claviger --version`.
@@ -145,6 +155,23 @@ git push origin <tested-master-sha>:deploy/azure     # fast-forward only; no --f
 Git refuses a non-fast-forward push. If it refuses, stop and find out why; do not force it.
 
 Pushing `deploy/azure` does not deploy. Production deploys are a separate manual step in the private repo `doodlemania2/stfoa-auth` (start a dry run, then the deploy, then watch `/api/health`).
+
+## Fork-modified upstream files
+
+Upstream-owned files the fork edits. Re-check these on every sync merge (conflicts, and tests that assert exact output).
+
+| File | Fork change (issue) |
+| --- | --- |
+| `core/backup.go` | Auto backup starts a background restore verification after the heartbeat (#78). |
+| `core/backup_create.go` | Writes `.claviger_backup_manifest.json` (per-table row counts) into every archive; `zipWriter.copyBytesToZip` (#78). |
+| `core/backup_restore.go` | Drops the manifest from the extracted dir so it never lands in `pb_data` (#78). |
+| `core/settings_model.go` | `BackupsConfig.DisableVerify` (#78). Exact-JSON assertions in `core/settings_model_test.go` carry the field. |
+| `core/backup_test.go` | `verifyBackupContent` expects the manifest entry (#78). |
+| `apis/backup.go` | `POST /api/backups/{key}/verify`; list adds `verification`/`verifying`; delete clears the stored result (#78). |
+| `ui/src/settings/backups/backupsList.js`, `backupsForm.js` | Verification badge and button; auto-verify switch (#78). |
+| `plugins/jsvm/internal/types/generated/types.d.ts` | `BackupsConfig.disableVerify` (regenerates with `make jstypes`) (#78). |
+
+Fork-only files for #78: `core/backup_verify*.go`, `core/diskfree_*.go`.
 
 ## CI
 
