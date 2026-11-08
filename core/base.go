@@ -1499,6 +1499,7 @@ func (app *BaseApp) registerBaseHooks() {
 	app.registerTOTPHooks()
 	app.registerAuditHooks()
 	app.registerSessionHooks() // fork-local (#93)
+	app.registerWebhookHooks() // fork-local (#77)
 }
 
 // getLoggerMinLevel returns the logger min level based on the

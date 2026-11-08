@@ -24,6 +24,7 @@
 @import "./export.css";
 @import "./logs.css";
 @import "./audit.css";
+@import "./webhooks.css";
 @import "./map.css";
 @import "./recordSummary.css";
 @import "./recordFilePicker.css";

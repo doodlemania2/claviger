@@ -1,0 +1,15 @@
+/* Fork-local (Claviger #77): webhooks page */
+.page-webhooks {
+    .webhooks-table,
+    .webhook-deliveries-table {
+        width: 100%;
+    }
+    tr.active {
+        background: var(--secondaryAltColor, rgba(127, 127, 127, 0.1));
+    }
+}
+
+.webhook-modal .field-addon {
+    display: flex;
+    align-items: center;
+}

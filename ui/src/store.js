@@ -73,6 +73,11 @@ window.app.store = store({
             label: "Audit log",
         },
         {
+            href: "#/webhooks",
+            icon: "ri-webhook-line",
+            label: "Webhooks",
+        },
+        {
             href: "#/settings",
             icon: "ri-settings-3-line",
             label: "Settings",

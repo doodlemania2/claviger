@@ -78,6 +78,7 @@ import "./collections/oauth2/appleOptions";
 import "./logs/logsSettingsModal";
 import "./logs/logPreviewModal";
 import "./audit/auditEntryPreviewModal";
+import "./webhooks/webhookModal";
 import { appHeader } from "./base/appHeader";
 import { initRouter } from "./router";
 

@@ -61,6 +61,7 @@ var auditExcludedCollections = []string{
 	CollectionNameMFAs,
 	CollectionNameOTPs,
 	CollectionNameAuthOrigins,
+	CollectionNameWebhookDeliveries, // #77: bookkeeping rows of the webhook outbox
 }
 
 // auditNoiseFields are fields whose changes alone do not warrant an entry

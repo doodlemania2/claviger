@@ -172,6 +172,12 @@ Upstream-owned files the fork edits. Re-check these on every sync merge (conflic
 | `core/backup_test.go` | `verifyBackupContent` expects the manifest entry (#78). |
 | `apis/backup.go` | `POST /api/backups/{key}/verify`; list adds `verification`/`verifying`; delete clears the stored result (#78). |
 | `ui/src/settings/backups/backupsList.js`, `backupsForm.js` | Verification badge and button; auto-verify switch (#78). |
+| `core/base.go` | One call, `app.registerWebhookHooks()`, right after `app.registerAuditHooks()` in `registerBaseHooks` (#77). |
+| `core/audit_model.go` | `_webhookDeliveries` added to `auditExcludedCollections` (#77). |
+| `apis/base.go` | `bindWebhooksApi(app, apiGroup)` after `bindMetricsApi` (#77). |
+| `tools/telemetry/telemetry.go` | `webhookDeliveries` counter field and instrument (`claviger.webhook.deliveries`) (#77). |
+| `apis/collection_test.go`, `apis/collection_import_test.go`, `core/collection_query_test.go` | System collection count is two higher (`_webhooks`, `_webhookDeliveries`: 18 to 20); the paging scenario's page 2 now starts at `_auditLog` (#77). |
+| `ui/src/main.js`, `ui/src/router.js`, `ui/src/store.js`, `ui/src/css/_main.css` | Webhooks page import, route, header link, stylesheet (#77). |
 | `plugins/jsvm/internal/types/generated/types.d.ts` | `BackupsConfig.disableVerify` (regenerates with `make jstypes`) (#78). |
 | `apis/middlewares.go` | `loadAuthToken` hands tokens starting with `clv_` to `loadAPIKeyAuth`; the JWT path below is untouched (#95). |
 | `apis/base.go` | `bindAPIKeysApi(app, apiGroup)` (#95). |
@@ -208,6 +214,7 @@ Opt-in per account; deploying changes nobody's sign-in. Data lives in the `_totp
 - **Hidden from the API.** The records API unhides every field for superusers, so `registerTOTPHooks` re-hides all `_totps` fields in an `OnRecordEnrich` handler. Keep that handler on sync: without it any superuser session can read every TOTP secret.
 - **Recovery (lost authenticator and backup codes).** Anyone with shell access to the data directory runs `claviger superuser totp-disable <email>` (removes the enrollment and any pending MFA sessions), then signs in with the password and enrolls again. A superuser can also delete the row via the admin UI/API (`_totps`), audited. On Azure Container Apps, run it in the single replica with `/pb_data` mounted.
 - **Pitfalls to re-check on sync:** the `checkMFA` hunk above, `grep -n registerTOTPHooks core/base.go`, `go test -run 'TOTP' ./apis/ ./cmd/ ./tools/security/`.
+Fork-only files for #77 (webhooks): `core/webhooks*.go`, `migrations/1780000500_add_webhooks.go`, `apis/webhooks*.go`, `tools/telemetry/webhooks.go`, `ui/src/webhooks/`, `ui/src/css/webhooks.css`, `docs/webhooks.md`. Sync checks: `grep -n registerWebhookHooks core/base.go` and `go test -run Webhook ./core/... ./apis/...`. The enqueue handler is on `OnAuditEntry`, so it depends on the audit guards above staying intact; `OnRecordEnrich` on `_webhooks` re-hides the secrets after the records API un-hides every field for superusers.
 
 ## CI
 
