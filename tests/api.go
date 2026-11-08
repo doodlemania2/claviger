@@ -6,7 +6,6 @@ import (
 	"encoding/json/jsontext"
 	"fmt"
 	"io"
-	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -287,7 +286,7 @@ func (scenario *ApiScenario) test(t testing.TB) {
 			}
 		}
 
-		remainingEvents := maps.Clone(testApp.EventCalls)
+		remainingEvents := testApp.EventCallsSnapshot()
 
 		var noOtherEventsShouldRemain bool
 		for event, expectedNum := range scenario.ExpectedEvents {
@@ -305,7 +304,7 @@ func (scenario *ApiScenario) test(t testing.TB) {
 		}
 
 		if noOtherEventsShouldRemain && len(remainingEvents) > 0 {
-			t.Errorf("Missing expected remaining events:\n%#v\nAll triggered app events are:\n%#v", remainingEvents, testApp.EventCalls)
+			t.Errorf("Missing expected remaining events:\n%#v\nAll triggered app events are:\n%#v", remainingEvents, testApp.EventCallsSnapshot())
 		}
 
 		if scenario.AfterTestFunc != nil {

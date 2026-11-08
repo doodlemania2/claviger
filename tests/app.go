@@ -3,6 +3,7 @@ package tests
 
 import (
 	"io"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -55,6 +56,17 @@ func (t *TestApp) ResetEventCalls() {
 	defer t.mux.Unlock()
 
 	t.EventCalls = make(map[string]int)
+}
+
+// EventCallsSnapshot returns a copy of EventCalls taken under the app lock.
+//
+// Use it instead of reading EventCalls directly while hooks may still be
+// running in other goroutines.
+func (t *TestApp) EventCallsSnapshot() map[string]int {
+	t.mux.Lock()
+	defer t.mux.Unlock()
+
+	return maps.Clone(t.EventCalls)
 }
 
 func (t *TestApp) registerEventCall(name string) {
