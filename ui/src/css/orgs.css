@@ -1,0 +1,16 @@
+/* Fork-local (Claviger #79a): organizations page */
+.page-orgs {
+    .orgs-table,
+    .org-members-table {
+        width: 100%;
+    }
+    tr.active {
+        background: var(--secondaryAltColor, rgba(127, 127, 127, 0.1));
+    }
+    .org-rule {
+        margin-bottom: 6px;
+    }
+    .org-rule code {
+        word-break: break-all;
+    }
+}
