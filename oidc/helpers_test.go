@@ -309,7 +309,6 @@ type loginResult struct {
 	code  string
 	state string
 	pkce  pkce
-	sid   string
 	token string
 }
 

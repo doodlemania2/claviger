@@ -79,6 +79,7 @@ import "./logs/logsSettingsModal";
 import "./logs/logPreviewModal";
 import "./audit/auditEntryPreviewModal";
 import "./webhooks/webhookModal";
+import "./oidc/oidcClientModal";
 import { appHeader } from "./base/appHeader";
 import { initRouter } from "./router";
 
