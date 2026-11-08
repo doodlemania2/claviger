@@ -45,7 +45,7 @@ func bindSessionsApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 			return e.Next() // the ref validation reports it
 		}
 		if err := authorizeBan(e.Auth, target); err != nil {
-			return e.ForbiddenError(err.Error(), nil)
+			return e.ForbiddenError(strings.ToUpper(err.Error()[:1])+err.Error()[1:]+".", nil)
 		}
 		return e.Next()
 	})
@@ -55,10 +55,10 @@ func bindSessionsApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 // superusers, and nobody can ban themselves.
 func authorizeBan(actor, target *core.Record) error {
 	if actor == nil || !actor.IsSuperuser() {
-		return errors.New("Only superusers can ban accounts.")
+		return errors.New("only superusers can ban accounts")
 	}
 	if actor.Id == target.Id && actor.Collection().Id == target.Collection().Id {
-		return errors.New("You cannot ban your own account.")
+		return errors.New("you cannot ban your own account")
 	}
 	return nil
 }
@@ -348,7 +348,7 @@ func banCreate(e *core.RequestEvent) error {
 	}
 
 	if err := authorizeBan(e.Auth, target); err != nil {
-		return e.ForbiddenError(err.Error(), nil)
+		return e.ForbiddenError(strings.ToUpper(err.Error()[:1])+err.Error()[1:]+".", nil)
 	}
 
 	ban, err := e.App.FindFirstRecordByFilter(core.CollectionNameBans,
