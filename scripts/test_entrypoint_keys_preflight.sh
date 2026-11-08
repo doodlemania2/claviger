@@ -30,7 +30,9 @@ if [ "${1:-}" = "keys" ] || [ "${2:-}" = "keys" ]; then
             exit 1 ;;
         unknown) echo "Error: unknown command \"keys\" for \"claviger\"" >&2; exit 1 ;;
         crash) echo "panic: boom" >&2; exit 2 ;;
-        hang) sleep 120; exit 0 ;;
+        # exec: busybox timeout(1) signals only its direct child, and a sleep left
+        # behind would hold the output pipe open (the real binary is one process)
+        hang) exec sleep 120 ;;
     esac
 fi
 [ "${1:-}" = "serve" ] || [ "${2:-}" = "serve" ] || exit 0
