@@ -251,7 +251,7 @@ func TestWebAuthnCredentialsLockMigrationApplied(t *testing.T) {
 	if err := app.Bootstrap(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = app.ResetBootstrapState() })
+	t.Cleanup(func() { _ = app.ClearBootstrap() })
 	if err := app.RunAllMigrations(); err != nil {
 		t.Fatal(err)
 	}
