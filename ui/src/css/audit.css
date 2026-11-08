@@ -1,0 +1,29 @@
+/* Fork-local (Claviger #74): audit log view */
+.page-audit {
+    .audit-filters {
+        flex-wrap: wrap;
+        margin-left: auto;
+    }
+    .audit-filter {
+        min-width: 130px;
+        width: 160px;
+    }
+    .audit-table {
+        width: 100%;
+    }
+    .audit-diff-table {
+        width: 100%;
+        td {
+            word-break: break-word;
+            white-space: pre-wrap;
+        }
+    }
+}
+
+.audit-entry-preview-modal .audit-diff-table {
+    width: 100%;
+    td {
+        word-break: break-word;
+        white-space: pre-wrap;
+    }
+}

@@ -181,6 +181,14 @@ func NewTestAppWithConfig(config core.BaseAppConfig) (*TestApp, error) {
 		Priority: -99999,
 	})
 
+	t.OnAuditEntry().Bind(&hook.Handler[*core.AuditEntryEvent]{
+		Func: func(e *core.AuditEntryEvent) error {
+			t.registerEventCall("OnAuditEntry")
+			return e.Next()
+		},
+		Priority: -99999,
+	})
+
 	t.OnBackupCreate().Bind(&hook.Handler[*core.BackupEvent]{
 		Func: func(e *core.BackupEvent) error {
 			t.registerEventCall("OnBackupCreate")
