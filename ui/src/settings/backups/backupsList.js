@@ -13,8 +13,89 @@ export function backupsList(propsArg = {}) {
         isLoading: false,
         isDownloading: {},
         isDeleting: {},
+        isVerifying: {},
         backups: [],
     });
+
+    // Claviger: last restore verification status label/icon
+    function verifyBadge(backup) {
+        const v = backup.verification;
+
+        if (backup.verifying || data.isVerifying[backup.key]) {
+            return t.small(
+                { className: "backup-verify txt-hint txt-nowrap" },
+                t.span({ className: "loader sm" }),
+                " verifying...",
+            );
+        }
+
+        if (!v) {
+            return t.small(
+                { className: "backup-verify txt-hint txt-nowrap", title: "Not verified yet" },
+                "not verified",
+            );
+        }
+
+        const when = v.checkedAt ? ` (${v.checkedAt})` : "";
+
+        if (v.status == "verified") {
+            return t.small(
+                {
+                    className: "backup-verify txt-success txt-nowrap",
+                    title: `Restore verified${when}${v.hasManifest ? "" : " - no manifest, integrity checks only"}`,
+                },
+                t.i({ className: "ri-checkbox-circle-line", ariaHidden: true }),
+                v.hasManifest ? " verified" : " verified (no manifest)",
+            );
+        }
+
+        if (v.status == "skipped") {
+            return t.small(
+                { className: "backup-verify txt-warning txt-nowrap", title: `Skipped${when}: ${v.error}` },
+                t.i({ className: "ri-alert-line", ariaHidden: true }),
+                " skipped",
+            );
+        }
+
+        return t.small(
+            { className: "backup-verify txt-danger txt-nowrap", title: `Verification failed${when}: ${v.error}` },
+            t.i({ className: "ri-close-circle-line", ariaHidden: true }),
+            " failed",
+        );
+    }
+
+    let verifyPollId = null;
+
+    function pollWhileVerifying() {
+        clearTimeout(verifyPollId);
+
+        verifyPollId = setTimeout(async () => {
+            await loadBackups();
+
+            if (data.backups.some((b) => b.verifying)) {
+                pollWhileVerifying();
+            } else {
+                data.isVerifying = {};
+            }
+        }, 2500);
+    }
+
+    async function verifyBackup(key) {
+        if (data.isVerifying[key]) {
+            return;
+        }
+
+        data.isVerifying[key] = true;
+
+        try {
+            await app.pb.send(`/api/backups/${encodeURIComponent(key)}/verify`, { method: "POST" });
+            app.toasts.success(`Started verification of ${key}.`);
+            pollWhileVerifying();
+        } catch (err) {
+            delete data.isVerifying[key];
+            app.checkApiError(err);
+        }
+    }
 
     async function loadBackups() {
         data.isLoading = true;
@@ -113,6 +194,7 @@ export function backupsList(propsArg = {}) {
             },
             onunmount: (el) => {
                 clearInterval(el._canBackupIntervalId);
+                clearTimeout(verifyPollId);
                 watchers.forEach((w) => w?.unwatch());
             },
         },
@@ -150,6 +232,7 @@ export function backupsList(propsArg = {}) {
                                 () => app.utils.formattedFileSize(backup.size),
                                 ")",
                             ),
+                            () => verifyBadge(backup),
                         ),
                         t.nav(
                             {
@@ -168,6 +251,19 @@ export function backupsList(propsArg = {}) {
                                     onclick: () => downloadBackup(backup.key),
                                 },
                                 t.i({ className: "ri-download-line", ariaHidden: true }),
+                            ),
+                            t.button(
+                                {
+                                    type: "button",
+                                    ariaLabel: app.attrs.tooltip("Verify restore"),
+                                    className: () =>
+                                        `btn sm circle secondary transparent ${
+                                            data.isVerifying[backup.key] ? "loading" : ""
+                                        }`,
+                                    disabled: () => data.isVerifying[backup.key] || data.isDeleting[backup.key],
+                                    onclick: () => verifyBackup(backup.key),
+                                },
+                                t.i({ className: "ri-shield-check-line", ariaHidden: true }),
                             ),
                             t.button(
                                 {

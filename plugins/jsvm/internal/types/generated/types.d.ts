@@ -14005,6 +14005,14 @@ namespace core {
    */
   cronMaxKeep: number
   /**
+   * DisableVerify turns off the automatic restore verification that
+   * runs after each auto (cron) backup.
+   * 
+   * It is intentionally a "disable" flag so that settings persisted
+   * by older versions (without this field) keep verification ON.
+   */
+  disableVerify: boolean
+  /**
    * S3 is an optional S3 storage config specifying where to store the app backups.
    */
   s3: S3Config

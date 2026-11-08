@@ -245,6 +245,29 @@ export function backupsForm(propsArg = {}) {
                                             }),
                                         ),
                                     ),
+                                    t.div(
+                                        { className: "col-lg-12" },
+                                        t.div(
+                                            { className: "field" },
+                                            t.input({
+                                                id: "backups.verifyAuto",
+                                                type: "checkbox",
+                                                className: "switch",
+                                                checked: () => !data.formSettings.backups.disableVerify,
+                                                onchange: (e) => {
+                                                    data.formSettings.backups.disableVerify = !e.target.checked;
+                                                },
+                                            }),
+                                            t.label(
+                                                { htmlFor: "backups.verifyAuto" },
+                                                "Verify auto backups after creation",
+                                            ),
+                                        ),
+                                        t.div(
+                                            { className: "field-help" },
+                                            "Restores each new auto backup in a temp directory and runs integrity checks.",
+                                        ),
+                                    ),
                                 ),
                             ),
                         ),

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/doodlemania2/claviger/apis"
 	"github.com/doodlemania2/claviger/core"
@@ -821,6 +822,119 @@ func TestBackupsRestore(t *testing.T) {
 			ExpectedStatus:  400,
 			ExpectedContent: []string{`"data":{}`},
 			ExpectedEvents:  map[string]int{"*": 0},
+		},
+	}
+
+	for _, scenario := range scenarios {
+		scenario.Test(t)
+	}
+}
+
+func TestBackupsListVerification(t *testing.T) {
+	t.Parallel()
+
+	scenario := tests.ApiScenario{
+		Name:    "list exposes the last verification",
+		Method:  http.MethodGet,
+		URL:     "/api/backups",
+		Headers: map[string]string{"Authorization": "eyJhbGciOiJIUzI1NiJ9.eyJpZCI6InN5d2JoZWNuaDQ2cmhtMCIsInR5cGUiOiJhdXRoIiwiY29sbGVjdGlvbklkIjoicGJjXzMxNDI2MzU4MjMiLCJleHAiOjI1MjQ2MDQ0NjEsInJlZnJlc2hhYmxlIjp0cnVlfQ.UXgO3j-0BumcugrFjbd7j0M4MQvbrLggLlcu_YNGjoY"},
+		BeforeTestFunc: func(t testing.TB, app *tests.TestApp, e *core.ServeEvent) {
+			if err := createTestBackups(app); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := core.VerifyBackup(context.Background(), app, "test1.zip"); err != nil {
+				t.Fatal(err)
+			}
+		},
+		ExpectedStatus:  200,
+		ExpectedContent: []string{`"verification":{"key":"test1.zip","status":"verified"`},
+		ExpectedEvents:  map[string]int{"*": 0},
+	}
+
+	scenario.Test(t)
+}
+
+func TestBackupsVerify(t *testing.T) {
+	t.Parallel()
+
+	setup := func(t testing.TB, app *tests.TestApp, e *core.ServeEvent) {
+		if err := createTestBackups(app); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	scenarios := []tests.ApiScenario{
+		{
+			Name:            "unauthorized",
+			Method:          http.MethodPost,
+			URL:             "/api/backups/test1.zip/verify",
+			BeforeTestFunc:  setup,
+			ExpectedStatus:  401,
+			ExpectedContent: []string{`"data":{}`},
+			ExpectedEvents:  map[string]int{"*": 0},
+		},
+		{
+			Name:            "authorized as regular user",
+			Method:          http.MethodPost,
+			URL:             "/api/backups/test1.zip/verify",
+			Headers:         map[string]string{"Authorization": "eyJhbGciOiJIUzI1NiJ9.eyJpZCI6IjRxMXhsY2xtZmxva3UzMyIsInR5cGUiOiJhdXRoIiwiY29sbGVjdGlvbklkIjoiX3BiX3VzZXJzX2F1dGhfIiwiZXhwIjoyNTI0NjA0NDYxLCJyZWZyZXNoYWJsZSI6dHJ1ZX0.ZT3F0Z3iM-xbGgSG3LEKiEzHrPHr8t8IuHLZGGNuxLo"},
+			BeforeTestFunc:  setup,
+			ExpectedStatus:  403,
+			ExpectedContent: []string{`"data":{}`},
+			ExpectedEvents:  map[string]int{"*": 0},
+		},
+		{
+			Name:            "authorized as superuser (missing file)",
+			Method:          http.MethodPost,
+			URL:             "/api/backups/missing.zip/verify",
+			Headers:         map[string]string{"Authorization": "eyJhbGciOiJIUzI1NiJ9.eyJpZCI6InN5d2JoZWNuaDQ2cmhtMCIsInR5cGUiOiJhdXRoIiwiY29sbGVjdGlvbklkIjoicGJjXzMxNDI2MzU4MjMiLCJleHAiOjI1MjQ2MDQ0NjEsInJlZnJlc2hhYmxlIjp0cnVlfQ.UXgO3j-0BumcugrFjbd7j0M4MQvbrLggLlcu_YNGjoY"},
+			BeforeTestFunc:  setup,
+			ExpectedStatus:  400,
+			ExpectedContent: []string{`"data":{}`},
+			ExpectedEvents:  map[string]int{"*": 0},
+		},
+		{
+			Name:    "authorized as superuser (active backup process)",
+			Method:  http.MethodPost,
+			URL:     "/api/backups/test1.zip/verify",
+			Headers: map[string]string{"Authorization": "eyJhbGciOiJIUzI1NiJ9.eyJpZCI6InN5d2JoZWNuaDQ2cmhtMCIsInR5cGUiOiJhdXRoIiwiY29sbGVjdGlvbklkIjoicGJjXzMxNDI2MzU4MjMiLCJleHAiOjI1MjQ2MDQ0NjEsInJlZnJlc2hhYmxlIjp0cnVlfQ.UXgO3j-0BumcugrFjbd7j0M4MQvbrLggLlcu_YNGjoY"},
+			BeforeTestFunc: func(t testing.TB, app *tests.TestApp, e *core.ServeEvent) {
+				setup(t, app, e)
+				app.Store().Set(core.StoreKeyActiveBackup, "")
+			},
+			ExpectedStatus:  400,
+			ExpectedContent: []string{`"data":{}`},
+			ExpectedEvents:  map[string]int{"*": 0},
+		},
+		{
+			Name:            "authorized as superuser (starts verification)",
+			Method:          http.MethodPost,
+			URL:             "/api/backups/test1.zip/verify",
+			Headers:         map[string]string{"Authorization": "eyJhbGciOiJIUzI1NiJ9.eyJpZCI6InN5d2JoZWNuaDQ2cmhtMCIsInR5cGUiOiJhdXRoIiwiY29sbGVjdGlvbklkIjoicGJjXzMxNDI2MzU4MjMiLCJleHAiOjI1MjQ2MDQ0NjEsInJlZnJlc2hhYmxlIjp0cnVlfQ.UXgO3j-0BumcugrFjbd7j0M4MQvbrLggLlcu_YNGjoY"},
+			BeforeTestFunc:  setup,
+			ExpectedStatus:  202,
+			ExpectedContent: []string{`"status":"running"`, `"key":"test1.zip"`},
+			ExpectedEvents:  map[string]int{"*": 0},
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, res *http.Response) {
+				// the result is eventually persisted and exposed in the list
+				deadline := time.Now().Add(20 * time.Second)
+				for {
+					saved, err := core.LoadBackupVerifications(app)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if v := saved["test1.zip"]; v != nil {
+						if v.Status != core.BackupVerifyStatusVerified {
+							t.Fatalf("Expected verified, got %+v", v)
+						}
+						return
+					}
+					if time.Now().After(deadline) {
+						t.Fatal("timeout waiting for the verification result")
+					}
+					time.Sleep(100 * time.Millisecond)
+				}
+			},
 		},
 	}
 
