@@ -1,3 +1,5 @@
+//go:build !no_default_driver
+
 package validators
 
 // Fork-local addition — not upstream PocketBase (issue #106).

@@ -354,6 +354,10 @@ func TestRecordsList(t *testing.T) {
 		{name: "rule collection join no auth", method: "GET", url: "/api/collections/ruled4/records?sort=@rowid", auth: "", status: 200},
 		{name: "rule relation to rule collection", method: "GET", url: "/api/collections/ruled5/records?sort=@rowid&expand=ref", auth: "user", status: 200},
 		{name: "rule relation to rule collection filter", method: "GET", url: "/api/collections/ruled5/records?sort=@rowid&filter=" + url.QueryEscape(`ref.title ~ "a"`), auth: "user", status: 200},
+		{name: "body rule ok", method: "POST", url: "/api/collections/ruled6/records", auth: "user", status: 200, body: map[string]any{"id": "ruled6000000001", "title": "ABC", "owner": "usr0000000000u1", "friends": []string{"tag000000000t1", "tag000000000t2"}}},
+		{name: "body rule wrong title", method: "POST", url: "/api/collections/ruled6/records", auth: "user", status: 400, body: map[string]any{"title": "abd", "owner": "usr0000000000u1", "friends": []string{"tag000000000t1", "tag000000000t2"}}},
+		{name: "body rule wrong length", method: "POST", url: "/api/collections/ruled6/records", auth: "user", status: 400, body: map[string]any{"title": "abc", "owner": "usr0000000000u1", "friends": []string{"tag000000000t1"}}},
+		{name: "body rule wrong relation", method: "POST", url: "/api/collections/ruled6/records", auth: "user", status: 400, body: map[string]any{"title": "abc", "owner": "", "friends": []string{"tag000000000t1", "tag000000000t2"}}},
 		{name: "view record", method: "GET", url: "/api/collections/posts/records/pos000000000p1?expand=author,tags", auth: "super", status: 200},
 		{name: "view record missing", method: "GET", url: "/api/collections/posts/records/nope", auth: "super", status: 404},
 		{name: "view record fields", method: "GET", url: "/api/collections/posts/records/pos000000000p1?fields=id,meta,geo,labels,files", auth: "super", status: 200},
@@ -551,6 +555,20 @@ func seedRuled(t testing.TB, app core.App) {
 				t.Fatal(err)
 			}
 		}
+	}
+
+	// create rule over the request body: relation paths, :lower, :each, :length
+	body := core.NewBaseCollection("ruled6")
+	body.Fields.Add(
+		&core.TextField{Name: "title"},
+		&core.RelationField{Name: "owner", CollectionId: "_pb_users_auth_", MaxSelect: 1},
+		&core.RelationField{Name: "friends", CollectionId: gated.Fields.GetByName("friends").(*core.RelationField).CollectionId, MaxSelect: 5},
+		&core.AutodateField{Name: "created", OnCreate: true},
+	)
+	body.CreateRule = types.Pointer(`@request.body.owner.email = "user@example.com" && @request.body.title:lower = "abc" && ` +
+		`@request.body.friends.name ?= "go" && @request.body.friends:each ?= "tag000000000t1" && @request.body.friends:length = 2`)
+	if err := app.Save(body); err != nil {
+		t.Fatal(err)
 	}
 
 	// a relation to a collection that has a list rule
