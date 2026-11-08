@@ -1,6 +1,9 @@
 package apis
 
-import "github.com/doodlemania2/claviger/core"
+import (
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/captcha"
+)
 
 // RateLimitTestLimiter returns a persistent limiter decision func.
 func RateLimitTestLimiter(app core.App, name string, maxAllowed int, interval int64) func(key string) bool {
@@ -33,3 +36,8 @@ func RateLimitTestRestart(app core.App) {
 
 // RateLimitTestForgetSettingsReload mimics the Settings reload reset.
 func RateLimitTestForgetSettingsReload(app core.App) { forgetRateLimitStoreEntries(app) }
+
+// SetCaptchaVerifierForTest replaces the provider verifier.
+func SetCaptchaVerifierForTest(app core.App, v captcha.Verifier) {
+	app.Store().Set(captchaVerifierStoreKey, v)
+}
