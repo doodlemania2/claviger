@@ -67,6 +67,7 @@ Everything extends through `tools/hook` generic hooks exposed on the `App` inter
 
 - Driver is **`modernc.org/sqlite`** (pure Go), not upstream's default mattn/go-sqlite3. `modernc_versions_check.go` pins expected sqlite/libc versions — keep it in sync when bumping.
 - Two databases per instance: `data.db` (app data, via `app.DB()`) and `auxiliary.db` (logs/internal, via `app.AuxDB()`), each with separate concurrent/nonconcurrent `dbx` connections. WAL mode and pragmas are set in `core/db_connect.go`.
+- **Dialect seam (#106, experimental PostgreSQL)**: engine-specific SQL goes through `tools/dialect` (`core.DialectOf(app)`), never string rewriting. SQLite is the default and its SQL text must not change; `CLAVIGER_DB_URL=postgres://...` selects Postgres for the data db (the aux db stays local SQLite). See `docs/datastores.md`; Postgres tests: `cd scripts/pgembedded && go run .`. Upstream-owned files that call the dialect are listed in `FORK_SYNC.md`.
 - Models implement `core.Model` (`TableName()`, `IsNew()`); `Collection` defines schema + API rules, `Record` is a dynamic row with rule-aware JSON export.
 
 ### Test conventions

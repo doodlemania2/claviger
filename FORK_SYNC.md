@@ -227,6 +227,27 @@ Opt-in per account; deploying changes nobody's sign-in. Data lives in the `_totp
 - **Pitfalls to re-check on sync:** the `checkMFA` hunk above, `grep -n registerTOTPHooks core/base.go`, `go test -run 'TOTP' ./apis/ ./cmd/ ./tools/security/`.
 Fork-only files for #77 (webhooks): `core/webhooks*.go`, `migrations/1780000500_add_webhooks.go`, `apis/webhooks*.go`, `tools/telemetry/webhooks.go`, `ui/src/webhooks/`, `ui/src/css/webhooks.css`, `docs/webhooks.md`. Sync checks: `grep -n registerWebhookHooks core/base.go` and `go test -run Webhook ./core/... ./apis/...`. The enqueue handler is on `OnAuditEntry`, so it depends on the audit guards above staying intact; `OnRecordEnrich` on `_webhooks` re-hides the secrets after the records API un-hides every field for superusers.
 
+### Postgres dialect seam (#106, experimental)
+
+Fork-only files: `tools/dialect/` (the `Dialect` interface and the SQLite and Postgres implementations), `core/dialect.go`, `core/db_connect_postgres.go` (+ `_stub.go` for the `no_default_driver` tag), `core/db_connect_aux.go`, `tests/pgtests/`, `scripts/pgembedded/` (separate Go module), `docs/datastores.md`, the `postgres` job in `test.yml`. Design: `docs/spikes/106-postgres.md`.
+
+The rule: SQLite behavior and SQL text are unchanged, and every engine-specific piece asks the dialect (`core.DialectOf(app)`, `dialect.Of(db)`). The hunks in upstream-owned files are one-line dialect calls except where noted. After a sync, re-check each file below, and `grep -rn 'sqlite_master\|sqlite_schema\|PRAGMA\|randomblob\|strftime\|rowid' --include='*.go' core apis migrations tools | grep -v _test` for raw SQL upstream added (it needs a dialect call or a Postgres equivalent). Then run `go test -tags postgres ./tests/pgtests/...` (see `docs/datastores.md`).
+
+| File | Fork change | Re-check on sync |
+| --- | --- | --- |
+| `core/base.go` | `BaseAppConfig.AuxDBConnect` (appended field); `NewBaseApp` calls `applyEnvDBConfig` before defaulting `DBConnect`; `initDataDB` opens a second (write) pool only when `dialect.SeparateWritePool()`; `initAuxDB` uses `app.auxDBConnect()`; the `__pbDBOptimize__` cron calls `Checkpoint`/`Optimize` of the dialect instead of `PRAGMA`. About 25 lines. | New fields in `BaseAppConfig`, other `PRAGMA` calls. |
+| `core/db_table.go` | `TableColumns`, `TableInfo`, `TableIndexes`, `hasTable` and `vacuum` delegate to the dialect (the SQLite bodies moved to `tools/dialect/sqlite.go` unchanged). `TableInfoRow` is now an alias of `dialect.TableInfoRow` (declared in `core/dialect.go`). | The moved SQLite queries still match upstream's. |
+| `core/field_*.go` (13 files) | `ColumnType()` returns a dialect column definition (`dialectOf(app).TextColumn()` etc.). One line each, two in the fields with a single/multiple variant. | A new field type or a changed column type: update `tools/dialect` for both engines. |
+| `core/collection_record_table_sync.go` | Hidden columns on create; `Optimize` instead of `PRAGMA optimize`; `ConvertMultiplicity` hook ahead of the SQLite view-drop strategy; `createCollectionIndexes` renders the index with `BuildIndex` inside `Try`. About 20 lines. | The single/multiple conversion and index sync logic. |
+| `core/collection_validate.go` | The "index name used by another collection" probe calls `IndexOwner`. | |
+| `core/collection_query.go` | `FindAllCollections` orders by `RowOrder()` (`rowid ASC` on SQLite). | |
+| `core/migrations_runner.go` | The `_migrations.applied` type comes from `Int64Type()` (Postgres INTEGER is 32 bit); `Up` takes the migrations advisory lock first. | |
+| `migrations/1640988000_init.go` | `_collections` and `_params` DDL assembled from dialect fragments (byte for byte the old SQL on SQLite); `hiddenColumnsDDL`. | Column list of `_collections` / `_params`. |
+| `migrations/1778828400_normalize_indexes.go` | Returns early unless SQLite. The v0.23 migrations already return early on a fresh database. | |
+| `go.mod`, `go.sum` | `github.com/jackc/pgx/v5` (pinned) and its dependencies. | |
+
+Not yet routed through the dialect (M2 to M4 in `docs/datastores.md`): `tools/dbutils/json.go`, `tools/search/` (`sort.go`, `filter.go`, `token_functions.go`), `core/record_field_resolver*.go`, `core/view.go`, `core/backup_*.go`, `core/log_query.go` (auxiliary db, stays SQLite), `apis/sql.go`.
+
 ## CI
 
 | Workflow | File | Runs on |
