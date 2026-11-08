@@ -29,6 +29,15 @@ const (
 // azureOptions returns the client options; tests replace it.
 var azureOptions = func() azurekv.Options { return azurekv.Options{} }
 
+// SetAzureClientOptions replaces the HTTP client, clock and endpoints used to
+// reach Azure. It exists for tests (to point the source at a fake service) and
+// returns a function that restores the previous setting.
+func SetAzureClientOptions(f func() azurekv.Options) (restore func()) {
+	prev := azureOptions
+	azureOptions = f
+	return func() { azureOptions = prev }
+}
+
 // IsIndeterminate reports whether err says nothing definite about the key
 // source: a timeout, a network error, throttling or a 5xx from a key service.
 // `keys check` treats it as "could not run" and the entrypoint pre-flight

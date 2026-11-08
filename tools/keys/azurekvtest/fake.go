@@ -121,6 +121,13 @@ func (f *Fake) FailNext(substr string, status, n int, header http.Header) {
 	f.mu.Unlock()
 }
 
+// ClearFailures removes every injected failure.
+func (f *Fake) ClearFailures() {
+	f.mu.Lock()
+	f.failures = nil
+	f.mu.Unlock()
+}
+
 // Requests returns a copy of the recorded requests.
 func (f *Fake) Requests() []Request {
 	f.mu.Lock()
