@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"slices"
 	"strings"
@@ -329,6 +330,30 @@ func TestRecordsList(t *testing.T) {
 		{name: "rule filter no auth", method: "GET", url: "/api/collections/gated/records?sort=@rowid", auth: "", status: 200},
 		{name: "rule filter superuser", method: "GET", url: "/api/collections/gated/records?sort=@rowid", auth: "super", status: 200},
 		{name: "rule with join filter", method: "GET", url: "/api/collections/gated/records?sort=@rowid&filter=friends.name?='go'", auth: "user", status: 200},
+		{name: "request auth id", method: "GET", url: "/api/collections/posts/records?sort=@rowid&filter=" + url.QueryEscape(`@request.auth.id = "usr0000000000u1" && views > 10`), auth: "super", status: 200},
+		{name: "request auth email", method: "GET", url: "/api/collections/posts/records?sort=@rowid&filter=" + url.QueryEscape(`@request.auth.email ~ "USER@" && active = true`), auth: "super", status: 200},
+		{name: "request auth verified", method: "GET", url: "/api/collections/posts/records?sort=@rowid&filter=" + url.QueryEscape(`@request.auth.verified = true && active = false`), auth: "super", status: 200},
+		{name: "request auth field", method: "GET", url: "/api/collections/posts/records?sort=@rowid&filter=" + url.QueryEscape(`@request.auth.created > "2000-01-01" && active = true`), auth: "super", status: 200},
+		{name: "request query", method: "GET", url: "/api/collections/posts/records?sort=@rowid&q=Zebra&filter=" + url.QueryEscape(`title = @request.query.q`), auth: "super", status: 200},
+		{name: "request query number", method: "GET", url: "/api/collections/posts/records?sort=@rowid&n=10&filter=" + url.QueryEscape(`views = @request.query.n`), auth: "super", status: 200},
+		{name: "request query missing", method: "GET", url: "/api/collections/posts/records?sort=@rowid&filter=" + url.QueryEscape(`title = @request.query.missing`), auth: "super", status: 200},
+		{name: "request method", method: "GET", url: "/api/collections/posts/records?sort=@rowid&filter=" + url.QueryEscape(`@request.method = "GET" && views = 0`), auth: "super", status: 200},
+		{name: "request context", method: "GET", url: "/api/collections/posts/records?sort=@rowid&filter=" + url.QueryEscape(`@request.context = "default" && views = 0`), auth: "super", status: 200},
+		{name: "request query lower", method: "GET", url: "/api/collections/posts/records?sort=@rowid&q=ZEBRA&filter=" + url.QueryEscape(`title:lower = @request.query.q:lower`), auth: "super", status: 200},
+		{name: "collection join", method: "GET", url: "/api/collections/posts/records?sort=@rowid&filter=" + url.QueryEscape(`@collection.authors.name ?= "Alice" && @collection.authors.rank > 0 && views > 50`), auth: "super", status: 200},
+		{name: "collection join on field", method: "GET", url: "/api/collections/posts/records?sort=@rowid&filter=" + url.QueryEscape(`@collection.tags.name ?= title`), auth: "super", status: 200},
+		{name: "collection join id", method: "GET", url: "/api/collections/posts/records?sort=@rowid&filter=" + url.QueryEscape(`@collection.authors.id ?= author`), auth: "super", status: 200},
+		{name: "collection join alias", method: "GET", url: "/api/collections/posts/records?sort=@rowid&filter=" + url.QueryEscape(`@collection.tags:a.name ?= "go" && @collection.tags:b.name ?= "Rust"`), auth: "super", status: 200},
+		{name: "collection join multi relation", method: "GET", url: "/api/collections/authors/records?sort=@rowid&filter=" + url.QueryEscape(`@collection.posts.tags.name ?= "go" && @collection.posts.author ?= id`), auth: "super", status: 200},
+		{name: "list rule joins other collection rule", method: "GET", url: "/api/collections/gated/records?sort=@rowid&filter=" + url.QueryEscape(`post.title ?= "x" || friends.name ?= "go"`), auth: "user", status: 200},
+		{name: "rule auth back relation", method: "GET", url: "/api/collections/ruled1/records?sort=@rowid", auth: "user", status: 200},
+		{name: "rule auth multi relation", method: "GET", url: "/api/collections/ruled2/records?sort=@rowid", auth: "user", status: 200},
+		{name: "rule auth fields", method: "GET", url: "/api/collections/ruled3/records?sort=@rowid", auth: "user", status: 200},
+		{name: "rule auth fields no auth", method: "GET", url: "/api/collections/ruled3/records?sort=@rowid", auth: "", status: 200},
+		{name: "rule collection join", method: "GET", url: "/api/collections/ruled4/records?sort=@rowid", auth: "user", status: 200},
+		{name: "rule collection join no auth", method: "GET", url: "/api/collections/ruled4/records?sort=@rowid", auth: "", status: 200},
+		{name: "rule relation to rule collection", method: "GET", url: "/api/collections/ruled5/records?sort=@rowid&expand=ref", auth: "user", status: 200},
+		{name: "rule relation to rule collection filter", method: "GET", url: "/api/collections/ruled5/records?sort=@rowid&filter=" + url.QueryEscape(`ref.title ~ "a"`), auth: "user", status: 200},
 		{name: "view record", method: "GET", url: "/api/collections/posts/records/pos000000000p1?expand=author,tags", auth: "super", status: 200},
 		{name: "view record missing", method: "GET", url: "/api/collections/posts/records/nope", auth: "super", status: 404},
 		{name: "view record fields", method: "GET", url: "/api/collections/posts/records/pos000000000p1?fields=id,meta,geo,labels,files", auth: "super", status: 200},
@@ -339,6 +364,8 @@ func TestRecordsList(t *testing.T) {
 
 func seedGated(t testing.TB, app core.App) {
 	t.Helper()
+
+	defer seedRuled(t, app)
 
 	posts, err := app.FindCollectionByNameOrId("posts")
 	if err != nil {
@@ -384,7 +411,6 @@ func seedGated(t testing.TB, app core.App) {
 		}
 	}
 }
-
 
 // enableBatchAndNoCaseEmail turns the batch API on and makes the email unique
 // index of the users collection case insensitive (COLLATE NOCASE).
@@ -483,4 +509,67 @@ func TestRecordsWrite(t *testing.T) {
 		seedGated(t, app)
 		enableBatchAndNoCaseEmail(t, app)
 	})
+}
+
+// seedRuled adds collections whose list rule uses auth relations, back
+// relations and @collection joins (the request rules).
+func seedRuled(t testing.TB, app core.App) {
+	t.Helper()
+
+	gated, err := app.FindCollectionByNameOrId("gated")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rules := map[string]string{
+		"ruled1": `@request.auth.gated_via_owner.title ?= "mine"`,
+		"ruled2": `@request.auth.gated_via_owner.friends.name ?= "Rust"`,
+		"ruled3": `@request.auth.email ~ "USER@" && @request.auth.verified = true && @request.auth.created > "2000-01-01"`,
+		"ruled4": `@request.auth.id = owner || @collection.tags.name ?= title`,
+	}
+
+	for name, rule := range rules {
+		c := core.NewBaseCollection(name)
+		c.Fields.Add(
+			&core.TextField{Name: "title"},
+			&core.RelationField{Name: "owner", CollectionId: "_pb_users_auth_", MaxSelect: 1},
+			&core.AutodateField{Name: "created", OnCreate: true},
+		)
+		c.ListRule = types.Pointer(rule)
+		if err := app.Save(c); err != nil {
+			t.Fatal(err)
+		}
+
+		for i, title := range []string{"go", "alpha", "Rust"} {
+			r := core.NewRecord(c)
+			r.Id = name + "0000000000" + string(rune('a'+i))
+			r.Set("title", title)
+			if i == 0 {
+				r.Set("owner", "usr0000000000u1")
+			}
+			if err := app.SaveNoValidate(r); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	// a relation to a collection that has a list rule
+	ref := core.NewBaseCollection("ruled5")
+	ref.Fields.Add(
+		&core.TextField{Name: "title"},
+		&core.RelationField{Name: "ref", CollectionId: gated.Id, MaxSelect: 1},
+	)
+	ref.ListRule = types.Pointer("")
+	if err := app.Save(ref); err != nil {
+		t.Fatal(err)
+	}
+	for i, target := range []string{"gat000000000g1", "gat000000000g2", "gat000000000g3"} {
+		r := core.NewRecord(ref)
+		r.Id = "ruled50000000" + string(rune('a'+i)) + "0"
+		r.Set("title", "ref"+string(rune('a'+i)))
+		r.Set("ref", target)
+		if err := app.SaveNoValidate(r); err != nil {
+			t.Fatal(err)
+		}
+	}
 }

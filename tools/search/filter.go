@@ -388,11 +388,11 @@ func resolveEqualExpr(d dialect.Dialect, equal bool, left, right *ResolverResult
 	if isKnownNonEmptyIdentifier(left) || isKnownNonEmptyIdentifier(right) {
 		leftIdentifier := left.Identifier
 		if isLeftEmpty {
-			leftIdentifier = "''"
+			leftIdentifier = emptyOperand(d, right)
 		}
 		rightIdentifier := right.Identifier
 		if isRightEmpty {
-			rightIdentifier = "''"
+			rightIdentifier = emptyOperand(d, left)
 		}
 		return dbx.NewExp(
 			fmt.Sprintf("%s %s %s", leftIdentifier, equalOp, rightIdentifier),

@@ -203,3 +203,17 @@ func scalarKind(r *ResolverResult) (dialect.ScalarKind, bool) {
 
 	return 0, false
 }
+
+// emptyOperand returns the SQL of the empty value (NULL or an empty string)
+// that is compared with the other operand. A strictly typed engine can't
+// compare an empty string with a boolean: NULL gives the same outcome in a
+// WHERE clause (never equal, always different) for the null safe operators.
+func emptyOperand(d dialect.Dialect, other *ResolverResult) string {
+	if d.StrictTypes() {
+		if kind, ok := scalarKind(other); ok && kind == dialect.ScalarBool {
+			return "NULL"
+		}
+	}
+
+	return "''"
+}

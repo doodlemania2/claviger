@@ -50,7 +50,7 @@ func (app *BaseApp) SaveView(dangerousViewName string, dangerousSelectQuery stri
 		//
 		// note: the query is wrapped in a secondary SELECT as a rudimentary
 		// measure to discourage multiple inline sql statements execution
-		viewQuery := fmt.Sprintf("CREATE VIEW {{%s}} AS SELECT * FROM (%s)", dangerousViewName, dangerousSelectQuery)
+		viewQuery := fmt.Sprintf("CREATE VIEW {{%s}} AS SELECT * FROM (%s)%s", dangerousViewName, dangerousSelectQuery, dialectOf(txApp).SubqueryAlias())
 		_, err = txApp.DB().NewQuery(viewQuery).Execute()
 		if err != nil {
 			return err
@@ -105,8 +105,12 @@ func (app *BaseApp) CreateViewFields(dangerousSelectQuery string) (FieldsList, e
 
 			if f, ok := suggestedFields[row.Name]; ok {
 				field = f.field
+				if f.original == nil && field.Type() == FieldTypeJSON {
+					// an expression of unknown type (fork-local #106: a no-op on SQLite)
+					field = defaultViewFieldForColumn(txApp, row)
+				}
 			} else {
-				field = defaultViewField(row.Name)
+				field = defaultViewFieldForColumn(txApp, row)
 			}
 
 			result.Add(field)
@@ -169,7 +173,7 @@ func (app *BaseApp) DryRunView(dangerousSelectQuery string, sampleSize int) (*Dr
 	err = app.RecordQuery(tempCollection).
 		// note: the query is wrapped in a secondary SELECT as a rudimentary
 		// measure to discourage multiple inline sql statements execution
-		From("(SELECT * FROM (" + dangerousSelectQuery + ")) as " + tempName).
+		From("(SELECT * FROM (" + dangerousSelectQuery + ")" + dialectOf(app).SubqueryAlias() + ") as " + tempName).
 		Limit(int64(sampleSize)).
 		All(&records)
 	if err != nil {
