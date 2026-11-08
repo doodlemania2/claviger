@@ -1507,7 +1507,7 @@ func onRecordDeleteExecute(e *RecordEvent) error {
 			return err
 		}
 
-		return cascadeRecordDelete(txApp, e.Record, refs)
+		return cascadeRecordDelete(e.Context, txApp, e.Record, refs)
 	})
 	e.App = originalApp
 
@@ -1517,7 +1517,7 @@ func onRecordDeleteExecute(e *RecordEvent) error {
 // cascadeRecordDelete triggers cascade deletion for the provided references.
 //
 // NB! This method is expected to be called from inside of a transaction.
-func cascadeRecordDelete(app App, mainRecord *Record, refs map[*Collection][]Field) error {
+func cascadeRecordDelete(ctx context.Context, app App, mainRecord *Record, refs map[*Collection][]Field) error {
 	// Sort the refs keys to ensure that the cascade events firing order is always the same.
 	// This is not necessary for the operation to function correctly but it helps having deterministic output during testing.
 	sortedRefKeys := make([]*Collection, 0, len(refs))
@@ -1573,7 +1573,7 @@ func cascadeRecordDelete(app App, mainRecord *Record, refs map[*Collection][]Fie
 					break
 				}
 
-				err = deleteRefRecords(app, mainRecord, refCollection, refIds, field)
+				err = deleteRefRecords(ctx, app, mainRecord, refCollection, refIds, field)
 				if err != nil {
 					return err
 				}
@@ -1595,7 +1595,7 @@ func cascadeRecordDelete(app App, mainRecord *Record, refs map[*Collection][]Fie
 // just unset the record id from any relation field values (if they are not required).
 //
 // NB! This method is expected to be called from inside of a transaction.
-func deleteRefRecords(app App, mainRecord *Record, refCollection *Collection, refIds []string, field Field) error {
+func deleteRefRecords(ctx context.Context, app App, mainRecord *Record, refCollection *Collection, refIds []string, field Field) error {
 	relField, _ := field.(*RelationField)
 	if relField == nil {
 		return errors.New("only RelationField is supported at the moment, got " + field.Type())
@@ -1623,7 +1623,7 @@ func deleteRefRecords(app App, mainRecord *Record, refCollection *Collection, re
 		// cascade delete the reference
 		// (only if there are no other active references in case of multiple select)
 		if relField.CascadeDelete && len(ids) == 0 {
-			if err := app.Delete(refRecord); err != nil {
+			if err := app.DeleteWithContext(ctx, refRecord); err != nil {
 				return err
 			}
 			// no further actions are needed (the reference is deleted)
@@ -1637,7 +1637,7 @@ func deleteRefRecords(app App, mainRecord *Record, refCollection *Collection, re
 		// save the reference changes
 		// (without validation because it is possible that another relation field to have a reference to a previous deleted record)
 		refRecord.Set(relField.Name, ids)
-		if err := app.SaveNoValidate(refRecord); err != nil {
+		if err := app.SaveNoValidateWithContext(ctx, refRecord); err != nil {
 			return err
 		}
 	}

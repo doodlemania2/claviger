@@ -288,6 +288,12 @@ func (scenario *ApiScenario) test(t testing.TB) {
 
 		remainingEvents := testApp.EventCallsSnapshot()
 
+		// fork: every audited record write fires OnAuditEntry; ignore it unless
+		// the scenario explicitly expects it
+		if _, expected := scenario.ExpectedEvents["OnAuditEntry"]; !expected {
+			delete(remainingEvents, "OnAuditEntry")
+		}
+
 		var noOtherEventsShouldRemain bool
 		for event, expectedNum := range scenario.ExpectedEvents {
 			if event == "*" && expectedNum <= 0 {

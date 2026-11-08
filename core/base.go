@@ -95,6 +95,7 @@ type BaseApp struct {
 	onServe          *hook.Hook[*ServeEvent]
 	onTerminate      *hook.Hook[*TerminateEvent]
 	onBackupCreate   *hook.Hook[*BackupEvent]
+	onAuditEntry     *hook.Hook[*AuditEntryEvent]
 	onBackupRestore  *hook.Hook[*BackupEvent]
 
 	// db model hooks
@@ -257,6 +258,7 @@ func (app *BaseApp) initHooks() {
 	app.onServe = &hook.Hook[*ServeEvent]{}
 	app.onTerminate = &hook.Hook[*TerminateEvent]{}
 	app.onBackupCreate = &hook.Hook[*BackupEvent]{}
+	app.onAuditEntry = &hook.Hook[*AuditEntryEvent]{}
 	app.onBackupRestore = &hook.Hook[*BackupEvent]{}
 
 	// db model hooks
@@ -893,6 +895,10 @@ func (app *BaseApp) OnTerminate() *hook.Hook[*TerminateEvent] {
 	return app.onTerminate
 }
 
+func (app *BaseApp) OnAuditEntry() *hook.Hook[*AuditEntryEvent] {
+	return app.onAuditEntry
+}
+
 func (app *BaseApp) OnBackupCreate() *hook.Hook[*BackupEvent] {
 	return app.onBackupCreate
 }
@@ -1487,6 +1493,7 @@ func (app *BaseApp) registerBaseHooks() {
 	app.registerAuthOriginHooks()
 	app.registerNotifyWatcherHooks()
 	app.registerWebAuthnCredentialHooks()
+	app.registerAuditHooks()
 }
 
 // getLoggerMinLevel returns the logger min level based on the

@@ -1613,7 +1613,7 @@ func TestHooksBindsCount(t *testing.T) {
 	vm := goja.New()
 	hooksBinds(app, vm, nil)
 
-	testBindsCount(vm, "this", 85, t)
+	testBindsCount(vm, "this", 86, t)
 }
 
 func TestHooksBinds(t *testing.T) {

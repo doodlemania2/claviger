@@ -98,6 +98,11 @@ func executeQuery(app core.App, query string, maxRows int) (*runSQLResult, error
 		}
 	}
 
+	// the audit log is append-only (fork-local, #74)
+	if isPossibleWriteQuery && strings.Contains(strings.ToLower(query), strings.ToLower(core.CollectionNameAuditLog)) {
+		return nil, errors.New("the " + core.CollectionNameAuditLog + " table is append-only and cannot be modified with SQL")
+	}
+
 	// note: don't extend the request context to minimize the risk of
 	// causing integrity issues with custom non-transaction mutations
 	ctx, cancelFunc := context.WithTimeout(context.Background(), runSQLMaxTimeout)
