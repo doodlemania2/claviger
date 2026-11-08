@@ -1,8 +1,8 @@
 package security
 
 import (
-	crand "crypto/rand"
 	"crypto/hmac"
+	crand "crypto/rand"
 	"crypto/sha1"
 	"crypto/subtle"
 	"encoding/base32"
