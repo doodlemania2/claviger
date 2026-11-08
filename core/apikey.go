@@ -80,6 +80,10 @@ var APIKeyForbiddenCollections = []string{
 	CollectionNameAuthOrigins,
 	CollectionNameExternalAuths,
 	CollectionNameWebAuthnCredentials,
+	// #79a: membership changes must not be possible with a stolen key
+	CollectionNameOrgs,
+	CollectionNameOrgMembers,
+	CollectionNameOrgRoles,
 }
 
 // APIKeyInfo describes the key that authenticated a request.
