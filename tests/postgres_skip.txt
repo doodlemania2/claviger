@@ -1,0 +1,54 @@
+# Tests of the regular suites (core, apis, oidc, cmd, plugins) that are skipped when the
+# test apps run on Postgres (CLAVIGER_TEST_DB=postgres, see tests/app_postgres.go).
+#
+# One test per line: the name of a top level test, a TAB, the reason. A test goes here only
+# for a documented difference or because the test itself is written in SQLite SQL; the
+# behavior it covers is then covered by tests/pgtests (named in the reason). Everything
+# else in those packages must pass on Postgres. The list may only shrink.
+#
+# scripts/test_postgres_suites.sh turns this file into `go test -skip` and prints it.
+
+# --- the test asserts the SQL text or the quoting of SQLite --------------------------------
+TestCollectionQuery	asserts the SQLite SQL text (backtick quoted); Postgres quotes with "
+TestModelQuery	asserts the SQLite SQL text (backtick quoted); Postgres quotes with "
+TestBindDbx	asserts the SQLite SQL text (backtick quoted); Postgres quotes with "
+TestRecordDelete	asserts the SQLite SQL text of the cascade queries (json_each); the Postgres SQL is pinned in tools/search/dialect_postgres_test.go
+TestExpandRecordsQuerySkipDuplicatedIds	asserts the SQLite SQL text (json_each); the Postgres SQL is pinned in tools/search/dialect_postgres_test.go
+TestRecordFieldResolverUpdateQuery	asserts the SQLite SQL text of the generated filter queries; the Postgres SQL is pinned in tools/search/dialect_postgres_test.go and the results are compared in tests/pgtests (TestRecordFilters)
+TestRecordFieldResolverResolveCollectionFields	asserts SQLite JSON path SQL (json_extract) in some cases; compared on both engines in tests/pgtests (TestRecordFilters)
+TestTableInfo	asserts the SQLite column types and defaults of the system tables; Postgres has its own (docs/datastores.md, "How data is stored")
+TestAutodateFieldColumnType	asserts the SQLite column definition; Postgres has COLLATE "C" and its own types (docs/datastores.md)
+TestDateFieldColumnType	asserts the SQLite column definition; Postgres has COLLATE "C" and its own types (docs/datastores.md)
+TestEditorFieldColumnType	asserts the SQLite column definition; Postgres has COLLATE "C" and its own types (docs/datastores.md)
+TestEmailFieldColumnType	asserts the SQLite column definition; Postgres has COLLATE "C" and its own types (docs/datastores.md)
+TestFileFieldColumnType	asserts the SQLite column definition; Postgres has COLLATE "C" and its own types (docs/datastores.md)
+TestGeoPointFieldColumnType	asserts the SQLite column definition; Postgres has COLLATE "C" and its own types (docs/datastores.md)
+TestJSONFieldColumnType	asserts the SQLite column definition; Postgres has COLLATE "C" and its own types (docs/datastores.md)
+TestNumberFieldColumnType	asserts the SQLite column definition; Postgres has COLLATE "C" and its own types (docs/datastores.md)
+TestPasswordFieldColumnType	asserts the SQLite column definition; Postgres has COLLATE "C" and its own types (docs/datastores.md)
+TestRelationFieldColumnType	asserts the SQLite column definition; Postgres has COLLATE "C" and its own types (docs/datastores.md)
+TestSelectFieldColumnType	asserts the SQLite column definition; Postgres has COLLATE "C" and its own types (docs/datastores.md)
+TestTextFieldColumnType	asserts the SQLite column definition; Postgres has COLLATE "C" and its own types (docs/datastores.md)
+TestURLFieldColumnType	asserts the SQLite column definition; Postgres has COLLATE "C" and its own types (docs/datastores.md)
+
+# --- the test queries the SQLite catalog (sqlite_master, sqlite_schema) ----------------------
+TestDeleteView	the helper reads sqlite_schema; views are covered by tests/pgtests (TestViewCollections) and core TestCollectionSaveIndirectViewsUpdate
+TestCreateViewFieldsWithDiscardedNestedTransaction	the helper reads sqlite_schema; views are covered by tests/pgtests (TestViewCollections)
+TestCollectionSaveViewWrapping	reads the view SQL from sqlite_master and asserts the SQLite subquery wrapping
+TestSingleVsMultipleValuesNormalization	reads sqlite_master; the single <-> multiple conversion is covered by tests/pgtests (TestCollectionLifecycle) and core TestCollectionSaveIndirectViewsUpdate
+
+# --- view queries written in SQLite SQL (user SQL runs as written, docs/datastores.md) -------
+TestCreateViewFields	the view queries are SQLite SQL (backticks, brackets, loose GROUP BY); the Postgres view cases are in tests/pgtests (TestViewCollections)
+TestCreateViewFieldsWithNumberOnlyInt	the view query is SQLite SQL (total() aggregate)
+TestDryRunView	one case relies on SQLite accepting an invalid column name
+TestSaveView	selects * with an aggregate (SQLite is lenient about GROUP BY; the hidden _rowid_ column makes Postgres reject it)
+
+# --- backups and the SQL endpoint: zip backups skip the database on Postgres ----------------
+TestCreateBackup	expects data.db in the archive; a Postgres archive holds the files only (tests/pgtests TestBackupsOnPostgres)
+TestVerifyBackup	expects row counts of data.db in the manifest; Postgres verification is skipped (tests/pgtests TestBackupsOnPostgres)
+TestSQLRun	asserts SQLite error text and column types; the Postgres behavior is in tests/pgtests (TestSQLEndpoint)
+
+# --- one pool, and a watcher that needs the SQLite data dir -----------------------------------
+TestBaseAppDBDualBuilder	checks the separate read and write pools of SQLite; Postgres uses one pool
+TestNotifyWatcher_CollectionsUpdate	cross process collections reload through pb_data/.pb_notify files; a multi replica concern (M7), also flaky on macOS (fsnotify duplicate events)
+TestNotifyWatcher_SettingsUpdate	cross process settings reload through pb_data/.pb_notify files; a multi replica concern (M7), also flaky on macOS

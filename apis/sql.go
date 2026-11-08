@@ -98,8 +98,12 @@ func executeQuery(app core.App, query string, maxRows int) (*runSQLResult, error
 		}
 	}
 
+	// fork (#106): Postgres has its own classification and name normalization
+	d := core.DialectOf(app)
+	isPossibleWriteQuery = isWriteQuery(d, query, isPossibleWriteQuery)
+
 	// the audit log is append-only (fork-local, #74)
-	if isPossibleWriteQuery && strings.Contains(strings.ToLower(query), strings.ToLower(core.CollectionNameAuditLog)) {
+	if isPossibleWriteQuery && sqlTouchesAuditLog(d, query) {
 		return nil, errors.New("the " + core.CollectionNameAuditLog + " table is append-only and cannot be modified with SQL")
 	}
 
@@ -121,7 +125,7 @@ func executeQuery(app core.App, query string, maxRows int) (*runSQLResult, error
 
 	// assume write/mutation query
 	// ---------------------------------------------------------------
-	if isPossibleWriteQuery {
+	runWrite := func() (*runSQLResult, error) {
 		// auto wrap in transaction in case there are multiple inline queries
 		txErr := app.RunInTransaction(func(txApp core.App) error {
 			execResult, err := txApp.NonconcurrentDB().NewQuery(query).WithContext(ctx).Execute()
@@ -144,12 +148,27 @@ func executeQuery(app core.App, query string, maxRows int) (*runSQLResult, error
 		return result, nil
 	}
 
+	if isPossibleWriteQuery {
+		return runWrite()
+	}
+
 	// assume query returning rows
 	// ---------------------------------------------------------------
-	rows, err := app.ConcurrentDB().NewQuery(query).WithContext(ctx).Rows()
+	rows, release, err := runReadQuery(ctx, app, query)
 	if err != nil {
+		// Postgres: the server refused a write that was not recognized as
+		// one (a writable CTE); it takes the write path and its guards
+		if isReadOnlyViolation(err) {
+			if sqlTouchesAuditLog(d, query) {
+				return nil, errors.New("the " + core.CollectionNameAuditLog + " table is append-only and cannot be modified with SQL")
+			}
+
+			return runWrite()
+		}
+
 		return nil, err
 	}
+	defer release()
 	defer rows.Close()
 
 	// populate columns info

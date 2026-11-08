@@ -229,6 +229,15 @@ type Dialect interface {
 	// BuildIndex renders a (portable, SQLite flavoured) parsed index as a
 	// CREATE INDEX statement for this dialect.
 	BuildIndex(idx dbutils.Index) string
+	// DropSuffix is appended to DROP TABLE and DROP VIEW statements: Postgres
+	// refuses to drop an object that a view depends on, SQLite leaves the view
+	// dangling. It is "" on SQLite.
+	DropSuffix() string
+	// DetachDependentViews drops the views that depend (directly or not) on
+	// the named view and returns a func that recreates them, for replacing a
+	// view in place: Postgres refuses to drop a view that other views select
+	// from. The returned func is never nil. It is a no-op on SQLite.
+	DetachDependentViews(db dbx.Builder, view string) (restore func() error, err error)
 	// ConvertMultiplicity changes a single value column to a multiple value
 	// one (toMultiple=true) or the opposite, keeping the data.
 	//

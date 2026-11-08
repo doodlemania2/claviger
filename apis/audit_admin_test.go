@@ -50,7 +50,7 @@ func TestAuditSettingsUpdate(t *testing.T) {
 				t.Fatalf("Unexpected target: %s", e.PublicExport())
 			}
 
-			raw := e.GetString("changedFields") + e.GetString("before") + e.GetString("after")
+			raw := e.GetString("changedFields") + tests.CompactJSON(e.GetString("before")) + tests.CompactJSON(e.GetString("after"))
 			for _, secret := range []string{"smtp-top-secret", "s3-top-secret", "captcha-top-secret"} {
 				if strings.Contains(raw, secret) {
 					t.Fatalf("Secret %q leaked into the audit entry: %s", secret, raw)
@@ -63,9 +63,9 @@ func TestAuditSettingsUpdate(t *testing.T) {
 					t.Fatalf("Expected %s in changedFields %s", k, changed)
 				}
 			}
-			if !strings.Contains(e.GetString("after"), `"smtp.password":"[redacted]"`) ||
-				!strings.Contains(e.GetString("after"), `"meta.appName":"audited"`) {
-				t.Fatalf("Unexpected after: %s", e.GetString("after"))
+			if !strings.Contains(tests.CompactJSON(e.GetString("after")), `"smtp.password":"[redacted]"`) ||
+				!strings.Contains(tests.CompactJSON(e.GetString("after")), `"meta.appName":"audited"`) {
+				t.Fatalf("Unexpected after: %s", tests.CompactJSON(e.GetString("after")))
 			}
 		},
 	}).Test(t)
@@ -90,8 +90,8 @@ func TestAuditCollectionSchemaChanges(t *testing.T) {
 				t.Fatalf("Expected 1 entry, got %d", len(entries))
 			}
 			requireSuperuserEntry(t, entries[0], core.AuditActionCollectionCreate, "_collections")
-			if !strings.Contains(entries[0].GetString("meta"), `"collectionName":"auditcol"`) ||
-				!strings.Contains(entries[0].GetString("after"), `"listRule":"@request.auth.id != ''"`) {
+			if !strings.Contains(tests.CompactJSON(entries[0].GetString("meta")), `"collectionName":"auditcol"`) ||
+				!strings.Contains(tests.CompactJSON(entries[0].GetString("after")), `"listRule":"@request.auth.id != ''"`) {
 				t.Fatalf("Unexpected entry: %s", entries[0].PublicExport())
 			}
 		},
@@ -134,12 +134,13 @@ func TestAuditCollectionSchemaChanges(t *testing.T) {
 			}
 			e := entries[0]
 			requireSuperuserEntry(t, e, core.AuditActionCollectionUpdate, "_collections")
-			meta := e.GetString("meta")
+			meta := tests.CompactJSON(e.GetString("meta"))
 			for _, want := range []string{
 				`"collectionName":"auditupd"`,
 				`"added":[{"name":"brandnew"`,
 				`"removed":[{"name":"gone"`,
-				`"renamed":[{"from":"oldname","to":"newname"}]`,
+				`"from":"oldname"`, // jsonb orders the keys of an object by length and name
+				`"to":"newname"`,
 				`"modified":[{"name":"typed","properties":["required"]}]`,
 				`idx_audit_new`,
 			} {
@@ -150,7 +151,7 @@ func TestAuditCollectionSchemaChanges(t *testing.T) {
 			if !strings.Contains(e.GetString("changedFields"), `"listRule"`) ||
 				!strings.Contains(e.GetString("changedFields"), `"fields"`) ||
 				!strings.Contains(e.GetString("changedFields"), `"indexes"`) ||
-				!strings.Contains(e.GetString("after"), `"listRule":"id = ''"`) {
+				!strings.Contains(tests.CompactJSON(e.GetString("after")), `"listRule":"id = ''"`) {
 				t.Fatalf("Unexpected diff: %s", e.PublicExport())
 			}
 		},
@@ -174,7 +175,7 @@ func TestAuditCollectionSchemaChanges(t *testing.T) {
 				t.Fatalf("Expected 1 entry, got %d", len(entries))
 			}
 			requireSuperuserEntry(t, entries[0], core.AuditActionCollectionDelete, "_collections")
-			if !strings.Contains(entries[0].GetString("meta"), `"collectionName":"auditdel"`) {
+			if !strings.Contains(tests.CompactJSON(entries[0].GetString("meta")), `"collectionName":"auditdel"`) {
 				t.Fatalf("Unexpected entry: %s", entries[0].PublicExport())
 			}
 		},
@@ -198,10 +199,10 @@ func TestAuditCollectionSchemaChanges(t *testing.T) {
 			}
 			for _, e := range entries {
 				if e.GetString("actorType") != core.AuditActorTypeSuperuser || e.GetString("ip") == "" ||
-					!strings.Contains(e.GetString("meta"), `"import":true`) {
+					!strings.Contains(tests.CompactJSON(e.GetString("meta")), `"import":true`) {
 					t.Fatalf("Unexpected entry: %s", e.PublicExport())
 				}
-				if strings.Contains(e.GetString("before")+e.GetString("after")+e.GetString("meta"), "oauth-top-secret") {
+				if strings.Contains(tests.CompactJSON(e.GetString("before"))+tests.CompactJSON(e.GetString("after"))+tests.CompactJSON(e.GetString("meta")), "oauth-top-secret") {
 					t.Fatalf("OAuth2 secret leaked: %s", e.PublicExport())
 				}
 			}

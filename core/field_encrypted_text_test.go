@@ -147,7 +147,7 @@ func TestEncryptedTextAADBinding(t *testing.T) {
 	// copy A's ciphertext into B's row with raw SQL (what an attacker with
 	// database access, or a leaked backup, could do)
 	stolen := rawColumn(t, app, col, a.Id, "phone")
-	if _, err := app.DB().NewQuery("UPDATE " + col.Name + " SET phone={:v} WHERE id={:id}").
+	if _, err := app.DB().NewQuery("UPDATE {{" + col.Name + "}} SET phone={:v} WHERE id={:id}").
 		Bind(dbx.Params{"v": stolen, "id": b.Id}).Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -377,7 +377,7 @@ func TestEncryptedTextRequiresKEKWhenDefiningField(t *testing.T) {
 // new app on the copy, as a process restart would.
 func restartApp(t testing.TB, app core.App) (*tests.TestApp, error) {
 	t.Helper()
-	if _, err := app.DB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute(); err != nil {
+	if err := core.DialectOf(app).Checkpoint(app.DB()); err != nil {
 		t.Fatal(err)
 	}
 	return tests.NewTestApp(app.DataDir())
@@ -527,8 +527,8 @@ func TestEncryptedTextAuditAndWebhookRedactionByType(t *testing.T) {
 				t.Fatalf("audit entry leaks the plaintext in %s: %s", f, s)
 			}
 		}
-		if e.GetString("action") == core.AuditActionCreate && !strings.Contains(e.GetString("after"), "[redacted]") {
-			t.Fatalf("expected a redaction marker: %s", e.GetString("after"))
+		if e.GetString("action") == core.AuditActionCreate && !strings.Contains(tests.CompactJSON(e.GetString("after")), "[redacted]") {
+			t.Fatalf("expected a redaction marker: %s", tests.CompactJSON(e.GetString("after")))
 		}
 	}
 

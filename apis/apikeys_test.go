@@ -2,6 +2,7 @@ package apis_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -116,8 +117,14 @@ func TestAPIKeyCreateListRevoke(t *testing.T) {
 	if rec.GetString("secretHash") != core.HashAPIKeySecret(secret) {
 		t.Fatal("stored hash does not match")
 	}
+	allKeys, err := env.app.FindAllRecords(core.CollectionNameAPIKeys)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var raw string
-	_ = env.app.DB().NewQuery("SELECT group_concat(name||prefix||scopes||secretHash||collectionRef||recordRef) FROM _apiKeys").Row(&raw)
+	for _, k := range allKeys {
+		raw += fmt.Sprint(k.FieldsData())
+	}
 	if strings.Contains(raw, secret) {
 		t.Fatal("secret found in the database")
 	}

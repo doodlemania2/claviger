@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/router"
 	"github.com/doodlemania2/claviger/tools/routine"
 	"github.com/doodlemania2/claviger/tools/types"
@@ -141,6 +142,12 @@ func backupDelete(e *core.RequestEvent) error {
 func backupRestore(e *core.RequestEvent) error {
 	if e.App.Store().Has(core.StoreKeyActiveBackup) {
 		return e.BadRequestError("Try again later - another backup/restore process has already been started.", nil)
+	}
+
+	// fork (#106): a zip restore replaces data.db, which a Postgres install does not have
+	if name := core.DialectOf(e.App).Name(); name != dialect.SQLiteName {
+		return e.BadRequestError("Restoring a zip backup is not available when the database is "+name+
+			". Restore the database with pg_restore or your provider's point-in-time recovery.", nil)
 	}
 
 	key := e.Request.PathValue("key")

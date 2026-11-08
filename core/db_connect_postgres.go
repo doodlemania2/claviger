@@ -27,23 +27,40 @@ const DBURLEnv = "CLAVIGER_DB_URL"
 // PostgreSQL connection URL. The dbPath argument is ignored.
 func PostgresDBConnect(url string) DBConnectFunc {
 	return func(_ string) (*dbx.DB, error) {
+		// instrumented driver wrapper while traces/metrics are active
+		if db, err := openTelemetryPostgres(url); db != nil || err != nil {
+			if err != nil {
+				return nil, redactDBURL(err, url)
+			}
+			return db, pingPostgres(db.DB(), url)
+		}
+
 		sqlDB, err := sql.Open("pgx", url)
 		if err != nil {
 			return nil, redactDBURL(err, url)
 		}
 
-		// fail early, with a clear error, instead of at the first query
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		if err := sqlDB.PingContext(ctx); err != nil {
-			_ = sqlDB.Close()
-			return nil, fmt.Errorf("failed to connect to the PostgreSQL database (%s): %w", DBURLEnv, redactDBURL(err, url))
+		if err := pingPostgres(sqlDB, url); err != nil {
+			return nil, err
 		}
 
 		// "pgx" selects dbx's PgsqlBuilder (placeholders, quoting, upsert)
 		// and the Postgres dialect (see tools/dialect).
 		return dbx.NewFromDB(sqlDB, "pgx"), nil
 	}
+}
+
+// pingPostgres fails early, with a clear error, instead of at the first query.
+func pingPostgres(sqlDB *sql.DB, url string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	if err := sqlDB.PingContext(ctx); err != nil {
+		_ = sqlDB.Close()
+		return fmt.Errorf("failed to connect to the PostgreSQL database (%s): %w", DBURLEnv, redactDBURL(err, url))
+	}
+
+	return nil
 }
 
 // applyEnvDBConfig selects the data database from the environment:

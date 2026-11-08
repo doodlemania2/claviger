@@ -2,6 +2,7 @@ package dialect
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -175,6 +176,16 @@ func pgPortableQuotes(expr string) string {
 // "ALTER COLUMN ... TYPE ... USING". Postgres refuses to retype a
 // column that is used by a view so the views are dropped and recreated.
 func (postgresDialect) ConvertMultiplicity(db dbx.Builder, table, column string, toMultiple bool) (bool, error) {
+	// a field that is added together with its data has the target type already
+	// (the caller cannot tell it from a real single <-> multiple change)
+	var dataType string
+	_ = db.NewQuery(`SELECT data_type::text FROM information_schema.columns
+		WHERE table_schema = current_schema() AND table_name = {:table} AND column_name = {:column}`).
+		Bind(dbx.Params{"table": table, "column": column}).Row(&dataType)
+	if dataType == "" || (toMultiple && dataType == "jsonb") || (!toMultiple && dataType == "text") {
+		return true, nil
+	}
+
 	views, err := pgListViews(db)
 	if err != nil {
 		return true, err
@@ -359,13 +370,84 @@ func (postgresDialect) TableIndexes(db dbx.Builder, table string) (map[string]st
 
 	result := make(map[string]string, len(rows))
 	for _, r := range rows {
-		// normalize to the portable form (no schema qualification, no access method)
-		def := strings.Replace(r.SQL, " ON "+r.Schema+".", " ON ", 1)
-		def = strings.Replace(def, " USING btree", "", 1)
-		result[r.Name] = def
+		result[r.Name] = PortableIndex(r.SQL, r.Schema, table)
 	}
 
 	return result, nil
+}
+
+var (
+	pgIndexUsing     = regexp.MustCompile(`(?i)\s+USING\s+\w+\s*\(`)
+	pgIndexLowerCol  = regexp.MustCompile(`(?i)^lower\(\s*("?)([^()"\s]+)("?)\s*\)$`)
+	pgIndexCollateC  = regexp.MustCompile(`(?i)\s+COLLATE\s+"C"`)
+	pgIndexCollateQ  = regexp.MustCompile(`(?i)\s+COLLATE\s+"([^"]+)"`)
+	pgIndexTypeCasts = regexp.MustCompile(`::(?:text|character varying|double precision|boolean|bigint|jsonb)\b`)
+)
+
+// PortableIndex converts a pg_get_indexdef() definition back to PocketBase's
+// portable (SQLite flavoured, backtick quoted) CREATE INDEX form, the one that
+// the collection "indexes" field stores and exports, so that the indexes of
+// the live database can be compared with the collection ones on both engines.
+//
+// It is the inverse of [Dialect.BuildIndex] for the indexes that Claviger
+// creates: a lower(column) expression becomes "column COLLATE NOCASE" and the
+// default "C" collation of the text columns is implied. Anything it does not
+// recognize stays as written.
+func PortableIndex(def, schema, table string) string {
+	def = strings.Replace(def, " ON "+schema+".", " ON ", 1)
+	def = pgIndexUsing.ReplaceAllString(def, " (")
+
+	// split the definition in "head (columns) [WHERE ...]" with the same
+	// parser that the collections use (ParseIndex)
+	def = pgIndexCollateC.ReplaceAllString(def, "")
+	def = pgIndexCollateQ.ReplaceAllString(def, " COLLATE $1")
+
+	idx := dbutils.ParseIndex(def)
+	if !idx.IsValid() {
+		return def // not a plain index definition, keep the Postgres text
+	}
+
+	idx.SchemaName = ""
+	idx.TableName = table
+
+	for i, col := range idx.Columns {
+		name := strings.TrimSpace(col.Name)
+
+		if m := pgIndexLowerCol.FindStringSubmatch(name); m != nil && col.Collate == "" {
+			idx.Columns[i].Name = m[2]
+			idx.Columns[i].Collate = "NOCASE"
+			continue
+		}
+
+		idx.Columns[i].Name = pgIndexTypeCasts.ReplaceAllString(name, "")
+	}
+
+	// pg_get_indexdef wraps the predicate in parentheses
+	where := strings.TrimSpace(idx.Where)
+	if len(where) > 1 && where[0] == '(' && where[len(where)-1] == ')' && balancedParens(where[1:len(where)-1]) {
+		where = strings.TrimSpace(where[1 : len(where)-1])
+	}
+	where = pgIndexTypeCasts.ReplaceAllString(where, "")
+	where = strings.ReplaceAll(where, " <> ", " != ")
+	idx.Where = where
+
+	return idx.Build()
+}
+
+func balancedParens(s string) bool {
+	depth := 0
+	for _, r := range s {
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth < 0 {
+				return false
+			}
+		}
+	}
+	return depth == 0
 }
 
 func (postgresDialect) IndexOwner(db dbx.Builder, indexName string, skipTables ...string) string {
@@ -436,4 +518,68 @@ func (postgresDialect) QuoteIdent(name string) string { return quoteIdent(name) 
 // quoteIdent double quotes a Postgres identifier.
 func quoteIdent(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+func (postgresDialect) DropSuffix() string { return " CASCADE" }
+
+// DetachDependentViews drops the views that select (transitively) from the
+// named view, in reverse dependency order, and returns the func that recreates
+// them in dependency order.
+func (postgresDialect) DetachDependentViews(db dbx.Builder, view string) (func() error, error) {
+	noop := func() error { return nil }
+
+	var dependents []string
+	err := db.NewQuery(`
+		WITH RECURSIVE deps(oid) AS (
+			SELECT c.oid FROM pg_class c
+			JOIN pg_namespace n ON n.oid = c.relnamespace
+			WHERE n.nspname = current_schema() AND c.relname = {:view}
+			UNION
+			SELECT r.ev_class FROM deps d
+			JOIN pg_depend dep ON dep.refobjid = d.oid AND dep.deptype = 'n'
+			JOIN pg_rewrite r ON r.oid = dep.objid
+			WHERE r.ev_class <> d.oid
+		)
+		SELECT c.relname::text FROM deps d
+		JOIN pg_class c ON c.oid = d.oid
+		WHERE c.relkind = 'v' AND c.relname <> {:view}
+	`).Bind(dbx.Params{"view": view}).Column(&dependents)
+	if err != nil {
+		return noop, err
+	}
+	if len(dependents) == 0 {
+		return noop, nil
+	}
+
+	all, err := pgListViews(db)
+	if err != nil {
+		return noop, err
+	}
+
+	isDependent := make(map[string]bool, len(dependents))
+	for _, name := range dependents {
+		isDependent[name] = true
+	}
+
+	var detached []ViewDef // dependency (creation) order
+	for _, v := range all {
+		if isDependent[v.Name] {
+			detached = append(detached, v)
+		}
+	}
+
+	for i := len(detached) - 1; i >= 0; i-- {
+		if _, err := db.NewQuery("DROP VIEW " + quoteIdent(detached[i].Name)).Execute(); err != nil {
+			return noop, err
+		}
+	}
+
+	return func() error {
+		for _, v := range detached {
+			if _, err := db.NewQuery(v.CreateSQL).Execute(); err != nil {
+				return fmt.Errorf("failed to recreate the dependent view %s: %w", v.Name, err)
+			}
+		}
+		return nil
+	}, nil
 }

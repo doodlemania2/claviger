@@ -146,7 +146,7 @@ func TestAuditEntryHookEnrichAndSkip(t *testing.T) {
 		t.Fatal(err)
 	}
 	entries, _ := app.FindAllRecords(core.CollectionNameAuditLog)
-	if len(entries) != 1 || !strings.Contains(entries[0].GetString("meta"), `"enriched":true`) {
+	if len(entries) != 1 || !strings.Contains(tests.CompactJSON(entries[0].GetString("meta")), `"enriched":true`) {
 		t.Fatalf("Expected 1 enriched entry, got %v", entries)
 	}
 	if calls := app.EventCallsSnapshot()["OnAuditEntry"]; calls != 2 {
@@ -275,7 +275,7 @@ func TestAuditRedactionAndExclusions(t *testing.T) {
 	}
 
 	for _, e := range mustAll(t, app) {
-		raw := e.GetString("before") + e.GetString("after")
+		raw := tests.CompactJSON(e.GetString("before")) + tests.CompactJSON(e.GetString("after"))
 		for _, leaked := range []string{"super-secret-password", u.GetString("tokenKey"), u.GetString("password:hash"), "sk-live-123", "private note"} {
 			if strings.Contains(raw, leaked) {
 				t.Fatalf("Leaked %q in %s", leaked, raw)
@@ -318,7 +318,7 @@ func TestAuditRedactionAndExclusions(t *testing.T) {
 	if err := app.Save(ext); err != nil {
 		t.Fatal(err)
 	}
-	if n := auditCount(t, app, "targetCollection='_externalAuths'"); n != 1 {
+	if n := auditCount(t, app, "[[targetCollection]]='_externalAuths'"); n != 1 {
 		t.Fatalf("Expected the external auth to be audited, got %d", n)
 	}
 }
@@ -341,7 +341,7 @@ func TestDeleteExpiredAuditEntries(t *testing.T) {
 	}
 
 	old := time.Now().AddDate(0, 0, -40).UTC().Format("2006-01-02 15:04:05.000Z")
-	if _, err := app.NonconcurrentDB().NewQuery("UPDATE `" + core.CollectionNameAuditLog + "` SET created={:d} WHERE id IN ({:a},{:b})").
+	if _, err := app.NonconcurrentDB().NewQuery("UPDATE {{" + core.CollectionNameAuditLog + "}} SET created={:d} WHERE id IN ({:a},{:b})").
 		Bind(dbx.Params(map[string]any{"d": old, "a": entries[0].Id, "b": entries[1].Id})).Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -470,7 +470,7 @@ func TestAuditIgnoresPasskeyLoginNoise(t *testing.T) {
 	if err := app.Save(cred); err != nil {
 		t.Fatal(err)
 	}
-	count := func() int { return auditCount(t, app, "targetCollection='_webauthnCredentials'") }
+	count := func() int { return auditCount(t, app, "[[targetCollection]]='_webauthnCredentials'") }
 	if count() != 1 {
 		t.Fatalf("Expected the creation to be audited, got %d", count())
 	}
@@ -530,8 +530,8 @@ func TestAuditSettingsNoOpAndSystemSave(t *testing.T) {
 		t.Fatalf("Expected the new entry: %v", err)
 	}
 	e := entries[0]
-	if e.GetString("actorType") != core.AuditActorTypeSystem || strings.Contains(e.GetString("after"), "go-side-secret") ||
-		!strings.Contains(e.GetString("after"), `"smtp.password":"[redacted]"`) {
+	if e.GetString("actorType") != core.AuditActorTypeSystem || strings.Contains(tests.CompactJSON(e.GetString("after")), "go-side-secret") ||
+		!strings.Contains(tests.CompactJSON(e.GetString("after")), `"smtp.password":"[redacted]"`) {
 		t.Fatalf("Unexpected entry %s", e.PublicExport())
 	}
 }
@@ -563,7 +563,7 @@ func TestAuditRetentionFromSettingsAndEnvOverride(t *testing.T) {
 		}
 		entries := mustAll(t, app)
 		old := time.Now().AddDate(0, 0, -40).UTC().Format("2006-01-02 15:04:05.000Z")
-		if _, err := app.NonconcurrentDB().NewQuery("UPDATE `" + core.CollectionNameAuditLog + "` SET created={:d} WHERE id={:a}").
+		if _, err := app.NonconcurrentDB().NewQuery("UPDATE {{" + core.CollectionNameAuditLog + "}} SET created={:d} WHERE id={:a}").
 			Bind(dbx.Params{"d": old, "a": entries[0].Id}).Execute(); err != nil {
 			t.Fatal(err)
 		}
