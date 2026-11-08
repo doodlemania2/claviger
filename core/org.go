@@ -252,7 +252,13 @@ func (app *BaseApp) registerOrgHooks() {
 	app.OnRecordUpdate(CollectionNameOrgMembers).Bind(&hook.Handler[*RecordEvent]{
 		Id: "__pbOrgLastOwnerUpdate__",
 		Func: func(e *RecordEvent) error {
+			// the stored state: Original() can be stale for a record instance
+			// that was saved before (same reasoning as the audit hook)
 			orig := e.Record.Original()
+			if stored, err := e.App.FindRecordById(e.Record.Collection(), e.Record.Id); err == nil {
+				orig = stored
+			}
+
 			if isActiveOrgOwner(orig) && !isActiveOrgOwner(e.Record) {
 				if err := guardLastOwner(e.App, e.Context, orig); err != nil {
 					return err
