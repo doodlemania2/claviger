@@ -128,6 +128,12 @@ window.app.store = store({
                 label: "API keys",
             },
             {
+                // fork-local (#75)
+                href: "#/settings/encryption-keys",
+                icon: "ri-lock-2-line",
+                label: "Encryption keys",
+            },
+            {
                 href: "#/settings/captcha",
                 icon: "ri-shield-check-line",
                 label: "Captcha",
