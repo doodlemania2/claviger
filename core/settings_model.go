@@ -337,21 +337,26 @@ func (s *Settings) MarshalJSON() ([]byte, error) {
 
 	copy.SMTP.hidePassword = true
 
-	sensitiveFields := []*string{
-		&copy.SMTP.Password,
-		&copy.S3.Secret,
-		&copy.Backups.S3.Secret,
-		&copy.Captcha.SecretKey,
-	}
-
 	// mask all sensitive fields
-	for _, v := range sensitiveFields {
+	for _, v := range copy.secretFields() {
 		if v != nil && *v != "" {
 			*v = ""
 		}
 	}
 
 	return json.Marshal(copy, json.Deterministic(true))
+}
+
+// secretFields returns pointers to every sensitive settings value, keyed by its
+// JSON path. It is the single list used by MarshalJSON (to mask them) and by
+// the audit log (to detect and redact changes, #110).
+func (st *settings) secretFields() map[string]*string {
+	return map[string]*string{
+		"smtp.password":     &st.SMTP.Password,
+		"s3.secret":         &st.S3.Secret,
+		"backups.s3.secret": &st.Backups.S3.Secret,
+		"captcha.secretKey": &st.Captcha.SecretKey,
+	}
 }
 
 // -------------------------------------------------------------------

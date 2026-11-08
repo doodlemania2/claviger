@@ -313,6 +313,9 @@ func (app *BaseApp) registerAuditHooks() {
 		Priority: 100,
 	})
 
+	// admin actions: settings and schema changes (#110)
+	app.registerAdminAuditHooks()
+
 	// retention
 	app.Cron().Add(auditCleanupCronId, auditCleanupCronExpr, func() {
 		days := auditRetentionDays()

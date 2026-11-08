@@ -59,7 +59,7 @@ func settingsSet(e *core.RequestEvent) error {
 	}
 
 	return e.App.OnSettingsUpdateRequest().Trigger(event, func(e *core.SettingsUpdateRequestEvent) error {
-		err := e.App.Save(e.NewSettings)
+		err := e.App.SaveWithContext(auditContext(e.RequestEvent), e.NewSettings)
 		if err != nil {
 			return e.BadRequestError("An error occurred while saving the new settings.", err)
 		}

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/doodlemania2/claviger/core"
 	"github.com/doodlemania2/claviger/tests"
@@ -25,6 +26,10 @@ func auditEntries(t testing.TB, app core.App, filter string) []*core.Record {
 }
 
 func seedAuditEntry(t testing.TB, app core.App) *core.Record {
+	// drop the system entries written by the migrations that ran on the fixture (#110)
+	if _, err := core.DeleteExpiredAuditEntries(app, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
 	err := core.WriteAuditEntry(app, nil, &core.AuditEntry{
 		Action:         core.AuditActionCreate,
 		Actor:          core.AuditActor{Type: core.AuditActorTypeSystem},

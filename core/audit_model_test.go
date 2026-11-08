@@ -29,6 +29,15 @@ func auditCount(t testing.TB, app core.App, filter string) int {
 	return total
 }
 
+// clearAudit drops the system entries written by the schema migrations that
+// ran when the fixture app booted (#110).
+func clearAudit(t testing.TB, app core.App) {
+	t.Helper()
+	if _, err := core.DeleteExpiredAuditEntries(app, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func newDemo2(t testing.TB, app core.App, title string) *core.Record {
 	t.Helper()
 	col, err := app.FindCollectionByNameOrId("demo2")
@@ -45,6 +54,7 @@ func TestAuditEntryForGoSavesUsesSystemActor(t *testing.T) {
 
 	app, _ := tests.NewTestApp()
 	defer app.Cleanup()
+	clearAudit(t, app)
 
 	r := newDemo2(t, app, "go-created")
 	if err := app.Save(r); err != nil {
@@ -76,6 +86,7 @@ func TestAuditRollbackLeavesNoEntry(t *testing.T) {
 
 	app, _ := tests.NewTestApp()
 	defer app.Cleanup()
+	clearAudit(t, app)
 
 	rollbackErr := errors.New("rollback")
 	r := newDemo2(t, app, "rolled-back")
@@ -111,6 +122,7 @@ func TestAuditEntryHookEnrichAndSkip(t *testing.T) {
 
 	app, _ := tests.NewTestApp()
 	defer app.Cleanup()
+	clearAudit(t, app)
 
 	app.OnAuditEntry().Bind(&hook.Handler[*core.AuditEntryEvent]{
 		Func: func(e *core.AuditEntryEvent) error {
@@ -316,6 +328,7 @@ func TestDeleteExpiredAuditEntries(t *testing.T) {
 
 	app, _ := tests.NewTestApp()
 	defer app.Cleanup()
+	clearAudit(t, app)
 
 	for _, title := range []string{"aa", "bb", "cc"} {
 		if err := app.Save(newDemo2(t, app, title)); err != nil {
@@ -481,5 +494,44 @@ func TestAuditIgnoresPasskeyLoginNoise(t *testing.T) {
 	entries, _ := app.FindAllRecords(core.CollectionNameAuditLog, dbx.HashExp{"action": "update", "targetCollection": core.CollectionNameWebAuthnCredentials})
 	if len(entries) != 1 || entries[0].GetString("changedFields") != `["name"]` {
 		t.Fatalf("Expected one entry changing only name, got %v", entries)
+	}
+}
+
+// Fork-local (Claviger #110).
+
+func TestAuditSettingsNoOpAndSystemSave(t *testing.T) {
+	t.Parallel()
+
+	app, _ := tests.NewTestApp()
+	defer app.Cleanup()
+
+	// align the stored settings with the in-memory ones
+	if err := app.Save(app.Settings()); err != nil {
+		t.Fatal(err)
+	}
+	before := auditCount(t, app, "action='settings.update'")
+
+	// no-op: no entry
+	if err := app.Save(app.Settings()); err != nil {
+		t.Fatal(err)
+	}
+	if n := auditCount(t, app, "action='settings.update'"); n != before {
+		t.Fatalf("Expected no new entry for a no-op save, got %d", n-before)
+	}
+
+	// a Go-side change is attributed to system, secrets redacted
+	app.Settings().SMTP.Password = "go-side-secret"
+	app.Settings().Meta.AppName = "renamed"
+	if err := app.Save(app.Settings()); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := app.FindRecordsByFilter(core.CollectionNameAuditLog, "action='settings.update'", "-created", 1, 0)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("Expected the new entry: %v", err)
+	}
+	e := entries[0]
+	if e.GetString("actorType") != core.AuditActorTypeSystem || strings.Contains(e.GetString("after"), "go-side-secret") ||
+		!strings.Contains(e.GetString("after"), `"smtp.password":"[redacted]"`) {
+		t.Fatalf("Unexpected entry %s", e.PublicExport())
 	}
 }

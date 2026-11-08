@@ -180,6 +180,10 @@ Upstream-owned files the fork edits. Re-check these on every sync merge (conflic
 | `ui/src/main.js`, `ui/src/router.js`, `ui/src/store.js`, `ui/src/css/_main.css` | Webhooks page import, route, header link, stylesheet (#77). |
 | `plugins/jsvm/internal/types/generated/types.d.ts` | `BackupsConfig.disableVerify` (regenerates with `make jstypes`) (#78). |
 | `apis/middlewares.go` | `loadAuthToken` hands tokens starting with `clv_` to `loadAPIKeyAuth`; the JWT path below is untouched (#95). |
+| `core/settings_model.go` | `settings.secretFields()` is now the single list of masked secrets, used by `Settings.MarshalJSON` and the settings audit diff (#110). |
+| `core/collection_import.go` | `ImportCollections` delegates to the new `ImportCollectionsWithContext` (ctx reaches the saves/deletes, so imports are attributed) (#110). |
+| `apis/settings.go`, `apis/collection.go`, `apis/collection_import.go` | `SaveWithContext/DeleteWithContext(auditContext(e), ...)` and `core.ImportCollectionsWithContext` so settings and schema changes carry the superuser and IP (#110). |
+| `core/audit_model.go` | One call, `app.registerAdminAuditHooks()` (new file `core/audit_admin.go`) in `registerAuditHooks` (#110). |
 | `apis/base.go` | `bindAPIKeysApi(app, apiGroup)` (#95). |
 | `apis/collection_test.go`, `apis/collection_import_test.go`, `core/collection_query_test.go` | System collection count 18 -> 19 for `_apiKeys` (#95). The conductor reconciles the count across agents. |
 | `ui/src/router.js`, `ui/src/store.js` | `#/settings/api-keys` route and nav entry (#95). |
