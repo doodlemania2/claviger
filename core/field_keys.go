@@ -210,7 +210,7 @@ func scanFieldKeyRows(app App, where dbx.Expression) ([]fieldKeyRow, error) {
 	q := app.DB().
 		Select("id", "collectionRef", "fieldRef", "keyId", "kekId", "wrapped", "retired", "created").
 		From(CollectionNameFieldKeys).
-		OrderBy("created ASC", "rowid ASC")
+		OrderBy("created ASC", dialectOf(app).RowOrder())
 	if where != nil {
 		q.AndWhere(where)
 	}

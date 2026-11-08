@@ -150,7 +150,7 @@ func init() {
 
 			col.AddIndex("idx_signingKeys_kid", true, "kid", "")
 			// at most one active (not retiring) key per algorithm
-			col.AddIndex("idx_signingKeys_active", true, "alg", "retiresAt = ''")
+			col.AddIndex("idx_signingKeys_active", true, "alg", "`retiresAt` = ''")
 		})
 	}, func(txApp core.App) error {
 		for _, name := range []string{
