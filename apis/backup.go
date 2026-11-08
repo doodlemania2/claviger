@@ -22,12 +22,18 @@ func bindBackupApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 	sub.GET("/{key}", backupDownload) // relies on superuser file token
 	sub.DELETE("/{key}", backupDelete).Bind(RequireSuperuserAuth())
 	sub.POST("/{key}/restore", backupRestore).Bind(RequireSuperuserAuth())
+	sub.POST("/{key}/verify", backupVerify).Bind(RequireSuperuserAuth())
 }
 
 type backupFileInfo struct {
 	Modified types.DateTime `json:"modified"`
 	Key      string         `json:"key"`
 	Size     int64          `json:"size"`
+
+	// Claviger: last restore verification result (absent when never verified).
+	Verification *core.BackupVerification `json:"verification,omitempty"`
+	// Verifying is true while the backup is being verified.
+	Verifying bool `json:"verifying,omitempty"`
 }
 
 func backupsList(e *core.RequestEvent) error {
@@ -49,6 +55,12 @@ func backupsList(e *core.RequestEvent) error {
 
 	result := make([]backupFileInfo, len(backups))
 
+	verifications, err := core.LoadBackupVerifications(e.App)
+	if err != nil {
+		e.App.Logger().Warn("Failed to load the backup verification results", "error", err.Error())
+	}
+	verifyingKey := core.IsVerifyingBackup(e.App)
+
 	for i, obj := range backups {
 		modified, _ := types.ParseDateTime(obj.ModTime)
 
@@ -56,6 +68,9 @@ func backupsList(e *core.RequestEvent) error {
 			Key:      obj.Key,
 			Size:     obj.Size,
 			Modified: modified,
+
+			Verification: verifications[obj.Key],
+			Verifying:    verifyingKey != "" && verifyingKey == obj.Key,
 		}
 	}
 
@@ -118,6 +133,8 @@ func backupDelete(e *core.RequestEvent) error {
 		return e.BadRequestError("Invalid or already deleted backup file. Raw error: \n"+err.Error(), nil)
 	}
 
+	core.DeleteBackupVerification(e.App, key)
+
 	return e.NoContent(http.StatusNoContent)
 }
 
@@ -157,4 +174,40 @@ func backupRestore(e *core.RequestEvent) error {
 	})
 
 	return e.NoContent(http.StatusNoContent)
+}
+
+// backupVerify starts (in the background) a restore verification of the
+// specified backup. The result is available from the backups list.
+func backupVerify(e *core.RequestEvent) error {
+	if e.App.Store().Has(core.StoreKeyActiveBackup) || core.IsVerifyingBackup(e.App) != "" {
+		return e.BadRequestError("Try again later - another backup/restore/verification process has already been started.", nil)
+	}
+
+	key := e.Request.PathValue("key")
+
+	existsCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	fsys, err := e.App.NewBackupsFilesystem()
+	if err != nil {
+		return e.InternalServerError("Failed to load backups filesystem.", err)
+	}
+	defer fsys.Close()
+
+	fsys.SetContext(existsCtx)
+
+	if exists, err := fsys.Exists(key); !exists {
+		return e.BadRequestError("Missing or invalid backup file.", err)
+	}
+
+	routine.FireAndForget(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		if _, err := core.VerifyBackup(ctx, e.App, key); err != nil {
+			e.App.Logger().Error("Failed to verify backup", "key", key, "error", err.Error())
+		}
+	})
+
+	return e.JSON(http.StatusAccepted, map[string]any{"key": key, "status": "running"})
 }
