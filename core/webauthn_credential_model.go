@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/doodlemania2/claviger/tools/types"
+
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 )
@@ -168,6 +170,18 @@ func (m *WebAuthnCredential) Name() string {
 // SetName updates the "name" record field value.
 func (m *WebAuthnCredential) SetName(name string) {
 	m.Set("name", name)
+}
+
+// LastUsed returns the "lastUsed" field value: the time of the last successful
+// assertion with this credential. It is zero for a credential that has not
+// been used since the field was introduced.
+func (m *WebAuthnCredential) LastUsed() types.DateTime {
+	return m.GetDateTime("lastUsed")
+}
+
+// SetLastUsed updates the "lastUsed" record field value.
+func (m *WebAuthnCredential) SetLastUsed(t types.DateTime) {
+	m.Set("lastUsed", t)
 }
 
 // Flags returns the "flags" field as a decoded CredentialFlags map.
