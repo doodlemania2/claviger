@@ -27,6 +27,7 @@ function recordImpersonateModal(record) {
         isLoading: false,
         token: "",
         duration: 0,
+        reason: "", // required by the server (#93), recorded in the audit log
         get collection() {
             return app.store.collections.find((c) => {
                 return c.id == record.collectionId || c.name == record.collectionName;
@@ -37,7 +38,7 @@ function recordImpersonateModal(record) {
     const baseURL = app.utils.getApiExampleURL();
 
     async function createToken() {
-        if (data.isLoading) {
+        if (data.isLoading || !data.reason.trim()) {
             return;
         }
 
@@ -46,7 +47,9 @@ function recordImpersonateModal(record) {
         try {
             const impersonateClient = await app.pb
                 .collection(data.collection.name)
-                .impersonate(record.id, data.duration);
+                .impersonate(record.id, data.duration, {
+                    body: { duration: data.duration, reason: data.reason.trim() },
+                });
 
             data.token = impersonateClient.authStore.token;
         } catch (err) {
@@ -59,6 +62,7 @@ function recordImpersonateModal(record) {
     function reset() {
         data.token = "";
         data.duration = 0;
+        data.reason = "";
     }
 
     return t.div(
@@ -91,6 +95,19 @@ function recordImpersonateModal(record) {
                         createToken();
                     },
                 },
+                t.div(
+                    { className: "field m-b-sm" },
+                    t.label({ htmlFor: uniqueId + "_reason" }, "Reason (required, recorded in the audit log)"),
+                    t.input({
+                        id: uniqueId + "_reason",
+                        type: "text",
+                        name: "reason",
+                        required: true,
+                        maxLength: 500,
+                        value: () => data.reason,
+                        oninput: (e) => (data.reason = e.target.value),
+                    }),
+                ),
                 t.div(
                     { className: "field" },
                     t.label({ htmlFor: uniqueId + "_duration" }, "Token duration (in seconds)"),
