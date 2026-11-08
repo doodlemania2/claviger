@@ -170,8 +170,24 @@ Upstream-owned files the fork edits. Re-check these on every sync merge (conflic
 | `apis/backup.go` | `POST /api/backups/{key}/verify`; list adds `verification`/`verifying`; delete clears the stored result (#78). |
 | `ui/src/settings/backups/backupsList.js`, `backupsForm.js` | Verification badge and button; auto-verify switch (#78). |
 | `plugins/jsvm/internal/types/generated/types.d.ts` | `BackupsConfig.disableVerify` (regenerates with `make jstypes`) (#78). |
+| `apis/record_helpers.go` | `checkMFA` rewritten for per-account TOTP enforcement (`core.HasActiveTOTP`, passkey exemption, TOTP required as the second factor for enrolled accounts, zero-duration guard `mfaSessionDuration`); the 401 MFA body is built by `mfaRequiredBody` (adds `"totp": true`) (#90). |
+| `apis/record_auth.go` | One line: `bindTOTPApi(sub)` (#90). |
+| `core/base.go` | One line: `app.registerTOTPHooks()` (#90). |
+| `cmd/superuser.go` | One line: `superuserTOTPDisableCommand` registered (#90). |
+| `core/collection_query_test.go`, `apis/collection_import_test.go`, `apis/collection_test.go` | System collection counts 18 to 19 and `_totps` in the list (#90). Other batch-3 collections add to these counts too. |
 
 Fork-only files for #78: `core/backup_verify*.go`, `core/diskfree_*.go`.
+
+Fork-only files for #90 (TOTP): `tools/security/totp.go`, `core/totp_model.go`, `migrations/1780000300_add_totps.go`, `apis/record_auth_totp.go`, `cmd/superuser_totp.go`, `ui/src/settings/security/`. `core/audit_model.go` (fork file) skips the `lastStep` replay counter as noise.
+
+### TOTP (authenticator app, #90)
+
+Opt-in per account; deploying changes nobody's sign-in. Data lives in the `_totps` system collection (one row per auth record, every field hidden, no API rules). An enrolled account needs a TOTP code or an unused backup code after its first factor (password, OAuth2, email OTP), even when the collection's MFA is off; passkey sign-in is exempt. TOTP completes the upstream MFA session through `POST /api/collections/{c}/auth-with-totp {mfaId, code}`.
+
+- **Secret storage.** If the settings encryption key env (`PB_ENCRYPTION_KEY`, i.e. `App.EncryptionEnv()`) is set when the secret is stored, it is AES-256-GCM encrypted (`security.Encrypt`) and stored as `enc:<base64>`; otherwise it is stored plain. Plain secrets stay readable after a key is configured. **An `enc:` secret cannot be read without that key**: if the key is removed or rotated, TOTP codes stop working for those accounts (backup codes still work, they are bcrypt hashes) until `superuser totp-disable` is run and the account re-enrolls. Do not rotate the key without planning that.
+- **Hidden from the API.** The records API unhides every field for superusers, so `registerTOTPHooks` re-hides all `_totps` fields in an `OnRecordEnrich` handler. Keep that handler on sync: without it any superuser session can read every TOTP secret.
+- **Recovery (lost authenticator and backup codes).** Anyone with shell access to the data directory runs `claviger superuser totp-disable <email>` (removes the enrollment and any pending MFA sessions), then signs in with the password and enrolls again. A superuser can also delete the row via the admin UI/API (`_totps`), audited. On Azure Container Apps, run it in the single replica with `/pb_data` mounted.
+- **Pitfalls to re-check on sync:** the `checkMFA` hunk above, `grep -n registerTOTPHooks core/base.go`, `go test -run 'TOTP' ./apis/ ./cmd/ ./tools/security/`.
 
 ## CI
 
