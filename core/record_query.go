@@ -524,6 +524,11 @@ func (app *BaseApp) FindAuthRecordByToken(token string, validTypes ...string) (*
 		baseTokenKey = record.Collection().PasswordResetToken.Secret
 	case TokenTypeEmailChange:
 		baseTokenKey = record.Collection().EmailChangeToken.Secret
+	case TokenTypePasskeyReset:
+		// Claviger: upstream has no passkey reset token type. Without this
+		// case every passkey reset token is rejected as "unknown token type"
+		// (#39). Keep it when merging upstream.
+		baseTokenKey = record.Collection().PasskeyResetToken.Secret
 	default:
 		return nil, errors.New("unknown token type " + tokenType)
 	}

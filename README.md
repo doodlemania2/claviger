@@ -35,7 +35,7 @@ It is built for two kinds of users:
 |---|---|
 | **Everything in PocketBase** | Collections, API rules, realtime, files, email/password, OTP, OAuth2 with ~30 providers, MFA, admin UI, backups, Go and JavaScript hooks |
 | **Passkeys (WebAuthn)** | Register, sign in, manage and revoke passkeys per auth collection; passkeys count as an MFA factor; rate-limited ceremonies with origin and sign-counter checks |
-| **Passkey reset** | Email-based recovery that clears a user's passkeys so they can enroll again. Known bug: tokens are currently rejected ([#39](../../issues/39)) |
+| **Passkey reset** | Email-based recovery that clears a user's passkeys so they can enroll again. |
 | **OpenTelemetry log export** | Tee app logs to any OTLP/HTTP collector beside the built-in log store; off unless configured |
 | **SQLite-safe container rollouts** | `entrypoint.sh` hands the database over between the outgoing and incoming container, so a rolling deploy never runs two writers on one database |
 | **Container packaging** | Multi-stage `Dockerfile`, `docker-compose.yml`, optional Litestream replication |
@@ -66,6 +66,9 @@ docker compose up --build
 
 Then open the dashboard at `http://127.0.0.1:8090/_/` and check
 `http://127.0.0.1:8090/api/health`.
+
+Docker (available from the first tagged release):
+`docker run -p 8090:8090 -v claviger_data:/pb_data ghcr.io/doodlemania2/claviger`
 
 Or build and run the binary directly (Go 1.27+):
 

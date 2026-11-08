@@ -47,10 +47,8 @@ const (
 
 // webauthnSessionEntry holds a WebAuthn challenge session along with its expiry.
 //
-// Decoy is set when the session was synthesized for an unknown/credential-less
-// identity to equalize the response shape and timing of /login-begin against
-// the real path. login-finish always rejects decoy sessions with the same
-// generic error returned by genuine signature failures (audit H3).
+// Decoy is retained for callers that still pass it; login-begin no longer
+// stores decoy sessions at all (see recordWebAuthnLoginBegin, issue #40).
 type webauthnSessionEntry struct {
 	Session   *webauthn.SessionData
 	ExpiresAt time.Time
@@ -506,24 +504,29 @@ func (b *bytesRereader) Read(p []byte) (int, error) { return b.r.Read(p) }
 func (b *bytesRereader) Close() error               { return nil }
 func (b *bytesRereader) Reread()                    { b.r = bytes.NewReader(b.data) }
 
-// buildDecoyWebAuthnLoginOptions synthesizes a PublicKeyCredentialRequestOptions
-// payload and matching SessionData for an identity that either (a) does not
-// resolve to an auth record or (b) resolves but has no registered passkeys.
+// webauthnDecoyUser is a synthetic webauthn.User with one fabricated
+// credential. It lets the decoy login-begin response be produced by the very
+// same wa.BeginLogin call as a genuine one, so timeout, userVerification and
+// every other option come from the same *webauthn.WebAuthn configuration and
+// cannot drift apart on a go-webauthn upgrade (issue #40).
+type webauthnDecoyUser struct {
+	id    []byte
+	creds []webauthn.Credential
+}
+
+func (u *webauthnDecoyUser) WebAuthnID() []byte                         { return u.id }
+func (u *webauthnDecoyUser) WebAuthnName() string                       { return "decoy" }
+func (u *webauthnDecoyUser) WebAuthnDisplayName() string                { return "decoy" }
+func (u *webauthnDecoyUser) WebAuthnCredentials() []webauthn.Credential { return u.creds }
+
+// newWebAuthnDecoyUser derives a stable fake user for the identity.
 //
-// The decoy challenge and decoy credential id are HMAC-derived from the
-// per-collection auth-token secret so that:
-//
-//  1. Repeated probes with the same identity produce the same response shape
-//     (no random "unknown user" tell vs a real user whose options stay stable
-//     within a session).
-//  2. The decoy values are unforgeable by the attacker.
-//
-// login-finish unconditionally rejects sessions where Decoy=true with the
-// same generic "Failed to authenticate." error returned for a signature
-// verification failure on a real account, completing the equalization. The
-// goal is to eliminate the HTTP status-code and response-body enumeration
-// signal documented in audit finding H3.
-func buildDecoyWebAuthnLoginOptions(collection *core.Collection, identity, rpID string) *protocol.CredentialAssertion {
+// The fake credential id is HMAC-derived from the per-collection auth-token
+// secret: a genuine user's allowCredentials id is identical on every probe, so
+// the decoy's must be too (a changing id would itself be a tell), and being
+// keyed it cannot be predicted by the attacker. The challenge, in contrast, is
+// random on both paths (go-webauthn generates it), so it is not derived here.
+func newWebAuthnDecoyUser(collection *core.Collection, identity string) *webauthnDecoyUser {
 	secret := collection.AuthToken.Secret
 	if secret == "" {
 		// fallback ensures we still produce a deterministic value if the
@@ -533,42 +536,33 @@ func buildDecoyWebAuthnLoginOptions(collection *core.Collection, identity, rpID 
 	ident := strings.ToLower(strings.TrimSpace(identity))
 
 	h := hmac.New(sha256.New, []byte(secret))
-	h.Write([]byte("webauthn-decoy-challenge:"))
+	h.Write([]byte("webauthn-decoy-credid:"))
 	h.Write([]byte(ident))
-	challenge := h.Sum(nil)
+	fakeCredID := h.Sum(nil)
 
-	h2 := hmac.New(sha256.New, []byte(secret))
-	h2.Write([]byte("webauthn-decoy-credid:"))
-	h2.Write([]byte(ident))
-	fakeCredID := h2.Sum(nil)
-
-	return &protocol.CredentialAssertion{
-		Response: protocol.PublicKeyCredentialRequestOptions{
-			Challenge:      challenge,
-			Timeout:        int(webauthnSessionTTL / time.Millisecond),
-			RelyingPartyID: rpID,
-			AllowedCredentials: []protocol.CredentialDescriptor{{
-				Type:         protocol.PublicKeyCredentialType,
-				CredentialID: fakeCredID,
-				Transport: []protocol.AuthenticatorTransport{
-					protocol.USB, protocol.NFC, protocol.BLE, protocol.Internal,
-				},
-			}},
-			UserVerification: protocol.VerificationPreferred,
-		},
+	return &webauthnDecoyUser{
+		id:    fakeCredID[:16],
+		creds: []webauthn.Credential{{ID: fakeCredID}},
 	}
 }
 
-// buildDecoySessionData returns a SessionData matching the decoy options;
-// stored alongside the response so it occupies the same store slot a real
-// session would, and so it expires identically (audit H1+H3).
-func buildDecoySessionData(opts *protocol.CredentialAssertion) *webauthn.SessionData {
-	return &webauthn.SessionData{
-		Challenge:        base64.RawURLEncoding.EncodeToString(opts.Response.Challenge),
-		Expires:          time.Now().Add(webauthnSessionTTL),
-		RelyingPartyID:   opts.Response.RelyingPartyID,
-		UserVerification: opts.Response.UserVerification,
+// beginWebAuthnLogin is the single code path that builds login-begin options,
+// for genuine users and decoys alike.
+//
+// Credential transport hints are stripped from allowCredentials: a client may
+// have supplied them at registration (so a genuine user could carry them) while
+// a decoy has nothing to mirror, which would make the hint an account-existence
+// signal. Omitting a transport hint is always safe; browsers then try every
+// transport.
+func beginWebAuthnLogin(wa *webauthn.WebAuthn, user webauthn.User) (*protocol.CredentialAssertion, *webauthn.SessionData, error) {
+	options, session, err := wa.BeginLogin(user)
+	if err != nil {
+		return nil, nil, err
 	}
+	for i := range options.Response.AllowedCredentials {
+		options.Response.AllowedCredentials[i].Transport = nil
+	}
+	return options, session, nil
 }
 
 // constantTimeIdentityCompare prevents accidental short-circuit timing on
@@ -802,11 +796,13 @@ func recordWebAuthnRegisterFinish(e *core.RequestEvent) error {
 //     first matched, so the wall-clock time of the response is independent
 //     of which lookup (or neither) found the user.
 //   - If the identity does not resolve to a record OR the record has no
-//     registered credentials, a synthesized decoy challenge is returned with
-//     the same JSON shape and HTTP status as the genuine path; the matching
-//     session is marked Decoy=true so login-finish unconditionally rejects
-//     it with the same generic error returned for a signature failure on a
-//     real account.
+//     registered credentials, a decoy is returned, built by the same
+//     wa.BeginLogin call as a genuine response (issue #40) with a random
+//     challenge and an HMAC-stable fake credential id. The decoy session is
+//     not stored; login-finish rejects its token with the same generic error
+//     returned for a signature failure on a real account.
+//   - An always-on per-IP and per-identity throttle runs first
+//     (checkWebAuthnLoginBeginLimits).
 //   - Generic errors carry no wrapped inner error, removing the data-field
 //     discriminator a network observer could otherwise inspect.
 func recordWebAuthnLoginBegin(e *core.RequestEvent) error {
@@ -825,6 +821,12 @@ func recordWebAuthnLoginBegin(e *core.RequestEvent) error {
 	}
 	if err := form.validate(); err != nil {
 		return firstApiError(err, e.BadRequestError("An error occurred while validating the submitted data.", err))
+	}
+
+	// always-on throttle (independent of Settings.RateLimits), checked before
+	// any database work
+	if err := checkWebAuthnLoginBeginLimits(e, form.Identity); err != nil {
+		return err
 	}
 
 	e.Set(core.RequestEventKeyInfoContext, core.RequestInfoContextWebAuthn)
@@ -846,13 +848,18 @@ func recordWebAuthnLoginBegin(e *core.RequestEvent) error {
 		}
 	}
 
-	// Decoy path: identity unknown OR no registered credentials. Synthesize
-	// an indistinguishable response and decoy session.
+	// Decoy path: identity unknown OR no registered credentials. Build the
+	// options through the same code path as a genuine response. The session is
+	// NOT stored (so unauthenticated decoys can never fill the session cap and
+	// evict real ceremonies); login-finish for the returned token then finds no
+	// session and answers with the same generic "Failed to authenticate." as a
+	// failed signature on a real account.
 	if record == nil || len(existingCreds) == 0 {
-		rpID := wa.Config.RPID
-		decoyOpts := buildDecoyWebAuthnLoginOptions(collection, form.Identity, rpID)
-		decoySession := buildDecoySessionData(decoyOpts)
-		token := storeWebAuthnSession(e.App, decoySession, "", true)
+		decoyOpts, _, err := beginWebAuthnLogin(wa, newWebAuthnDecoyUser(collection, form.Identity))
+		if err != nil {
+			return e.InternalServerError("Failed to begin WebAuthn login.", err)
+		}
+		token := security.RandomString(32)
 		addAuthTimingJitter()
 		return e.JSON(http.StatusOK, map[string]any{
 			"options":      decoyOpts,
@@ -865,7 +872,7 @@ func recordWebAuthnLoginBegin(e *core.RequestEvent) error {
 		credentials: existingCreds,
 	}
 
-	options, session, err := wa.BeginLogin(user)
+	options, session, err := beginWebAuthnLogin(wa, user)
 	if err != nil {
 		return e.InternalServerError("Failed to begin WebAuthn login.", err)
 	}
@@ -889,10 +896,9 @@ func recordWebAuthnLoginBegin(e *core.RequestEvent) error {
 //     the rate-limit check, so a burst of finish-requests still invalidates
 //     each session token after a single use (audit H2). Sessions are
 //     single-use; a rate-limited request still consumes its session.
-//   - Decoy sessions (Decoy=true) are rejected with the same generic error
-//     used for a signature verification failure on a real account so the
-//     status code and response shape match the equalized login-begin path
-//     (audit H3).
+//   - login-begin decoy tokens are never stored, so they hit the missing-session
+//     path and are rejected with the same generic error used for a signature
+//     verification failure on a real account (audit H3, issue #40).
 //   - When the underlying webauthn library reports CloneWarning (sign-count
 //     regression or stale) the sign count is NOT updated and the request is
 //     rejected: a regression usually indicates a cloned authenticator (audit
@@ -929,11 +935,14 @@ func recordWebAuthnLoginFinish(e *core.RequestEvent) error {
 	// completion attempts (audit H2).
 	entry, err := retrieveWebAuthnSession(e.App, form.SessionToken)
 	if err != nil {
+		// also the path taken by login-begin decoy tokens, which are never
+		// stored (issue #40)
+		addAuthTimingJitter()
 		return e.BadRequestError("Failed to authenticate.", nil)
 	}
 	defer deleteWebAuthnSession(e.App, form.SessionToken)
 
-	// Decoy session: equalized rejection path for unknown user / no creds.
+	// defensive: nothing stores decoy sessions any more
 	if entry.Decoy {
 		addAuthTimingJitter()
 		return e.BadRequestError("Failed to authenticate.", nil)

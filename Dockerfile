@@ -1,7 +1,12 @@
 # Stage 1: Build Claviger from source (fork with WebAuthn support)
+# No --platform=$BUILDPLATFORM here: the stfoa-auth deployment builds this file with
+# ACR remote build, which may not run BuildKit. Multi-arch builds run this stage per
+# target platform instead (QEMU for arm64), and an unset TARGETARCH means the host's.
 FROM golang:1.27-alpine AS builder
 
 ARG VERSION=dev
+ARG TARGETOS
+ARG TARGETARCH
 
 RUN apk add --no-cache git
 
@@ -10,7 +15,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build \
     -ldflags="-s -w -X github.com/doodlemania2/claviger.Version=${VERSION}" \
     -o /claviger \
     ./examples/base
