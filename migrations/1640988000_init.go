@@ -122,6 +122,13 @@ func init() {
 func createParamsTable(txApp core.App) error {
 	d := core.DialectOf(txApp)
 
+	// fork: with an encryption key the stored value is the encrypted settings
+	// (not JSON), which a JSONB column would reject
+	valueType := d.JSONType()
+	if d.Name() == dialect.PostgresName {
+		valueType = `TEXT COLLATE "C"`
+	}
+
 	_, execErr := txApp.DB().NewQuery(fmt.Sprintf(`
 		CREATE TABLE {{_params}} (
 			[[id]]      TEXT PRIMARY KEY DEFAULT %[1]s NOT NULL,
@@ -129,7 +136,7 @@ func createParamsTable(txApp core.App) error {
 			[[created]] TEXT DEFAULT %[3]s NOT NULL,
 			[[updated]] TEXT DEFAULT %[3]s NOT NULL%[4]s
 		);
-	`, d.RandomIDDefault(), d.JSONType(), d.NowDefault(), hiddenColumnsDDL(d))).Execute()
+	`, d.RandomIDDefault(), valueType, d.NowDefault(), hiddenColumnsDDL(d))).Execute()
 
 	return execErr
 }

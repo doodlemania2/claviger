@@ -175,6 +175,16 @@ func pgPortableQuotes(expr string) string {
 // "ALTER COLUMN ... TYPE ... USING". Postgres refuses to retype a
 // column that is used by a view so the views are dropped and recreated.
 func (postgresDialect) ConvertMultiplicity(db dbx.Builder, table, column string, toMultiple bool) (bool, error) {
+	// a field that is added together with its data has the target type already
+	// (the caller cannot tell it from a real single <-> multiple change)
+	var dataType string
+	_ = db.NewQuery(`SELECT data_type::text FROM information_schema.columns
+		WHERE table_schema = current_schema() AND table_name = {:table} AND column_name = {:column}`).
+		Bind(dbx.Params{"table": table, "column": column}).Row(&dataType)
+	if dataType == "" || (toMultiple && dataType == "jsonb") || (!toMultiple && dataType == "text") {
+		return true, nil
+	}
+
 	views, err := pgListViews(db)
 	if err != nil {
 		return true, err
