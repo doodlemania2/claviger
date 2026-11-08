@@ -28,6 +28,15 @@ func recordAuthRefresh(e *core.RequestEvent) error {
 			if tokenErr != nil {
 				return e.InternalServerError("Failed to refresh auth token.", tokenErr)
 			}
+
+			// fork-local (#93): same session, extended
+			var sessionErr error
+			token, sessionErr = carrySession(e.RequestEvent, e.Record, getAuthTokenFromRequest(e.RequestEvent), token, true)
+			if sessionErr != nil {
+				return sessionErr
+			}
+		} else {
+			skipSessionAttach(e.RequestEvent) // fork-local (#93)
 		}
 
 		return recordAuthResponse(e.RequestEvent, e.Record, token, "", nil)

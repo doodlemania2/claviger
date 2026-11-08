@@ -107,6 +107,11 @@ window.app.store = store({
                 icon: "ri-time-line",
                 label: "Crons",
             },
+            {
+                href: "#/settings/api-keys",
+                icon: "ri-key-2-line",
+                label: "API keys",
+            },
         ],
         Sync: [
             {
