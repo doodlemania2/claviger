@@ -465,8 +465,66 @@ check_encryption_key() {
     fi
 }
 
+# Field-encryption key pre-flight (#75). Runs BEFORE the handover request is
+# written, because once the outgoing replica has released /pb_data a bad key
+# can no longer be rolled back: the incoming replica fails closed on startup
+# and there is nothing left serving.
+#
+# `keys check` opens data.db read-only and immutable (no locks, no writes, no
+# migrations), so it is safe while the outgoing replica still owns the volume.
+# It exits 1 with "keys check: FAILED" only when an encrypted field exists and
+# the key-encryption key is definitely missing or wrong, and 0 in every other
+# case, including "no encrypted fields" and "could not read the database".
+#
+# This function FAILS OPEN like the rest of the handover. Only that explicit
+# marker blocks the start; a timeout, a crash, a missing binary or an old
+# binary without the command (also exit 1, but no marker) logs and continues.
+# PB_KEYS_PREFLIGHT=0 disables it.
+preflight_field_keys() {
+    [ "${PB_KEYS_PREFLIGHT:-1}" = "0" ] && return 0
+    [ -f "$DATA_DIR/data.db" ] || return 0
+    # a parked (already released) replica restarted by its liveness probe must
+    # reach the zombie guard and park, not crash-loop here
+    if [ -f "$RELEASED_FILE" ] && grep -qxF "$INSTANCE_ID" "$RELEASED_FILE" 2>/dev/null; then
+        return 0
+    fi
+
+    tmo=""
+    if command -v timeout >/dev/null 2>&1; then
+        tmo="timeout 30"
+    fi
+
+    # shellcheck disable=SC2086 # tmo and ENC_ARG are empty or whitespace-free words
+    rc=0
+    out=$($tmo "$PB_BIN" $ENC_ARG keys check --dir="$DATA_DIR" 2>&1) || rc=$?
+
+    case "$rc" in
+        0)
+            [ -z "$out" ] || echo "[entrypoint] $out"
+            ;;
+        1)
+            case "$out" in
+                *"keys check: FAILED"*)
+                    # the first line only; it names the field and the key ids, never a key
+                    msg=$(printf '%s\n' "$out" | grep -m1 'keys check: FAILED')
+                    event WARN "field encryption pre-flight failed, refusing to start BEFORE the handover so the previous replica keeps serving: $msg" >&2
+                    exit 1
+                    ;;
+                *)
+                    event WARN "field encryption pre-flight could not run (exit 1, no verdict); continuing. Output: $(printf '%s' "$out" | head -c 300)"
+                    ;;
+            esac
+            ;;
+        *)
+            event WARN "field encryption pre-flight could not run (exit $rc); continuing."
+            ;;
+    esac
+    return 0
+}
+
 run_serve() {
     check_encryption_key
+    preflight_field_keys
     # The main shell's pid, for the watcher subshell to signal.
     MAIN_PID=$$
 
