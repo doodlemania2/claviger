@@ -42,6 +42,10 @@ type ResolverResult struct {
 	// AfterBuild is an optional function that will be called after building
 	// and combining the result of both resolved operands/sides in a single expression.
 	AfterBuild func(expr dbx.Expression) dbx.Expression
+
+	// JSONB (fork-only, #106) marks an Identifier that is a typed JSON value
+	// instead of an SQL scalar (see dialect.Dialect.NativeJSON).
+	JSONB bool
 }
 
 // FieldResolver defines an interface for managing search fields.

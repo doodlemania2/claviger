@@ -407,6 +407,11 @@ func (app *BaseApp) FindRecordsByFilter(
 		}
 	}
 
+	// fork-local (#106): stable default order on Postgres
+	if sort == "" && resolver.DefaultOrder() != "" {
+		q.AndOrderBy(resolver.DefaultOrder())
+	}
+
 	err = resolver.UpdateQuery(q) // attaches any adhoc joins and aliases
 	if err != nil {
 		return nil, err
@@ -567,7 +572,7 @@ func (app *BaseApp) FindAuthRecordByEmail(collectionModelOrIdentifier any, email
 	index, ok := dbutils.FindSingleColumnUniqueIndex(collection.Indexes, FieldNameEmail)
 	if ok && strings.EqualFold(index.Columns[0].Collate, "nocase") {
 		// case-insensitive search
-		expr = dbx.NewExp("[["+FieldNameEmail+"]] = {:email} COLLATE NOCASE", dbx.Params{"email": email})
+		expr = dbx.NewExp(dialectOf(app).NoCaseEqual("[["+FieldNameEmail+"]]", "{:email}"), dbx.Params{"email": email})
 	} else {
 		expr = dbx.HashExp{FieldNameEmail: email}
 	}

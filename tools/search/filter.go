@@ -9,6 +9,7 @@ import (
 
 	"ganigeorgiev.com/fexpr"
 	"ganigeorgiev.com/pocketbase/dbx"
+	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/security"
 	"github.com/doodlemania2/claviger/tools/store"
 	"github.com/spf13/cast"
@@ -175,34 +176,37 @@ func resolveTokenizedExpr(expr fexpr.Expr, fieldResolver FieldResolver) (dbx.Exp
 		return nil, fmt.Errorf("invalid right operand %q - %v", expr.Right.Literal, rErr)
 	}
 
-	return buildResolversExpr(lResult, expr.Op, rResult)
+	return buildResolversExpr(dialectOf(fieldResolver), lResult, expr.Op, rResult)
 }
 
 func buildResolversExpr(
+	d dialect.Dialect,
 	left *ResolverResult,
 	op fexpr.SignOp,
 	right *ResolverResult,
 ) (dbx.Expression, error) {
 	var expr dbx.Expression
 
+	left, right = adaptJSONOperands(d, op, left, right)
+
 	switch op {
 	case fexpr.SignEq, fexpr.SignAnyEq:
-		expr = resolveEqualExpr(true, left, right)
+		expr = resolveEqualExpr(d, true, left, right)
 	case fexpr.SignNeq, fexpr.SignAnyNeq:
-		expr = resolveEqualExpr(false, left, right)
+		expr = resolveEqualExpr(d, false, left, right)
 	case fexpr.SignLike, fexpr.SignAnyLike:
 		// the right side is a column and therefor wrap it with "%" for contains like behavior
 		if len(right.Params) == 0 {
-			expr = dbx.NewExp(fmt.Sprintf("%s LIKE ('%%' || %s || '%%') ESCAPE '\\'", left.Identifier, right.Identifier), left.Params)
+			expr = dbx.NewExp(fmt.Sprintf("%s %s ('%%' || %s || '%%') ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(false), d.AsText(right.Identifier)), left.Params)
 		} else {
-			expr = dbx.NewExp(fmt.Sprintf("%s LIKE %s ESCAPE '\\'", left.Identifier, right.Identifier), mergeParams(left.Params, wrapLikeParams(right.Params)))
+			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(false), right.Identifier), mergeParams(left.Params, wrapLikeParams(right.Params)))
 		}
 	case fexpr.SignNlike, fexpr.SignAnyNlike:
 		// the right side is a column and therefor wrap it with "%" for not-contains like behavior
 		if len(right.Params) == 0 {
-			expr = dbx.NewExp(fmt.Sprintf("%s NOT LIKE ('%%' || %s || '%%') ESCAPE '\\'", left.Identifier, right.Identifier), left.Params)
+			expr = dbx.NewExp(fmt.Sprintf("%s %s ('%%' || %s || '%%') ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(true), d.AsText(right.Identifier)), left.Params)
 		} else {
-			expr = dbx.NewExp(fmt.Sprintf("%s NOT LIKE %s ESCAPE '\\'", left.Identifier, right.Identifier), mergeParams(left.Params, wrapLikeParams(right.Params)))
+			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(true), right.Identifier), mergeParams(left.Params, wrapLikeParams(right.Params)))
 		}
 	case fexpr.SignLt, fexpr.SignAnyLt:
 		expr = dbx.NewExp(fmt.Sprintf("%s < %s", left.Identifier, right.Identifier), mergeParams(left.Params, right.Params))
@@ -222,6 +226,7 @@ func buildResolversExpr(
 	if !isAnyMatchOp(op) {
 		if left.MultiMatchSubQuery != nil && right.MultiMatchSubQuery != nil {
 			mm := &manyVsManyExpr{
+				d:     d,
 				left:  left,
 				right: right,
 				op:    op,
@@ -230,6 +235,8 @@ func buildResolversExpr(
 			expr = dbx.Enclose(dbx.And(expr, mm))
 		} else if left.MultiMatchSubQuery != nil {
 			mm := &manyVsOneExpr{
+				d:            d,
+				jsonb:        left.JSONB,
 				nullFallback: left.NullFallback,
 				subQuery:     left.MultiMatchSubQuery,
 				op:           op,
@@ -239,6 +246,8 @@ func buildResolversExpr(
 			expr = dbx.Enclose(dbx.And(expr, mm))
 		} else if right.MultiMatchSubQuery != nil {
 			mm := &manyVsOneExpr{
+				d:            d,
+				jsonb:        right.JSONB,
 				nullFallback: right.NullFallback,
 				subQuery:     right.MultiMatchSubQuery,
 				op:           op,
@@ -295,7 +304,7 @@ func resolveToken(token fexpr.Token, fieldResolver FieldResolver) (*ResolverResu
 		if err != nil || result.Identifier == "" {
 			for k, v := range normalizedIdentifiers {
 				if strings.EqualFold(k, token.Literal) {
-					return &ResolverResult{Identifier: v}, nil
+					return &ResolverResult{Identifier: normalizedIdentifier(dialectOf(fieldResolver), k, v)}, nil
 				}
 			}
 			return nil, err
@@ -317,7 +326,7 @@ func resolveToken(token fexpr.Token, fieldResolver FieldResolver) (*ResolverResu
 			Params:     dbx.Params{placeholder: cast.ToFloat64(token.Literal)},
 		}, nil
 	case fexpr.TokenFunction:
-		fn, ok := TokenFunctions[token.Literal]
+		fn, ok := tokenFunction(dialectOf(fieldResolver), token.Literal)
 		if !ok {
 			return nil, fmt.Errorf("unknown function %q", token.Literal)
 		}
@@ -337,16 +346,16 @@ func resolveToken(token fexpr.Token, fieldResolver FieldResolver) (*ResolverResu
 // The expression `a = "" OR a is null` tends to perform better than
 // `COALESCE(a, "") = ""` since the direct match can be accomplished
 // with a seek while the COALESCE will induce a table scan.
-func resolveEqualExpr(equal bool, left, right *ResolverResult) dbx.Expression {
+func resolveEqualExpr(d dialect.Dialect, equal bool, left, right *ResolverResult) dbx.Expression {
 	equalOp := "="
-	nullEqualOp := "IS"
+	nullEqualOp := d.IsOp(false)
 	concatOp := "OR"
 	nullExpr := "IS NULL"
 	if !equal {
 		// always use `IS NOT` instead of `!=` because direct non-equal comparisons
 		// to nullable column values that are actually NULL yields to NULL instead of TRUE, eg.:
 		// `'example' != nullableColumn` -> NULL even if nullableColumn row value is NULL
-		equalOp = "IS NOT"
+		equalOp = d.IsOp(true)
 		nullEqualOp = equalOp
 		concatOp = "AND"
 		nullExpr = "IS NOT NULL"
@@ -379,11 +388,11 @@ func resolveEqualExpr(equal bool, left, right *ResolverResult) dbx.Expression {
 	if isKnownNonEmptyIdentifier(left) || isKnownNonEmptyIdentifier(right) {
 		leftIdentifier := left.Identifier
 		if isLeftEmpty {
-			leftIdentifier = "''"
+			leftIdentifier = emptyOperand(d, right)
 		}
 		rightIdentifier := right.Identifier
 		if isRightEmpty {
-			rightIdentifier = "''"
+			rightIdentifier = emptyOperand(d, left)
 		}
 		return dbx.NewExp(
 			fmt.Sprintf("%s %s %s", leftIdentifier, equalOp, rightIdentifier),
@@ -395,7 +404,7 @@ func resolveEqualExpr(equal bool, left, right *ResolverResult) dbx.Expression {
 	// "" IS NOT b AND b IS NOT NULL
 	if isLeftEmpty {
 		return dbx.NewExp(
-			fmt.Sprintf("('' %s %s %s %s %s)", equalOp, right.Identifier, concatOp, right.Identifier, nullExpr),
+			fmt.Sprintf("('' %s %s %s %s %s)", equalOp, d.AsText(right.Identifier), concatOp, right.Identifier, nullExpr),
 			mergeParams(left.Params, right.Params),
 		)
 	}
@@ -404,7 +413,7 @@ func resolveEqualExpr(equal bool, left, right *ResolverResult) dbx.Expression {
 	// a IS NOT "" AND a IS NOT NULL
 	if isRightEmpty {
 		return dbx.NewExp(
-			fmt.Sprintf("(%s %s '' %s %s %s)", left.Identifier, equalOp, concatOp, left.Identifier, nullExpr),
+			fmt.Sprintf("(%s %s '' %s %s %s)", d.AsText(left.Identifier), equalOp, concatOp, left.Identifier, nullExpr),
 			mergeParams(left.Params, right.Params),
 		)
 	}
@@ -413,9 +422,9 @@ func resolveEqualExpr(equal bool, left, right *ResolverResult) dbx.Expression {
 	return dbx.NewExp(
 		fmt.Sprintf(
 			"COALESCE(%s, '') %s COALESCE(%s, '')",
-			left.Identifier,
+			d.AsText(left.Identifier),
 			equalOp,
-			right.Identifier,
+			d.AsText(right.Identifier),
 		),
 		mergeParams(left.Params, right.Params),
 	)
@@ -633,6 +642,7 @@ var _ dbx.Expression = (*manyVsManyExpr)(nil)
 // Expects leftSubQuery and rightSubQuery to return a subquery with a
 // single "multiMatchValue" column.
 type manyVsManyExpr struct {
+	d     dialect.Dialect
 	left  *ResolverResult
 	right *ResolverResult
 	op    fexpr.SignOp
@@ -650,13 +660,16 @@ func (e *manyVsManyExpr) Build(db *dbx.DB, params dbx.Params) string {
 	rAlias := "__mr" + security.PseudorandomString(8)
 
 	whereExpr, buildErr := buildResolversExpr(
+		e.d,
 		&ResolverResult{
 			NullFallback: e.left.NullFallback,
+			JSONB:        e.left.JSONB,
 			Identifier:   "[[" + lAlias + ".multiMatchValue]]",
 		},
 		e.op,
 		&ResolverResult{
 			NullFallback: e.right.NullFallback,
+			JSONB:        e.right.JSONB,
 			Identifier:   "[[" + rAlias + ".multiMatchValue]]",
 			// note: the AfterBuild needs to be handled only once and it
 			// doesn't matter whether it is applied on the left or right subquery operand
@@ -669,11 +682,12 @@ func (e *manyVsManyExpr) Build(db *dbx.DB, params dbx.Params) string {
 	}
 
 	return fmt.Sprintf(
-		"NOT EXISTS (SELECT 1 FROM (%s) {{%s}} LEFT JOIN (%s) {{%s}} WHERE %s)",
+		"NOT EXISTS (SELECT 1 FROM (%s) {{%s}} LEFT JOIN (%s) {{%s}}%s WHERE %s)",
 		e.left.MultiMatchSubQuery.Build(db, params),
 		lAlias,
 		e.right.MultiMatchSubQuery.Build(db, params),
 		rAlias,
+		joinOnClause(e.d),
 		whereExpr.Build(db, params),
 	)
 }
@@ -688,6 +702,8 @@ var _ dbx.Expression = (*manyVsOneExpr)(nil)
 //
 // You can set inverse=false to reverse the condition sides (aka. one<->many).
 type manyVsOneExpr struct {
+	d            dialect.Dialect
+	jsonb        bool
 	otherOperand *ResolverResult
 	subQuery     dbx.Expression
 	op           fexpr.SignOp
@@ -706,12 +722,14 @@ func (e *manyVsOneExpr) Build(db *dbx.DB, params dbx.Params) string {
 	alias := "__sm" + security.PseudorandomString(8)
 
 	r1 := &ResolverResult{
+		JSONB:        e.jsonb,
 		NullFallback: e.nullFallback,
 		Identifier:   "[[" + alias + ".multiMatchValue]]",
 		AfterBuild:   dbx.Not, // inverse for the not-exist expression
 	}
 
 	r2 := &ResolverResult{
+		JSONB:      e.otherOperand.JSONB,
 		Identifier: e.otherOperand.Identifier,
 		Params:     e.otherOperand.Params,
 	}
@@ -720,9 +738,9 @@ func (e *manyVsOneExpr) Build(db *dbx.DB, params dbx.Params) string {
 	var buildErr error
 
 	if e.inverse {
-		whereExpr, buildErr = buildResolversExpr(r2, e.op, r1)
+		whereExpr, buildErr = buildResolversExpr(e.d, r2, e.op, r1)
 	} else {
-		whereExpr, buildErr = buildResolversExpr(r1, e.op, r2)
+		whereExpr, buildErr = buildResolversExpr(e.d, r1, e.op, r2)
 	}
 
 	if buildErr != nil {

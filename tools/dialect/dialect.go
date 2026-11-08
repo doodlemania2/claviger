@@ -55,6 +55,46 @@ type ViewDef struct {
 	CreateSQL string
 }
 
+// ScalarKind is the kind of a scalar SQL value.
+type ScalarKind int
+
+// Scalar kinds.
+const (
+	ScalarText ScalarKind = iota
+	ScalarNumber
+	ScalarBool
+)
+
+// ColumnKind is the field type family that a view column maps to.
+type ColumnKind int
+
+// Column kinds.
+const (
+	// ColumnUnknown means no inference (the caller uses its default).
+	ColumnUnknown ColumnKind = iota
+	ColumnText
+	ColumnFloat
+	ColumnInt
+	ColumnBool
+	ColumnJSON
+)
+
+// FunctionBuilder is implemented by dialects that provide their own SQL for
+// filter functions. SQLite does not: its SQL lives in tools/search, next to
+// the filter language, and is the reference behavior.
+type FunctionBuilder interface {
+	// StrFTime renders strftime(format, timeValue, modifiers...).
+	//
+	// timeValue is an SQL expression ("" means now) and timeValueIsNumber
+	// tells that it is a number (julian day, or unix time with the
+	// "unixepoch" modifier) and not a date string.
+	// Unsupported formats and modifiers return an error that names them.
+	StrFTime(format string, timeValue string, timeValueIsNumber bool, modifiers []string) (string, error)
+	// GeoDistance renders the Haversine distance in kilometres between
+	// two points whose coordinates are numeric SQL expressions.
+	GeoDistance(lonA, latA, lonB, latB string) string
+}
+
 // Dialect isolates everything the storage layer needs to know about a
 // specific database engine.
 type Dialect interface {
@@ -107,6 +147,80 @@ type Dialect interface {
 	HiddenColumns() map[string]string
 	// RowOrder is the ORDER BY term that returns rows in insertion order.
 	RowOrder() string
+
+	// ---------------------------------------------------------------
+	// Filters, sorting and JSON (the search layer, M2)
+	// ---------------------------------------------------------------
+
+	// BoolLiteral is the SQL literal that the filter language uses for the
+	// "true" and "false" identifiers (when there is no field with that name).
+	BoolLiteral(v bool) string
+	// IsOp is the null safe comparison operator: "IS" (not=false) or
+	// "IS NOT" (not=true) on SQLite.
+	IsOp(not bool) string
+	// AsText converts a scalar SQL expression to text. Engines with a loose
+	// type system return the expression unchanged.
+	AsText(expr string) string
+	// LikeOp is the case insensitive substring match operator used by the
+	// "~" and "!~" filter operators (always used with ESCAPE '\').
+	LikeOp(not bool) string
+	// OrderTerm renders a single ORDER BY term. direction is "ASC" or "DESC".
+	// NULLs sort first on SQLite, which the other engines have to emulate.
+	OrderTerm(expr, direction string) string
+	// JSONOrderTerm renders an ORDER BY term for a [Dialect.JSONExtract]
+	// result, ordered like SQLite orders the extracted SQL values: NULL, then
+	// numbers (booleans are 0 and 1), then text. Only used if NativeJSON.
+	JSONOrderTerm(expr, direction string) string
+	// NoCaseEqual renders a case insensitive equality comparison of a column
+	// and a value expression (usually a {:placeholder}).
+	NoCaseEqual(column, value string) string
+
+	// StrictTypes reports that the engine does not coerce between text,
+	// numbers and booleans, so the search layer has to type bound parameters
+	// that are compared with each other. SQLite returns false.
+	StrictTypes() bool
+	// ScalarCast converts an expression to the SQL type of the scalar kind.
+	ScalarCast(kind ScalarKind, expr string) string
+	// NativeJSON reports that [Dialect.JSONExtract] returns a typed JSON
+	// value, not an SQL scalar, so the search layer has to adapt the other
+	// side of a comparison (see tools/search). SQLite returns false.
+	NativeJSON() bool
+	// JSONEach returns a table expression that yields one row per element of
+	// a multi value column (or the single value of a single value column)
+	// in a column called "value". column is a "table.column" reference.
+	//
+	// The result is usable in a FROM or JOIN clause followed by an alias.
+	JSONEach(column string, multiple bool) string
+	// JSONEachParam is JSONEach for a JSON array bound as the {:placeholder} parameter.
+	JSONEachParam(placeholder string) string
+	// JSONArrayLength returns the length of a multi value column
+	// (0 for NULL or empty single values).
+	JSONArrayLength(column string, multiple bool) string
+	// JSONExtract extracts a (possibly nested) value from a JSON column.
+	// path is in the SQLite JSON path form without the leading "$"
+	// ("a.b[0]" or "[1].c"), or empty for the root value.
+	JSONExtract(column, path string) string
+	// JSONText converts a [Dialect.JSONExtract] result to a plain text value.
+	JSONText(expr string) string
+	// JSONFromScalar converts a scalar SQL expression of the specified
+	// kind to the type that [Dialect.JSONExtract] returns.
+	JSONFromScalar(kind ScalarKind, expr string) string
+	// JSONNumber converts a [Dialect.JSONExtract] result to a number
+	// (NULL when the JSON value is not a number).
+	JSONNumber(expr string) string
+	// ColumnCast gives a bound value the SQL type of a column, from the
+	// column definition ([Field.ColumnType]), for values that are selected
+	// without a table to take the type from ("SELECT {:p} AS col").
+	ColumnCast(expr, columnDef string) string
+	// JoinOn is the ON condition for joins that have none (cross joins
+	// written as "LEFT JOIN x"), or an empty string if the engine accepts that.
+	JoinOn() string
+	// SubqueryAlias is the alias that a derived table ("FROM (SELECT ...)")
+	// requires, with the leading space (empty if not needed).
+	SubqueryAlias() string
+	// ColumnKind classifies the SQL type name of a column (as reported by
+	// [Dialect.TableInfo]) so view collections can infer a field type.
+	ColumnKind(sqlType string) ColumnKind
 
 	// ---------------------------------------------------------------
 	// DDL

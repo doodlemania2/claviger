@@ -240,7 +240,7 @@ func oldCanAssignUsername(txApp core.App, collection *core.Collection, username 
 		var expr dbx.Expression
 		if strings.EqualFold(index.Columns[0].Collate, "nocase") {
 			// case-insensitive search
-			expr = dbx.NewExp("[["+colName+"]] = {:username} COLLATE NOCASE", dbx.Params{"username": username})
+			expr = dbx.NewExp(core.DialectOf(txApp).NoCaseEqual("[["+colName+"]]", "{:username}"), dbx.Params{"username": username})
 		} else {
 			expr = dbx.HashExp{colName: username}
 		}

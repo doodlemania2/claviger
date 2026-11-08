@@ -148,7 +148,7 @@ func findRecordByIdentityField(app core.App, collection *core.Collection, field 
 	var expr dbx.Expression
 	if strings.EqualFold(index.Columns[0].Collate, "nocase") {
 		// case-insensitive search
-		expr = dbx.NewExp("[["+field+"]] = {:identity} COLLATE NOCASE", dbx.Params{"identity": value})
+		expr = dbx.NewExp(core.DialectOf(app).NoCaseEqual("[["+field+"]]", "{:identity}"), dbx.Params{"identity": value})
 	} else {
 		expr = dbx.HashExp{field: value}
 	}

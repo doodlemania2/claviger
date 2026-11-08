@@ -206,7 +206,7 @@ func (f *TextField) ValidateValue(ctx context.Context, app App, record *Record) 
 				err := app.ConcurrentDB().
 					Select("(1)").
 					From(record.TableName()).
-					Where(dbx.NewExp("id = {:id} COLLATE NOCASE", dbx.Params{"id": newVal})).
+					Where(dbx.NewExp(dialectOf(app).NoCaseEqual("id", "{:id}"), dbx.Params{"id": newVal})).
 					Limit(1).
 					Row(&exists)
 				if exists > 0 || (err != nil && !errors.Is(err, sql.ErrNoRows)) {

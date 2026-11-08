@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	"github.com/doodlemania2/claviger/tools/dialect"
 )
 
 var _ dbx.Expression = (*MultiMatchSubquery)(nil)
@@ -55,6 +56,8 @@ func (m *MultiMatchSubquery) Build(db *dbx.DB, params dbx.Params) string {
 		if j.On != nil {
 			mergedJoins.WriteString(" ON ")
 			mergedJoins.WriteString(j.On.Build(db, params))
+		} else {
+			mergedJoins.WriteString(joinOnClause(dialect.ForDriver(db.DriverName())))
 		}
 	}
 
