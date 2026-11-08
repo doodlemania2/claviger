@@ -84,6 +84,7 @@ var APIKeyForbiddenCollections = []string{
 	CollectionNameOrgs,
 	CollectionNameOrgMembers,
 	CollectionNameOrgRoles,
+	CollectionNameInvitations, // #79b: hashed invitation tokens
 }
 
 // APIKeyInfo describes the key that authenticated a request.
