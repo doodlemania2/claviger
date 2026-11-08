@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/filesystem"
+	"github.com/doodlemania2/claviger/tools/filesystem"
 	"github.com/gabriel-vasile/mimetype"
 )
 

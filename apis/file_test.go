@@ -10,10 +10,10 @@ import (
 	"sync"
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/apis"
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tests"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
+	"github.com/doodlemania2/claviger/apis"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tests"
+	"github.com/doodlemania2/claviger/tools/types"
 )
 
 func TestFileToken(t *testing.T) {

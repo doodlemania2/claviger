@@ -3,7 +3,7 @@ package core
 import (
 	"encoding/json/v2"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
+	"github.com/doodlemania2/claviger/tools/types"
 )
 
 var (

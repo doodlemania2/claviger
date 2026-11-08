@@ -66,7 +66,7 @@ import (
 	"strings"
 	"time"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/filesystem/blob"
+	"github.com/doodlemania2/claviger/tools/filesystem/blob"
 )
 
 const defaultPageSize = 1000

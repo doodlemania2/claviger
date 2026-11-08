@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	"github.com/doodlemania2/claviger/core"
 )
 
 // automigrateOnCollectionChange handles the automigration snapshot

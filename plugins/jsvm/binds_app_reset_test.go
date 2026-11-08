@@ -4,9 +4,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/apis"
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tests"
+	"github.com/doodlemania2/claviger/apis"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tests"
 	"github.com/dop251/goja"
 )
 

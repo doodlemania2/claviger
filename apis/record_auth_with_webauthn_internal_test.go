@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	"github.com/doodlemania2/claviger/core"
 )
 
 func newWebAuthnInitTestApp(t *testing.T) *core.BaseApp {

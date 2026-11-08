@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
-	"ganigeorgiev.com/pocketbase/pocketbase/forms"
-	"ganigeorgiev.com/pocketbase/pocketbase/tests"
+	"github.com/doodlemania2/claviger/forms"
+	"github.com/doodlemania2/claviger/tests"
 )
 
 func TestEmailSendValidateAndSubmit(t *testing.T) {

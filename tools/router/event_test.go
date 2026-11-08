@@ -20,9 +20,9 @@ import (
 	"testing"
 
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/picker"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/router"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
+	"github.com/doodlemania2/claviger/tools/picker"
+	"github.com/doodlemania2/claviger/tools/router"
+	"github.com/doodlemania2/claviger/tools/types"
 )
 
 type unwrapTester struct {

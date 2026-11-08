@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/router"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/routine"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/router"
+	"github.com/doodlemania2/claviger/tools/routine"
+	"github.com/doodlemania2/claviger/tools/types"
 	"github.com/spf13/cast"
 )
 

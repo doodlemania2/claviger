@@ -13,6 +13,7 @@ jobs:
   check-upstream:
     # schedule and workflow_dispatch only, so always trusted.
     runs-on: ${{ vars.RUNNER_LIGHT || 'tdp-k3s-claviger' }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
@@ -35,7 +36,7 @@ jobs:
           echo "Latest upstream PocketBase release: $LATEST"
 
       # The version this fork is synced to is recorded in FORK_SYNC.md's Sync
-      # Status section, which Step 6 of the sync runbook updates on every sync.
+      # Status section, which the last step of the sync runbook updates on every sync.
       # This used to grep origin for a `synced-vX.Y.Z` tag instead -- but that
       # tag was never actually pushed, for any version, so the check always said
       # "not synced" and the workflow filed a duplicate issue every Monday.
@@ -121,12 +122,13 @@ jobs:
               ``,
               `See [FORK_SYNC.md](./FORK_SYNC.md) for the full workflow.`,
               ``,
-              `1. \`git fetch upstream\``,
-              `2. Rebase \`feat/webauthn-passkey-support\` onto \`upstream/master\``,
-              `3. \`make test\``,
-              `4. Rebuild \`deploy/azure\` on top of the updated webauthn branch (Step 4 -- it is *not* cleanly rebasable)`,
-              `5. \`make test && docker build\``,
-              `6. Update the Sync Status section in FORK_SYNC.md -- this workflow reads the synced version from it, and will close this issue on the next run.`,
+              `1. \`git fetch upstream --tags\` and list the delta: \`git log --oneline ${synced}..${latest}\``,
+              `2. Approve each upstream change before adopting it`,
+              `3. Branch \`sync/${latest}\` off \`origin/master\` and \`git merge --no-ff ${latest}\``,
+              `4. Run \`scripts/rewrite-module-path.sh\`, then \`go mod tidy\`, \`go build ./...\` and \`go test ./...\``,
+              `5. Re-check the pitfall list in FORK_SYNC.md`,
+              `6. Open a PR to \`master\`, wait for CI, merge with a merge commit (not rebase)`,
+              `7. Update the Sync Status section in FORK_SYNC.md -- this workflow reads the synced version from it, and will close this issue on the next run.`,
             ].join('\n');
 
             const created = await github.rest.issues.create({
@@ -153,7 +155,7 @@ jobs:
             exit 0
           fi
           curl -sS -m 15 --retry 2 -X POST "$NTFY_URL" \
-            -H "Title: pocketbase upstream-check FAILED" \
+            -H "Title: claviger upstream-check FAILED" \
             -H "Priority: default" \
             -H "Tags: warning,calendar" \
             -H "Click: $RUN_URL" \

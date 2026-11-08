@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/hook"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/routine"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/security"
+	"github.com/doodlemania2/claviger/tools/hook"
+	"github.com/doodlemania2/claviger/tools/routine"
+	"github.com/doodlemania2/claviger/tools/security"
 	"github.com/fatih/color"
 	"github.com/fsnotify/fsnotify"
 )

@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-**Claviger** (Latin, "key-bearer"): a public, MIT-licensed fork of PocketBase (Go backend with embedded SQLite, realtime subscriptions, file/user management, and an embedded Svelte admin UI) that leads with identity, aimed at developers and at congregations. Roadmap: GitHub issues #71–#98. Brand assets and guidelines: `brand/`. It carries two custom layers on top of upstream:
+**Claviger** (Latin, "key-bearer"): a public, MIT-licensed fork of PocketBase (Go backend with embedded SQLite, realtime subscriptions, file/user management, and an embedded Svelte admin UI) that leads with identity, aimed at developers and at congregations. Roadmap: GitHub issues #71–#98. Brand assets and guidelines: `brand/`. On top of upstream it carries two custom features, both part of `master`:
 
-1. **WebAuthn/Passkey auth** (`feat/webauthn-passkey-support` branch)
-2. **Container packaging** (`deploy/azure` branch — Dockerfile, `entrypoint.sh` with the single-writer handover, `litestream.yml`, docker-compose, OTLP log export, CI)
+1. **WebAuthn/Passkey auth** (`apis/record_auth_with_webauthn.go`, `core/webauthn_*`, the `1712966400_add_webauthn.go` migration)
+2. **Container packaging** (Dockerfile, `entrypoint.sh` with the single-writer handover, `litestream.yml`, docker-compose, OTLP log export, CI)
 
 **This repo is public. Nothing deployment-specific belongs here**: no tenant IDs, domains, resource names, alert rules or runbooks for a particular installation. The production deployment at auth.stfoafrisco.org lives in the private repo `doodlemania2/stfoa-auth` (`/Volumes/Data/repos/stfoa-auth`), which builds a ref of this repo; its CLAUDE.md holds the operational rules (NFS, alerting, Litestream state, the Outline Task Inbox protocol). The split mirrors TDPdf / tdpdf-fleet.
 
-`master` is the fork default branch, produced by merging `deploy/azure` after each upstream sync. See `FORK_SYNC.md` for the full sync runbook and current sync status.
+`master` is the one trunk. See `FORK_SYNC.md` for the sync runbook and current sync status.
 
 ## Commands
 
@@ -25,6 +25,7 @@ make jstypes       # regenerate jsvm TS type declarations
 - Single test: `go test -run TestRecordAuthWithWebAuthnRegisterBegin ./apis/...`
 - WebAuthn suite: `go test -run 'WebAuthn|Webauthn' ./apis/... ./core/...`
 - Run the app locally: `cd examples/base && go run main.go serve` (serves on http://localhost:8090 with the embedded admin UI)
+- The release binary and image binary are named `claviger` (`/usr/local/bin/claviger`, with a compat symlink `/usr/local/bin/pocketbase`).
 - Requires Go 1.27+.
 
 ### Admin UI (`ui/`)
@@ -74,8 +75,8 @@ API tests are table-driven `tests.ApiScenario` slices (method, URL, body, auth h
 
 ## Fork maintenance (critical)
 
-- **Remotes**: `origin` = doodlemania2/pocketbase (push), `upstream` = `https://ganigeorgiev.com/git/pocketbase/pocketbase` (fetch only, push URL `DISABLED`). **Upstream left GitHub after v0.40.6** (2026-10-26); the GitHub repo is dead and `github.com/pocketbase/pocketbase` fetches nothing newer. **v0.41.0 renamed the Go module** to `ganigeorgiev.com/pocketbase/pocketbase` (with `dbx`/`ozzo-validation`/`tygoja`/`fexpr`), and the fork has been on the new path since the v0.41.1 sync (2026-10-30). Fork-added Go files must import `ganigeorgiev.com/pocketbase/pocketbase/...`. The `Dockerfile` `-X ...pocketbase.Version=` ldflag must use the same path: a stale `-X` package is **silently ignored**, so the binary would report the default version. Details and the rewrite recipe: `FORK_SYNC.md` Sync Status.
-- **Branch stack**: `upstream/master` → rebase `feat/webauthn-passkey-support` → rebuild `deploy/azure` on top → merge into `master`. `deploy/azure` is **not cleanly rebasable** — it is rebuilt by replaying its delta as a patch onto the fresh WebAuthn tip (FORK_SYNC.md Step 4). Linear history, force-push with `--force-with-lease`. Full procedure in `FORK_SYNC.md`; update its Sync Status section after each sync.
+- **Remotes**: `origin` = doodlemania2/claviger (push), `upstream` = `https://ganigeorgiev.com/git/pocketbase/pocketbase` (fetch only, push URL `DISABLED`). **Upstream left GitHub after v0.40.6** (2026-10-26); the GitHub repo is dead and `github.com/pocketbase/pocketbase` fetches nothing newer. **v0.41.0 renamed upstream's Go module** to `ganigeorgiev.com/pocketbase/pocketbase` (with `dbx`/`ozzo-validation`/`tygoja`/`fexpr`, which this fork still imports from there). **This fork's own module path is `github.com/doodlemania2/claviger`**; fork Go files import `github.com/doodlemania2/claviger/...`. After merging an upstream tag, run `scripts/rewrite-module-path.sh` (idempotent) to rewrite upstream's path to ours. The `Dockerfile` and `.goreleaser.yaml` `-X github.com/doodlemania2/claviger.Version=` ldflag must use the same path: a stale `-X` package is **silently ignored**, so the binary would report the default version. Recipe: `FORK_SYNC.md`.
+- **Branch model**: one trunk, `master`. All work lands on it by PR. Upstream is synced by `git merge <upstream tag>` on a `sync/<tag>` branch, then a PR to `master` merged with a merge commit (no rebase, no force-push, no patch replay). `feat/webauthn-passkey-support` is retired and frozen (left in place, not deleted). `deploy/azure` is only the **release pointer**: the private repo `doodlemania2/stfoa-auth` deploys it by default, so fast-forward it (`git push origin <tested-master-sha>:deploy/azure`) only to a `master` commit that is tested and approved for prod. Never commit to it directly. Full procedure in `FORK_SYNC.md`; update its Sync Status section after each sync.
 - **Token redaction pitfall**: `core/collection_model.go` `MarshalJSON` must blank the `Secret` of every `*ResetToken`-style auth token config. When upstream adds a new token type (e.g. `PasskeyResetToken` in v0.39.0), the rebase silently drops the redaction — re-add `alias.X.Secret = ""` or the secret leaks via the API.
 - **modernc vs mattn divergence**: `apis/TestSQLRun/single_write_query` expects affected-rows = 1 for DDL under modernc (upstream's mattn reports 0). Keep the fork's value of 1 when the test conflicts on rebase.
 - **Known flaky tests on macOS**: `core/TestNotifyWatcher_CollectionsUpdate` and `core/TestNotifyWatcher_SettingsUpdate` (fsnotify duplicate WRITE events) — not fork regressions.

@@ -23,9 +23,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/inflector"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/osutils"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/inflector"
+	"github.com/doodlemania2/claviger/tools/osutils"
 	"github.com/spf13/cobra"
 )
 

@@ -10,15 +10,15 @@ import (
 	"syscall"
 	"time"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/cmd"
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/hook"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/list"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/osutils"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/routine"
+	"github.com/doodlemania2/claviger/cmd"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/hook"
+	"github.com/doodlemania2/claviger/tools/list"
+	"github.com/doodlemania2/claviger/tools/osutils"
+	"github.com/doodlemania2/claviger/tools/routine"
 	"github.com/spf13/cobra"
 
-	_ "ganigeorgiev.com/pocketbase/pocketbase/migrations"
+	_ "github.com/doodlemania2/claviger/migrations"
 )
 
 var _ core.App = (*PocketBase)(nil)

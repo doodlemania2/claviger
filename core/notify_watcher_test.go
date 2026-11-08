@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/store"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/store"
 	"golang.org/x/sync/semaphore"
 )
 

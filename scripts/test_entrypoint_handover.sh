@@ -2,7 +2,7 @@
 # Drives entrypoint.sh's single-writer handover (#35, #54) outside a container.
 #
 # Each "replica" is entrypoint.sh run against a shared temp dir standing in for
-# the NFS /pb_data, with a fake pocketbase that records when it is serving. The
+# the NFS /pb_data, with a fake claviger that records when it is serving. The
 # assertion that matters is OVERLAP: two fake servers running at once is two
 # SQLite writers on one volume.
 #
@@ -18,10 +18,10 @@ OLD_ENTRYPOINT=${1:-}
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/pb-handover.XXXXXX")
 FAILS=0
 
-FAKE_PB="$WORK/fake-pocketbase"
+FAKE_PB="$WORK/fake-claviger"
 cat > "$FAKE_PB" <<'EOF'
 #!/bin/sh
-# fake pocketbase: `serve --dir=X ...` runs until TERM; everything else is a no-op
+# fake claviger: `serve --dir=X ...` runs until TERM; everything else is a no-op
 [ "${1:-}" = "serve" ] || exit 0
 for a in "$@"; do case "$a" in --dir=*) dir=${a#--dir=} ;; esac; done
 me=$PB_INSTANCE_ID
@@ -133,7 +133,7 @@ elif [ -n "$OLD_ENTRYPOINT" ]; then
     echo "T3: transition — outgoing runs the pre-#54 entrypoint and holds NO lock (prod 2026-09-28)"
     D="$WORK/t3"; mkdir -p "$D"; PIDS=""
     OLD="$WORK/old-entrypoint.sh"
-    sed -e "s#/pb_data#$D#g" -e "s#/usr/local/bin/pocketbase#$FAKE_PB#g" "$OLD_ENTRYPOINT" > "$OLD"
+    sed -e "s#/pb_data#$D#g" -e "s#/usr/local/bin/pocketbase#$FAKE_PB#g" -e "s#/usr/local/bin/claviger#$FAKE_PB#g" "$OLD_ENTRYPOINT" > "$OLD"
     # A starts while something else holds the lock, times out, and serves unlocked
     : > "$D/.pb_singlewriter.lock"
     flock -x "$D/.pb_singlewriter.lock" sleep 6 &

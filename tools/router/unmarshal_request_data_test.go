@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/router"
+	"github.com/doodlemania2/claviger/tools/router"
 )
 
 func pointer[T any](val T) *T {

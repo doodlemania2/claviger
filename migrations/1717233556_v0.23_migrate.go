@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"ganigeorgiev.com/pocketbase/dbx"
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/security"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/security"
+	"github.com/doodlemania2/claviger/tools/types"
 	"github.com/spf13/cast"
 	"golang.org/x/crypto/bcrypt"
 )

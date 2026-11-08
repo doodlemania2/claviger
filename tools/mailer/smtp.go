@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/hook"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/security"
 	"github.com/domodwyer/mailyak/v3"
+	"github.com/doodlemania2/claviger/tools/hook"
+	"github.com/doodlemania2/claviger/tools/security"
 )
 
 var _ Mailer = (*SMTPClient)(nil)

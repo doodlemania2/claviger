@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/forms"
-	"ganigeorgiev.com/pocketbase/pocketbase/tests"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/filesystem"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/forms"
+	"github.com/doodlemania2/claviger/tests"
+	"github.com/doodlemania2/claviger/tools/filesystem"
 )
 
 func TestRecordUpsertLoad(t *testing.T) {

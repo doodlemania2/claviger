@@ -10,10 +10,10 @@ import (
 	"strings"
 
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
-	"ganigeorgiev.com/pocketbase/pocketbase/core/validators"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/filesystem"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/list"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
+	"github.com/doodlemania2/claviger/core/validators"
+	"github.com/doodlemania2/claviger/tools/filesystem"
+	"github.com/doodlemania2/claviger/tools/list"
+	"github.com/doodlemania2/claviger/tools/types"
 	"github.com/spf13/cast"
 )
 

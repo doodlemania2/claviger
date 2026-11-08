@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"ganigeorgiev.com/pocketbase/dbx"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/inflector"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/list"
+	"github.com/doodlemania2/claviger/tools/inflector"
+	"github.com/doodlemania2/claviger/tools/list"
 )
 
 type NullFallbackPreference int

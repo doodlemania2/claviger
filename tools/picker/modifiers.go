@@ -3,7 +3,7 @@ package picker
 import (
 	"fmt"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/tokenizer"
+	"github.com/doodlemania2/claviger/tools/tokenizer"
 )
 
 var Modifiers = map[string]ModifierFactoryFunc{}

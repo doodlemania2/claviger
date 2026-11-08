@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/plugins/jsvm"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/list"
 	"ganigeorgiev.com/pocketbase/tygoja"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/plugins/jsvm"
+	"github.com/doodlemania2/claviger/tools/list"
 )
 
 const heading = `
@@ -1289,19 +1289,19 @@ func main() {
 
 	gen := tygoja.New(tygoja.Config{
 		Packages: map[string][]string{
-			"ganigeorgiev.com/pocketbase/ozzo-validation/v4":          {"Error"},
-			"ganigeorgiev.com/pocketbase/dbx":                         {"*"},
-			"ganigeorgiev.com/pocketbase/pocketbase/tools/security":   {"*"},
-			"ganigeorgiev.com/pocketbase/pocketbase/tools/filesystem": {"*"},
-			"ganigeorgiev.com/pocketbase/pocketbase/tools/template":   {"*"},
-			"ganigeorgiev.com/pocketbase/pocketbase/mails":            {"*"},
-			"ganigeorgiev.com/pocketbase/pocketbase/apis":             {"*"},
-			"ganigeorgiev.com/pocketbase/pocketbase/core":             {"*"},
-			"ganigeorgiev.com/pocketbase/pocketbase/forms":            {"*"},
-			"ganigeorgiev.com/pocketbase/pocketbase":                  {"*"},
-			"path/filepath":                                           {"*"},
-			"os":                                                      {"*"},
-			"os/exec":                                                 {"Command"},
+			"ganigeorgiev.com/pocketbase/ozzo-validation/v4":    {"Error"},
+			"ganigeorgiev.com/pocketbase/dbx":                   {"*"},
+			"github.com/doodlemania2/claviger/tools/security":   {"*"},
+			"github.com/doodlemania2/claviger/tools/filesystem": {"*"},
+			"github.com/doodlemania2/claviger/tools/template":   {"*"},
+			"github.com/doodlemania2/claviger/mails":            {"*"},
+			"github.com/doodlemania2/claviger/apis":             {"*"},
+			"github.com/doodlemania2/claviger/core":             {"*"},
+			"github.com/doodlemania2/claviger/forms":            {"*"},
+			"github.com/doodlemania2/claviger":                  {"*"},
+			"path/filepath":                                     {"*"},
+			"os":                                                {"*"},
+			"os/exec":                                           {"Command"},
 		},
 		FieldNameFormatter: func(s string) string {
 			return mapper.FieldName(nil, reflect.StructField{Name: s})

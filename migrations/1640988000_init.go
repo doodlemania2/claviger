@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/types"
 )
 
 // Register is a short alias for `AppMigrations.Register()`

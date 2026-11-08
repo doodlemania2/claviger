@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"ganigeorgiev.com/pocketbase/dbx"
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/dbutils"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/dbutils"
 )
 
 // see https://ganigeorgiev.com/pocketbase/discussions/7689

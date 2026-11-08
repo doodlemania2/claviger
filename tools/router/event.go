@@ -13,10 +13,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/filesystem"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/hook"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/picker"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/store"
+	"github.com/doodlemania2/claviger/tools/filesystem"
+	"github.com/doodlemania2/claviger/tools/hook"
+	"github.com/doodlemania2/claviger/tools/picker"
+	"github.com/doodlemania2/claviger/tools/store"
 )
 
 var ErrUnsupportedContentType = NewBadRequestError("Unsupported Content-Type", nil)

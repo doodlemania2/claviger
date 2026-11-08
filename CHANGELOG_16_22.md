@@ -1145,7 +1145,7 @@
 
 - Added `?download=1` file query parameter to the file serving endpoint to force the browser to always download the file and not show its preview.
 
-- Added new utility `ganigeorgiev.com/pocketbase/pocketbase/tools/template` subpackage to assist with rendering HTML templates using the standard Go `html/template` and `text/template` syntax.
+- Added new utility `github.com/doodlemania2/claviger/tools/template` subpackage to assist with rendering HTML templates using the standard Go `html/template` and `text/template` syntax.
 
 - Added `types.JsonMap.Get(k)` and `types.JsonMap.Set(k, v)` helpers for the cases where the type aliased direct map access is not allowed (eg. in [goja](https://pkg.go.dev/github.com/dop251/goja#hdr-Maps_with_methods)).
 

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/security"
+	"github.com/doodlemania2/claviger/tools/security"
 	"github.com/golang-jwt/jwt/v5"
 )
 

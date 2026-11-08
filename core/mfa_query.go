@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
+	"github.com/doodlemania2/claviger/tools/types"
 )
 
 // FindAllMFAsByRecord returns all MFA models linked to the provided auth record.
