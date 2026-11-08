@@ -121,10 +121,10 @@ func addRunFlags(c *cobra.Command, f *keysOpFlags) {
 func keysRun(app core.App, f *keysOpFlags, command *cobra.Command, fn func(ctx context.Context, out io.Writer) error) error {
 	if !f.offlineOK {
 		if reason := ServerLiveReason(app.DataDir()); reason != "" {
-			return fmt.Errorf("refusing to run: %s.\n"+
+			return fmt.Errorf("refusing to run: %s\n"+
 				"The server is the single writer of %s, and this command opens the same database.\n"+
 				"Run the operation inside the serving process instead (POST /api/field-keys/..., or the dashboard),\n"+
-				"or stop the server first. If you are sure no server is running, pass --offline-ok.", reason, app.DataDir())
+				"or stop the server first. If you are sure no server is running, pass --offline-ok", reason, app.DataDir())
 		}
 	}
 

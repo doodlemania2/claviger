@@ -4,10 +4,10 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"regexp"
+	"strings"
 
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
 	"github.com/doodlemania2/claviger/tools/dbutils"
-	"strings"
 )
 
 // Fork-local (Claviger #75): the helpers shared by the encrypted field types
