@@ -1,0 +1,30 @@
+name: OIDC conformance bootstrap
+
+# Manual only (workflow_dispatch). The OpenID Foundation conformance suite itself
+# is not run here: it needs a publicly trusted https URL for the instance and a
+# browser driver for the sign-in page, see docs/oidc-conformance.md. This job keeps
+# the runbook's bootstrap script honest: it builds Claviger, starts an instance,
+# registers the two clients the Basic OP plan needs, and checks discovery, an
+# authorize request and the key set against the real binary.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    # workflow_dispatch only, so always trusted.
+    runs-on: ${{ vars.RUNNER_LIGHT || 'tdp-k3s-claviger' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Bootstrap a conformance test instance
+        # the printed suite config holds the secrets of a throw-away instance;
+        # keep it out of the log
+        run: scripts/oidc-conformance-instance.sh --check >/dev/null

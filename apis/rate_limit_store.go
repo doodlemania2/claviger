@@ -374,6 +374,6 @@ func (s *rateLimitStore) close() {
 // Settings reload (the configurable limiters start from scratch).
 func forgetRateLimitStoreEntries(app core.App) {
 	if s, ok := app.Store().Get(rateLimitStoreKey).(*rateLimitStore); ok && s != nil && !s.disabled {
-		s.forget(func(rule string) bool { return !strings.HasPrefix(rule, rateLimitFixedRulePrefix) })
+		s.forget(func(rule string) bool { return !isFixedRule(rule) })
 	}
 }

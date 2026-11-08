@@ -47,7 +47,7 @@ func TestCollectionsList(t *testing.T) {
 			ExpectedContent: []string{
 				`"page":1`,
 				`"perPage":30`,
-				`"totalItems":31`,
+				`"totalItems":32`,
 				`"items":[{`,
 				`"name":"` + core.CollectionNameSuperusers + `"`,
 				`"name":"` + core.CollectionNameAuthOrigins + `"`,
@@ -87,9 +87,9 @@ func TestCollectionsList(t *testing.T) {
 			ExpectedContent: []string{
 				`"page":2`,
 				`"perPage":2`,
-				`"totalItems":31`,
+				`"totalItems":32`,
 				`"items":[{`,
-				// newest first: _fieldKeys and one OIDC collection are page 1; page 2 holds two more
+				// newest first: _fieldKeys and _oauthSso (#114) are page 1; page 2 holds two more
 				// OIDC collections from the same migration, whose relative order is not asserted
 				`"name":"_oauth`,
 			},

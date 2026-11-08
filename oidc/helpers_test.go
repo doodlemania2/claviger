@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -90,6 +91,10 @@ func newEnv(t testing.TB, opts ...envOpts) *env {
 
 	var mux http.Handler
 	err = app.OnServe().Trigger(se, func(e *core.ServeEvent) error {
+		// the catch-all the example app serves its public directory with: the
+		// provider's routes must coexist with it (a method-less pattern panics the mux)
+		e.Router.GET("/{path...}", func(re *core.RequestEvent) error { return re.NotFoundError("", nil) })
+
 		// no rate limiting in tests
 		e.Router.Bind(&hook.Handler[*core.RequestEvent]{
 			Func:     func(re *core.RequestEvent) error { return re.Next() },
@@ -121,6 +126,7 @@ func newEnv(t testing.TB, opts ...envOpts) *env {
 type browser struct {
 	env     *env
 	cookies map[string]string
+	ip      string // the client address; empty keeps the httptest default
 }
 
 func (e *env) browser() *browser { return &browser{env: e, cookies: map[string]string{}} }
@@ -133,6 +139,9 @@ func (b *browser) do(method, target string, headers map[string]string, body io.R
 	}
 
 	req := httptest.NewRequest(method, target, body)
+	if b.ip != "" {
+		req.RemoteAddr = b.ip + ":4321"
+	}
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
@@ -316,6 +325,9 @@ type loginResult struct {
 func (b *browser) login(clientID string, o authOpts) loginResult {
 	b.env.t.Helper()
 
+	// a full sign-in, not a single sign-on shortcut (that is what the SSO tests are for)
+	delete(b.cookies, "claviger_oidc_sso")
+
 	reqID, p := b.startAuthorize(clientID, o)
 	token := b.signInToken(reqID)
 
@@ -484,4 +496,24 @@ func jsonDecode(b []byte, v any) error { return json.Unmarshal(b, v) }
 
 func basic(user, pass string) string {
 	return base64.StdEncoding.EncodeToString([]byte(url.QueryEscape(user) + ":" + url.QueryEscape(pass)))
+}
+
+func jsonMarshal(v any) ([]byte, error) { return json.Marshal(v) }
+
+// browserAt is a browser that connects from the address.
+func (e *env) browserAt(ip string) *browser {
+	b := e.browser()
+	b.ip = ip
+
+	return b
+}
+
+var requestCounter int
+
+func (b *browser) counter() int { requestCounter++; return requestCounter }
+
+func sha256Hex(v string) string {
+	sum := sha256.Sum256([]byte(v))
+
+	return hex.EncodeToString(sum[:])
 }

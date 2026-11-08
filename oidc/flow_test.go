@@ -7,7 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/oidc"
+	"github.com/doodlemania2/claviger/tools/types"
 )
 
 func TestDiscoveryAndJWKS(t *testing.T) {
@@ -716,3 +719,140 @@ func TestExpiredAuthRequest(t *testing.T) {
 }
 
 func jsonUnmarshal(b []byte, v any) error { return jsonDecode(b, v) }
+
+func TestRefreshExtendsTheSessionWithinTheCap(t *testing.T) {
+	e := newEnv(t)
+	clientID, _ := e.createClient(map[string]any{"public": true, "firstParty": true})
+
+	user := e.user()
+	duration := time.Duration(user.Collection().AuthToken.Duration) * time.Second
+
+	sessionTimes := func() (created, expires time.Time) {
+		t.Helper()
+
+		var row struct {
+			Created types.DateTime `db:"created"`
+			Expires types.DateTime `db:"expires"`
+		}
+		if err := e.app.ConcurrentDB().NewQuery("SELECT [[created]], [[expires]] FROM {{" + core.CollectionNameSessions + "}} ORDER BY [[created]] DESC LIMIT 1").One(&row); err != nil {
+			t.Fatal(err)
+		}
+
+		return row.Created.Time(), row.Expires.Time()
+	}
+
+	setSession := func(created, expires time.Time) {
+		t.Helper()
+
+		_, err := e.app.NonconcurrentDB().NewQuery("UPDATE {{" + core.CollectionNameSessions + "}} SET [[created]] = {:c}, [[expires]] = {:e}").
+			Bind(dbx.Params{"c": created.UTC().Format(types.DefaultDateLayout), "e": expires.UTC().Format(types.DefaultDateLayout)}).Execute()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		core.InvalidateSessionCache(e.app)
+	}
+
+	near := func(got, want time.Time) bool { return got.Sub(want) < 5*time.Second && want.Sub(got) < 5*time.Second }
+
+	tok := e.mustExchange(clientID, "", e.browser().login(clientID, authOpts{}))
+	refresh := func() {
+		t.Helper()
+
+		status, out := e.refresh(clientID, "", tok["refresh_token"].(string))
+		if status != 200 {
+			t.Fatalf("refresh: %d %v", status, out)
+		}
+
+		tok = out
+	}
+
+	// about to run out: a refresh pushes it a full auth token duration from now
+	created, _ := sessionTimes()
+	setSession(created, time.Now().Add(10*time.Minute))
+	refresh()
+
+	if _, expires := sessionTimes(); !near(expires, time.Now().Add(duration)) {
+		t.Fatalf("a refresh must extend the session by the auth token duration (%s), it ends %s", duration, expires)
+	}
+
+	// it is never shortened
+	far := time.Now().Add(duration + 24*time.Hour)
+	setSession(created, far)
+	refresh()
+
+	if _, expires := sessionTimes(); !near(expires, far) {
+		t.Fatalf("a refresh must not shorten the session, it ends %s", expires)
+	}
+
+	// the absolute cap: 29 days 23 hours in, the extension stops at 30 days after the sign-in
+	old := time.Now().Add(-(oidc.MaxSessionLifetime - time.Hour))
+	setSession(old, time.Now().Add(10*time.Minute))
+	refresh()
+
+	if _, expires := sessionTimes(); !near(expires, old.Add(oidc.MaxSessionLifetime)) {
+		t.Fatalf("the session must not outlive %s since the sign-in, it ends %s (cap %s)", oidc.MaxSessionLifetime, expires, old.Add(oidc.MaxSessionLifetime))
+	}
+
+	// at the cap a refresh no longer extends anything
+	_, capped := sessionTimes()
+	refresh()
+
+	if _, expires := sessionTimes(); !near(expires, capped) {
+		t.Fatalf("no extension past the cap: %s vs %s", expires, capped)
+	}
+
+	// and once the session ends, so does the chain
+	setSession(old, time.Now().Add(-time.Minute))
+
+	if status, _ := e.refresh(clientID, "", tok["refresh_token"].(string)); status == 200 {
+		t.Fatal("an expired session must end the refresh chain")
+	}
+}
+
+func TestRefreshDoesNotReviveARevokedSession(t *testing.T) {
+	e := newEnv(t)
+	clientID, _ := e.createClient(map[string]any{"public": true, "firstParty": true})
+
+	tok := e.mustExchange(clientID, "", e.browser().login(clientID, authOpts{}))
+
+	user := e.user()
+	if _, err := core.RevokeSessions(e.app, user.Collection().Id, user.Id, "test", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	if status, _ := e.refresh(clientID, "", tok["refresh_token"].(string)); status == 200 {
+		t.Fatal("a revoked session was refreshed")
+	}
+}
+
+func TestLoopbackRedirectPortIsFlexibleForNativeClientsOnly(t *testing.T) {
+	e := newEnv(t)
+	native, _ := e.createClient(map[string]any{"public": true, "firstParty": true, "redirectUris": []string{"http://127.0.0.1/callback"}})
+	web, _ := e.createClient(map[string]any{"name": "Web", "firstParty": true, "redirectUris": []string{"http://127.0.0.1/callback"}})
+
+	b := e.browser()
+
+	try := func(clientID, redirect string) bool {
+		target, _ := b.authorizeURL(clientID, authOpts{redirect: redirect})
+		rec := b.do("GET", target, nil, nil)
+
+		return strings.HasPrefix(rec.Header().Get("Location"), "/oidc/login")
+	}
+
+	if !try(native, "http://127.0.0.1:53211/callback") {
+		t.Fatal("a native client may use any port on the registered loopback address (RFC 8252 7.3)")
+	}
+
+	if try(native, "http://127.0.0.1:53211/other") {
+		t.Fatal("the path must still match")
+	}
+
+	if try(native, "http://evil.test:53211/callback") {
+		t.Fatal("only loopback hosts qualify")
+	}
+
+	if try(web, "http://127.0.0.1:53211/callback") {
+		t.Fatal("a confidential (web) client must match the registered URI exactly")
+	}
+}

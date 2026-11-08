@@ -33,7 +33,10 @@ var _ op.Storage = (*Store)(nil)
 
 type ctxKey int
 
-const ctxKeyAlg ctxKey = iota
+const (
+	ctxKeyAlg ctxKey = iota
+	ctxKeySSO
+)
 
 func withAlg(ctx context.Context, alg string) context.Context {
 	return context.WithValue(ctx, ctxKeyAlg, alg)
@@ -113,6 +116,7 @@ type requestData struct {
 	Challenge    string   `json:"challenge"`
 	Method       string   `json:"method"`
 	MaxAge       *uint    `json:"maxAge,omitempty"`
+	Prompt       []string `json:"prompt,omitempty"`
 	ACRValues    []string `json:"acrValues,omitempty"`
 }
 
@@ -215,11 +219,6 @@ func (s *Store) CreateAuthRequest(ctx context.Context, r *oidc.AuthRequest, _ st
 		return nil, oidc.ErrInvalidRequest().WithDescription("only code_challenge_method S256 is supported")
 	}
 
-	if len(r.Prompt) == 1 && r.Prompt[0] == oidc.PromptNone {
-		// there is no single sign-on session to reuse (account chooser: #94)
-		return nil, oidc.ErrLoginRequired()
-	}
-
 	scopes := make([]string, 0, len(r.Scopes))
 	for _, sc := range r.Scopes {
 		if c.allows(sc) && !slices.Contains(scopes, sc) {
@@ -229,6 +228,23 @@ func (s *Store) CreateAuthRequest(ctx context.Context, r *oidc.AuthRequest, _ st
 
 	if !slices.Contains(scopes, oidc.ScopeOpenID) {
 		return nil, oidc.ErrInvalidScope().WithDescription("the openid scope is required")
+	}
+
+	if slices.Contains(r.Prompt, oidc.PromptNone) {
+		if len(r.Prompt) > 1 {
+			return nil, oidc.ErrInvalidRequest().WithDescription("prompt=none cannot be combined with other values")
+		}
+
+		// no user interface may be shown: the single sign-on session has to
+		// carry the request as it is, or the client gets an error
+		account, _ := s.ssoAccount(ssoFromContext(ctx), c, r.MaxAge, r.Prompt)
+		if account == nil {
+			return nil, oidc.ErrLoginRequired()
+		}
+
+		if !c.FirstParty && !s.hasConsent(account, c.ClientID, scopes) {
+			return nil, errConsentRequired()
+		}
 	}
 
 	d := requestData{
@@ -241,6 +257,7 @@ func (s *Store) CreateAuthRequest(ctx context.Context, r *oidc.AuthRequest, _ st
 		Challenge:    r.CodeChallenge,
 		Method:       string(r.CodeChallengeMethod),
 		MaxAge:       r.MaxAge,
+		Prompt:       []string(r.Prompt),
 		ACRValues:    r.ACRValues,
 	}
 
@@ -270,7 +287,7 @@ func (s *Store) CreateAuthRequest(ctx context.Context, r *oidc.AuthRequest, _ st
 func (s *Store) purgeExpired() {
 	cutoff := dateString(time.Now().Add(-time.Hour))
 
-	for _, table := range []string{core.CollectionNameOAuthRequests, core.CollectionNameOAuthTokens, core.CollectionNameOAuthRefreshTokens} {
+	for _, table := range []string{core.CollectionNameOAuthRequests, core.CollectionNameOAuthTokens, core.CollectionNameOAuthRefreshTokens, core.CollectionNameOAuthSso} {
 		if _, err := exec(s.app, "DELETE FROM {{"+table+"}} WHERE [[expires]] != '' AND [[expires]] < {:cutoff}", dbx.Params{"cutoff": cutoff}); err != nil {
 			s.app.Logger().Debug("Failed to purge expired OIDC rows", "table", table, "error", err)
 		}
@@ -530,7 +547,51 @@ func (s *Store) CreateAccessAndRefreshTokens(ctx context.Context, req op.TokenRe
 		return "", "", time.Time{}, err
 	}
 
+	if current != "" {
+		s.extendSession(g.sid, g.collection)
+	}
+
 	return accessID, refresh, exp, nil
+}
+
+// extendSession keeps the Claviger session behind a refreshed grant alive: it
+// now ends the collection's auth token duration from this refresh, but never
+// later than MaxSessionLifetime after the sign-in, and it is never shortened.
+// Only a refresh does this, and only after the refresh token was accepted, so
+// the session was alive, the account not banned and the chain not revoked.
+func (s *Store) extendSession(sid, collectionRef string) {
+	if sid == "" {
+		return
+	}
+
+	col, err := s.app.FindCachedCollectionByNameOrId(collectionRef)
+	if err != nil || !col.IsAuth() || col.AuthToken.Duration <= 0 {
+		return
+	}
+
+	var row struct {
+		Created types.DateTime `db:"created"`
+		Expires types.DateTime `db:"expires"`
+	}
+
+	if err := s.app.ConcurrentDB().NewQuery(
+		"SELECT [[created]], [[expires]] FROM {{" + core.CollectionNameSessions + "}} WHERE [[id]] = {:sid} AND [[revoked]] = FALSE",
+	).Bind(dbx.Params{"sid": sid}).One(&row); err != nil {
+		return
+	}
+
+	target := time.Now().Add(time.Duration(col.AuthToken.Duration) * time.Second)
+	if limit := row.Created.Time().Add(MaxSessionLifetime); target.After(limit) {
+		target = limit
+	}
+
+	if !target.After(row.Expires.Time()) {
+		return
+	}
+
+	if err := core.SetSessionExpires(s.app, sid, target); err != nil {
+		s.app.Logger().Warn("Failed to extend the session on an OpenID Connect refresh", "error", err)
+	}
 }
 
 // TokenRequestByRefreshToken implements op.Storage.
@@ -661,42 +722,66 @@ func (s *Store) TerminateSession(context.Context, string, string) error { return
 
 // TerminateSessionFromRequest implements op.CanTerminateSessionFromRequest
 // (RP-initiated logout). The id_token_hint was already verified by the library;
-// its sid names the Claviger session to revoke.
+// its sid names the Claviger session to revoke. The single sign-on session of
+// the browser (its cookie travels with the request) ends too, together with the
+// Claviger session it is bound to.
 func (s *Store) TerminateSessionFromRequest(ctx context.Context, req *op.EndSessionRequest) (string, error) {
+	if sso := s.ssoRow(ssoFromContext(ctx)); sso != nil {
+		if err := s.endSession(ctx, sso.Sid, sso.Subject, "signed out of the sign-in page", req.ClientID); err != nil {
+			return "", err
+		}
+	}
+
 	if req.IDTokenHintClaims == nil || req.UserID == "" {
 		// nothing identifies the session: only the redirect is honoured
 		return req.RedirectURI, nil
 	}
 
-	sid := req.IDTokenHintClaims.SessionID
-
-	var collectionRef string
-	if sid != "" {
-		err := s.app.ConcurrentDB().NewQuery("SELECT [[collectionRef]] FROM {{" + core.CollectionNameSessions + "}} WHERE [[id]] = {:sid} AND [[recordRef]] = {:sub}").
-			Bind(dbx.Params{"sid": sid, "sub": req.UserID}).Row(&collectionRef)
-		if err != nil {
-			// not this user's session (or already gone)
-			return req.RedirectURI, nil
-		}
-
-		if _, err := exec(s.app,
-			"UPDATE {{"+core.CollectionNameSessions+"}} SET [[revoked]] = TRUE, [[revokedReason]] = {:reason} WHERE [[id]] = {:sid} AND [[revoked]] = FALSE",
-			dbx.Params{"sid": sid, "reason": "signed out by " + req.ClientID}); err != nil {
+	if sid := req.IDTokenHintClaims.SessionID; sid != "" {
+		if err := s.endSession(ctx, sid, req.UserID, "signed out by "+req.ClientID, req.ClientID); err != nil {
 			return "", err
 		}
+	} else {
+		s.audit(ctx, "oidc_logout", "", req.UserID, map[string]any{"clientId": req.ClientID, "sid": ""})
+	}
 
-		core.InvalidateSessionCache(s.app)
+	return req.RedirectURI, nil
+}
 
-		for _, table := range []string{core.CollectionNameOAuthRefreshTokens, core.CollectionNameOAuthTokens} {
-			if _, err := exec(s.app, "UPDATE {{"+table+"}} SET [[revoked]] = TRUE WHERE [[sid]] = {:sid}", dbx.Params{"sid": sid}); err != nil {
-				return "", err
-			}
+// endSession revokes the Claviger session sid of the user, every OIDC token
+// issued under it and the single sign-on sessions bound to it. A session that
+// is not the user's (or is already gone) is left alone.
+func (s *Store) endSession(ctx context.Context, sid, userID, reason, clientID string) error {
+	var collectionRef string
+
+	err := s.app.ConcurrentDB().NewQuery("SELECT [[collectionRef]] FROM {{" + core.CollectionNameSessions + "}} WHERE [[id]] = {:sid} AND [[recordRef]] = {:sub}").
+		Bind(dbx.Params{"sid": sid, "sub": userID}).Row(&collectionRef)
+	if err != nil {
+		// not this user's session (or already gone)
+		return nil //nolint:nilerr
+	}
+
+	if _, err := exec(s.app,
+		"UPDATE {{"+core.CollectionNameSessions+"}} SET [[revoked]] = TRUE, [[revokedReason]] = {:reason} WHERE [[id]] = {:sid} AND [[revoked]] = FALSE",
+		dbx.Params{"sid": sid, "reason": reason}); err != nil {
+		return err
+	}
+
+	core.InvalidateSessionCache(s.app)
+
+	for _, table := range []string{core.CollectionNameOAuthRefreshTokens, core.CollectionNameOAuthTokens} {
+		if _, err := exec(s.app, "UPDATE {{"+table+"}} SET [[revoked]] = TRUE WHERE [[sid]] = {:sid}", dbx.Params{"sid": sid}); err != nil {
+			return err
 		}
 	}
 
-	s.audit(ctx, "oidc_logout", collectionRef, req.UserID, map[string]any{"clientId": req.ClientID, "sid": sid})
+	if _, err := exec(s.app, "DELETE FROM {{"+core.CollectionNameOAuthSso+"}} WHERE [[sid]] = {:sid}", dbx.Params{"sid": sid}); err != nil {
+		return err
+	}
 
-	return req.RedirectURI, nil
+	s.audit(ctx, "oidc_logout", collectionRef, userID, map[string]any{"clientId": clientID, "sid": sid})
+
+	return nil
 }
 
 // RevokeToken implements op.Storage (RFC 7009).
