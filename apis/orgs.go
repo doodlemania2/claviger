@@ -1,12 +1,12 @@
 package apis
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
 	"github.com/doodlemania2/claviger/core"
 	"github.com/doodlemania2/claviger/tools/router"
 )
@@ -24,11 +24,13 @@ import (
 //	PATCH  /api/orgs/{id}/members/{member}           role, status, tags
 //	DELETE /api/orgs/{id}/members/{member}           remove (or leave)
 //
+// and the invitations routes of invitations.go (#79b).
+//
 // The authorization lives in core (org_members.go) so that invitations and
 // SCIM use the same guards. Every change is saved with the audit context, so
 // the entries carry the actor and meta.orgId. API keys can read but never
 // change organizations.
-func bindOrgsApi(_ core.App, rg *router.RouterGroup[*core.RequestEvent]) {
+func bindOrgsApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 	sub := rg.Group("/orgs").Bind(RequireAuth())
 	sub.GET("", orgsList)
 	sub.POST("", orgsCreate)
@@ -40,12 +42,19 @@ func bindOrgsApi(_ core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 	sub.POST("/{id}/members", orgMembersAdd)
 	sub.PATCH("/{id}/members/{member}", orgMembersUpdate)
 	sub.DELETE("/{id}/members/{member}", orgMembersRemove)
+	bindInvitationsApi(app, rg, sub) // fork-local (#79b)
 }
 
 func orgHTTP(e *core.RequestEvent, err error) error {
-	var oe *core.OrgError
-	if errors.As(err, &oe) {
-		return e.Error(oe.Status, oe.Message, nil)
+	if oe, ok := core.AsOrgError(err); ok {
+		var data any
+
+		// #79b: a stable code lets the hosted pages guide the user
+		if code := core.InvitationErrorCode(err); code != "" {
+			data = validation.Errors{"invitation": validation.NewError(code, oe.Message)}
+		}
+
+		return e.Error(oe.Status, oe.Message, data)
 	}
 
 	return e.BadRequestError("", err)
