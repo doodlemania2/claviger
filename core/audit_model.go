@@ -79,6 +79,24 @@ var auditSensitiveNameRegex = regexp.MustCompile(`(?i)(password|passwd|passphras
 
 type auditCtxKey struct{}
 type auditWriterCtxKey struct{}
+type auditSchemaCtxKey struct{}
+
+// WithAuditSchemaChange returns a copy of ctx that lets a change of the
+// _auditLog collection definition (fields, indexes, rules) through its
+// update guard (#110). It is meant for fork migrations that evolve the audit
+// schema:
+//
+//	txApp.SaveWithContext(core.WithAuditSchemaChange(context.Background()), auditCollection)
+//
+// It does not allow deleting the collection, and it does not allow writing,
+// changing or deleting entries (the record guards ignore it).
+func WithAuditSchemaChange(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	return context.WithValue(ctx, auditSchemaCtxKey{}, true)
+}
 
 type auditCtxValue struct {
 	actor AuditActor
@@ -272,7 +290,7 @@ func (app *BaseApp) registerAuditHooks() {
 	app.OnCollectionUpdate().Bind(&hook.Handler[*CollectionEvent]{
 		Id: "__pbAuditCollectionGuard__",
 		Func: func(e *CollectionEvent) error {
-			if e.Collection.IsNew() {
+			if e.Collection.IsNew() || (e.Context != nil && e.Context.Value(auditSchemaCtxKey{}) != nil) {
 				return e.Next()
 			}
 

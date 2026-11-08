@@ -629,3 +629,65 @@ func TestAuditConfigValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAuditSchemaChangeBypass(t *testing.T) {
+	t.Parallel()
+
+	app, _ := tests.NewTestApp()
+	defer app.Cleanup()
+
+	col, err := app.FindCollectionByNameOrId(core.CollectionNameAuditLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	col.Fields.Add(&core.TextField{Name: "extraNote"})
+
+	// the guard blocks a definition change by default, with a plain context too
+	if err := app.Save(col); err == nil {
+		t.Fatal("Expected the definition change to be rejected")
+	}
+	if err := app.SaveWithContext(context.Background(), col); err == nil {
+		t.Fatal("Expected the definition change to be rejected with a plain context")
+	}
+	// ... and with the writer context of the entries (a different key)
+	if err := app.SaveWithContext(core.WithAuditContext(context.Background(), core.AuditActor{Type: core.AuditActorTypeSystem}, ""), col); err == nil {
+		t.Fatal("Expected the definition change to be rejected with an audit actor context")
+	}
+
+	// the explicit bypass lets it through
+	col, _ = app.FindCollectionByNameOrId(core.CollectionNameAuditLog)
+	col.Fields.Add(&core.TextField{Name: "extraNote"})
+	if err := app.SaveWithContext(core.WithAuditSchemaChange(context.Background()), col); err != nil {
+		t.Fatalf("Expected the bypass to allow the schema change: %v", err)
+	}
+	stored, _ := app.FindCollectionByNameOrId(core.CollectionNameAuditLog)
+	if stored.Fields.GetByName("extraNote") == nil {
+		t.Fatal("Expected the new field to be stored")
+	}
+
+	// the bypass is not a way to delete the collection ...
+	if err := app.DeleteWithContext(core.WithAuditSchemaChange(context.Background()), stored); err == nil {
+		t.Fatal("Expected the collection delete to stay blocked")
+	}
+
+	// ... nor to touch entries
+	clearAudit(t, app)
+	if err := core.WriteAuditEntry(app, nil, &core.AuditEntry{Action: "x", Actor: core.AuditActor{Type: core.AuditActorTypeSystem}, CollectionName: "demo2", RecordId: "r1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	entries := mustAll(t, app)
+	if len(entries) != 1 {
+		t.Fatalf("Expected 1 entry, got %d", len(entries))
+	}
+	bypass := core.WithAuditSchemaChange(context.Background())
+	if err := app.SaveWithContext(bypass, core.NewRecord(stored)); err == nil {
+		t.Fatal("Expected creating an entry with the bypass context to be rejected")
+	}
+	entries[0].Set("action", "forged")
+	if err := app.SaveWithContext(bypass, entries[0]); err == nil {
+		t.Fatal("Expected updating an entry with the bypass context to be rejected")
+	}
+	if err := app.DeleteWithContext(bypass, entries[0]); err == nil {
+		t.Fatal("Expected deleting an entry with the bypass context to be rejected")
+	}
+}
