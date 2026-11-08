@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -320,6 +321,9 @@ type loginResult struct {
 func (b *browser) login(clientID string, o authOpts) loginResult {
 	b.env.t.Helper()
 
+	// a full sign-in, not a single sign-on shortcut (that is what the SSO tests are for)
+	delete(b.cookies, "claviger_oidc_sso")
+
 	reqID, p := b.startAuthorize(clientID, o)
 	token := b.signInToken(reqID)
 
@@ -503,3 +507,9 @@ func (e *env) browserAt(ip string) *browser {
 var requestCounter int
 
 func (b *browser) counter() int { requestCounter++; return requestCounter }
+
+func sha256Hex(v string) string {
+	sum := sha256.Sum256([]byte(v))
+
+	return hex.EncodeToString(sum[:])
+}

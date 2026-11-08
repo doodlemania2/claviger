@@ -221,7 +221,12 @@ func (m *module) serveLibrary(e *core.RequestEvent) error {
 		return nil
 	}
 
-	r := m.withClientAlg(e.Request)
+	r := m.withSSO(m.withClientAlg(e.Request))
+
+	if strings.TrimSuffix(r.URL.Path, "/") == mountPath+"/end_session" && ssoCookieValue(r) != "" {
+		// logging out of the sign-in page forgets the browser's session
+		m.clearSSOCookie(e)
+	}
 
 	if after == nil {
 		handler.ServeHTTP(e.Response, r)
@@ -234,6 +239,16 @@ func (m *module) serveLibrary(e *core.RequestEvent) error {
 	after(rec.status)
 
 	return nil
+}
+
+// withSSO hands the single sign-on cookie of the browser to the storage (the
+// library calls it with the request context only).
+func (m *module) withSSO(r *http.Request) *http.Request {
+	if v := ssoCookieValue(r); v != "" {
+		return r.WithContext(withSSO(r.Context(), v))
+	}
+
+	return r
 }
 
 // withClientAlg tells the token endpoint which signing algorithm the calling

@@ -2,6 +2,7 @@ package oidc
 
 import (
 	"context"
+	"errors"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -237,6 +238,31 @@ func (m *module) loginPage(e *core.RequestEvent) error {
 		return m.errorPage(e, http.StatusBadRequest, "This application is not available.")
 	}
 
+	// a single sign-on session of this browser carries the request without credentials
+	if req.row.Status == statusPending {
+		value := ssoCookieValue(e.Request)
+
+		account, _ := m.store.ssoAccount(value, client, req.d.MaxAge, req.d.Prompt)
+		if account != nil {
+			if row := m.store.ssoRow(value); row != nil {
+				target, aerr := m.advance(req, client, col, account, grantAuth{
+					sid: row.Sid, acr: row.Acr, amr: parseList(row.Amr), authTime: row.AuthTime.Time(),
+				})
+				if aerr == nil {
+					return e.Redirect(http.StatusFound, target)
+				}
+
+				if errors.Is(aerr, errNeedsConsent) {
+					return m.denyRequest(e, req, "consent_required", "The user has not consented to this client yet.")
+				}
+			}
+		}
+
+		if slices.Contains(req.d.Prompt, oidc.PromptNone) {
+			return m.denyRequest(e, req, "login_required", "The user is not signed in.")
+		}
+	}
+
 	return m.render(e, http.StatusOK, pageData{
 		Title: "Sign in", Heading: "Sign in", Page: "login", RequestID: id,
 		Collection: col.Name, ClientName: client.Name, Script: mountPath + "/assets/login.js",
@@ -309,17 +335,55 @@ func (m *module) loginFinish(e *core.RequestEvent) error {
 		return jsonError(e, http.StatusUnauthorized, "That sign-in is too old. Sign in again.")
 	}
 
-	if req.d.MaxAge != nil && time.Since(authTime) > time.Duration(*req.d.MaxAge)*time.Second {
+	// max_age (and prompt=login, which the library turns into max_age=0) asks
+	// for a sign-in that is recent enough. One that happened while this very
+	// request waited is always recent enough.
+	startedAt := req.row.Expires.Time().Add(-authRequestLifetime)
+	if req.d.MaxAge != nil && authTime.Before(startedAt.Add(-time.Second)) &&
+		time.Since(authTime) > time.Duration(*req.d.MaxAge)*time.Second {
 		return jsonError(e, http.StatusUnauthorized, "Sign in again.")
 	}
 
 	amr, acr := authnContext(sess.AuthMethod, apis.HasFreshPasskey(e, maxSignInAge))
 
+	auth := grantAuth{sid: sid, acr: acr, amr: amr, authTime: authTime}
+
+	target, err := m.advance(req, client, col, e.Auth, auth)
+	if err != nil {
+		if errors.Is(err, errRequestGone) {
+			return jsonError(e, http.StatusBadRequest, "This sign-in has expired. Return to the app and try again.")
+		}
+
+		return jsonError(e, http.StatusInternalServerError, "Failed to check the consent.")
+	}
+
+	// this sign-in is now the browser's single sign-on session
+	m.ssoStart(e, col.Id, e.Auth.Id, sid, acr, amr, authTime)
+
+	return e.JSON(http.StatusOK, map[string]any{"redirect": target})
+}
+
+// grantAuth is how and when the user authenticated.
+type grantAuth struct {
+	sid, acr string
+	amr      []string
+	authTime time.Time
+}
+
+var (
+	errRequestGone  = errors.New("the authorize request is gone")
+	errNeedsConsent = errors.New("consent is required but no page may be shown")
+)
+
+// advance records the authentication on the authorize request and returns where
+// the browser goes next: the consent page, or the callback that issues the code.
+func (m *module) advance(req *authRequest, client *Client, col *core.Collection, account *core.Record, a grantAuth) (string, error) {
 	next := statusDone
+
 	if !client.FirstParty {
-		consented, cerr := m.hasConsent(e.Auth, client.ClientID, req.d.Scopes)
-		if cerr != nil {
-			return jsonError(e, http.StatusInternalServerError, "Failed to check the consent.")
+		consented := m.store.hasConsent(account, client.ClientID, req.d.Scopes)
+		if slices.Contains(req.d.Prompt, oidc.PromptConsent) {
+			consented = false
 		}
 
 		if !consented {
@@ -327,25 +391,51 @@ func (m *module) loginFinish(e *core.RequestEvent) error {
 		}
 	}
 
+	// prompt=none may not show the consent page
+	if next == statusAuthenticated && slices.Contains(req.d.Prompt, oidc.PromptNone) {
+		return "", errNeedsConsent
+	}
+
 	n, err := exec(m.app,
 		"UPDATE {{"+core.CollectionNameOAuthRequests+"}} SET [[status]] = {:next}, [[collectionRef]] = {:col}, [[subject]] = {:sub}, "+
 			"[[sid]] = {:sid}, [[amr]] = {:amr}, [[acr]] = {:acr}, [[authTime]] = {:at} "+
 			"WHERE [[requestId]] = {:id} AND [[status]] IN ({:pending}, {:authn}) AND [[expires]] > {:now}",
 		dbx.Params{
-			"next": next, "col": col.Id, "sub": e.Auth.Id, "sid": sid, "amr": jsonList(amr), "acr": acr,
-			"at": dateString(authTime), "id": req.row.RequestId, "pending": statusPending, "authn": statusAuthenticated,
+			"next": next, "col": col.Id, "sub": account.Id, "sid": a.sid, "amr": jsonList(a.amr), "acr": a.acr,
+			"at": dateString(a.authTime), "id": req.row.RequestId, "pending": statusPending, "authn": statusAuthenticated,
 			"now": nowString(),
 		})
-	if err != nil || n != 1 {
-		return jsonError(e, http.StatusBadRequest, "This sign-in has expired. Return to the app and try again.")
+	if err != nil {
+		return "", err
 	}
 
-	target := mountPath + "/authorize/callback?id=" + url.QueryEscape(req.row.RequestId)
+	if n != 1 {
+		return "", errRequestGone
+	}
+
 	if next == statusAuthenticated {
-		target = mountPath + "/consent?authRequestID=" + url.QueryEscape(req.row.RequestId)
+		return mountPath + "/consent?authRequestID=" + url.QueryEscape(req.row.RequestId), nil
 	}
 
-	return e.JSON(http.StatusOK, map[string]any{"redirect": target})
+	return mountPath + "/authorize/callback?id=" + url.QueryEscape(req.row.RequestId), nil
+}
+
+// denyRequest ends the authorize request with an error redirected to the
+// (already validated) redirect URI.
+func (m *module) denyRequest(e *core.RequestEvent, req *authRequest, code, description string) error {
+	_, _ = exec(m.app,
+		"UPDATE {{"+core.CollectionNameOAuthRequests+"}} SET [[status]] = {:denied} WHERE [[requestId]] = {:id} AND [[status]] IN ({:pending}, {:authn})",
+		dbx.Params{"denied": statusDenied, "id": req.row.RequestId, "pending": statusPending, "authn": statusAuthenticated})
+
+	return e.Redirect(http.StatusFound, errorRedirect(req, code, description))
+}
+
+func ssoCookieValue(r *http.Request) string {
+	if c, err := r.Cookie(ssoCookieName); err == nil {
+		return c.Value
+	}
+
+	return ""
 }
 
 // authnContext maps how the session was authenticated to the amr values (RFC
@@ -382,12 +472,13 @@ func authnContext(sessionMethod string, freshPasskey bool) ([]string, string) {
 
 // ---- consent -------------------------------------------------------------
 
-func (m *module) hasConsent(account *core.Record, clientID string, scopes []string) (bool, error) {
-	rec, err := m.app.FindFirstRecordByFilter(core.CollectionNameOAuthConsents,
+// hasConsent reports whether the account already granted all the scopes to the client.
+func (s *Store) hasConsent(account *core.Record, clientID string, scopes []string) bool {
+	rec, err := s.app.FindFirstRecordByFilter(core.CollectionNameOAuthConsents,
 		"collectionRef = {:c} && recordRef = {:r} && clientId = {:k}",
 		dbx.Params{"c": account.Collection().Id, "r": account.Id, "k": clientID})
 	if err != nil {
-		return false, nil //nolint:nilerr // no row: not consented
+		return false // no row: not consented
 	}
 
 	var granted []string
@@ -395,11 +486,11 @@ func (m *module) hasConsent(account *core.Record, clientID string, scopes []stri
 
 	for _, sc := range scopes {
 		if !slices.Contains(granted, sc) {
-			return false, nil
+			return false
 		}
 	}
 
-	return true, nil
+	return true
 }
 
 func (m *module) saveConsent(account *core.Record, clientID string, scopes []string, ip string) error {
@@ -529,15 +620,19 @@ func (m *module) consentDecision(e *core.RequestEvent) error {
 // denyRedirect is the error response sent to the (already validated)
 // redirect URI when the user declines.
 func denyRedirect(req *authRequest) string {
+	return errorRedirect(req, "access_denied", "The user denied the request.")
+}
+
+// errorRedirect is the error response (RFC 6749 4.1.2.1) for the request.
+func errorRedirect(req *authRequest, code, description string) string {
 	u, err := url.Parse(req.d.RedirectURI)
 	if err != nil {
 		return mountPath + "/logged-out"
 	}
 
 	q := u.Query()
-	q.Set("error", "access_denied")
-	q.Set("error_description", "The user denied the request.")
-
+	q.Set("error", code)
+	q.Set("error_description", description)
 	if req.d.State != "" {
 		q.Set("state", req.d.State)
 	}

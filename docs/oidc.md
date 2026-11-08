@@ -85,9 +85,8 @@ Management API for the admin UI (superuser only): `GET /api/oidc/status`, `POST 
 1. The application sends the browser to `/oidc/authorize` (with PKCE). Claviger validates it and redirects to
    `/oidc/login?authRequestID=...`.
 2. The hosted page signs the user in against the client's auth collection through the ordinary endpoints
-   (`auth-with-password`, passkey login, `auth-with-totp` for the second factor). It stores nothing in the
-   browser; every authorize request asks for a fresh sign-in (there is no single sign-on session yet, so
-   `prompt=none` answers `login_required`).
+   (`auth-with-password`, passkey login, `auth-with-totp` for the second factor). If this browser already has a
+   [single sign-on session](#single-sign-on) the page skips the credentials (see below).
 3. The page sends the resulting Claviger token to `POST /oidc/login/finish`. Claviger accepts it only when it is
    a **fresh sign-in with a session** (not an API key, not a token that predates sessions, not older than
    15 minutes) of the client's collection, and the account is not banned.
@@ -109,6 +108,37 @@ CSP then gains the provider's domains (script, frame, XHR and, for hCaptcha, sty
 narrow table `/passkeys` and the admin UI use, with still no `unsafe-inline`. A deployment without a CAPTCHA
 gets exactly the strict policy above. Other pages (consent, errors) never get the extension. A provider outage
 follows `failClosed` as everywhere else (open by default, so a church is not locked out of sign-in).
+
+## Single sign-on
+
+After a sign-in on `/oidc/login` the browser gets one cookie, `claviger_oidc_sso`: `HttpOnly`, `SameSite=Lax`,
+`Secure` on https, `Path=/oidc`, valid 12 hours. Its value is 32 random bytes and **nothing else**: no token, no
+id, no claim. The server stores only its SHA-256 in `_oauthSso`, next to the id of the Claviger session (`sid`)
+the sign-in created. A later `/oidc/authorize` from the same browser, for another client (or the same one), is
+completed by the sign-in page without asking for credentials: it re-checks that the Claviger session behind the
+cookie is alive and the account is not banned, then issues the code with the original `auth_time`, `acr`, `amr`
+and the same `sid` (so revoking that session ends every client's refresh chain at once).
+
+- **Consent** is still asked for any client that is not first party, once per user, client and scopes.
+- **`prompt=none`** succeeds silently when the session is valid. Otherwise the client receives `login_required`
+  (no session, expired, revoked, other account type or collection) or `consent_required`, as a redirect, with no
+  page. `none` combined with another value is `invalid_request`.
+- **`prompt=login`**, **`prompt=select_account`** (there is no account chooser) and a **`max_age`** older than the
+  original sign-in (`max_age=0` always) ignore the session and ask for credentials. That sign-in replaces the
+  session: new cookie, old row deleted. A sign-in that happened while the request waited always satisfies
+  `max_age`/`prompt=login`.
+- **`prompt=consent`** shows the consent page again for a client that is not first party.
+- The session **ends** when the Claviger session is revoked or expires (the user, an administrator, a password
+  change, a ban), when the account is banned or deleted (it is re-checked on every use, so this is immediate),
+  after 12 hours, and on `end_session`: the row and the Claviger session go and the cookie is cleared, with or
+  without an `id_token_hint` (a bare logout request from the browser ends the browser's own session; a hostile
+  page can therefore sign a user out, which is the usual logout-CSRF trade-off).
+- A session belongs to one auth collection. Signing in to a client of another collection replaces it.
+- The 12 hours are deliberately shorter than a Claviger session: the cookie lives in a browser that may be
+  shared, while the long-lived credential belongs to the relying party (and is bounded by the refresh rules
+  below).
+
+A deployment with no registered clients never sets the cookie: only a sign-in through `/oidc/login` does.
 
 ## Rate limits
 
@@ -222,7 +252,8 @@ redirect happens.
 
 - No DPoP, PAR, device flow (#96), dynamic client registration, `client_credentials`, back-channel logout or
   token exchange.
-- No account chooser or single sign-on session: every authorize request asks for a sign-in (#94).
+- No account chooser (#94): a browser holds one single sign-on session, and `prompt=select_account` asks for
+  credentials.
 - The hosted pages are English only (#97). Email OTP and the OAuth2 "sign in with" providers are not offered
   on the hosted page.
 - The library logs through the global `slog` default, not the application logger.
