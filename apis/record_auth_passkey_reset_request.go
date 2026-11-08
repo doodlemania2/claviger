@@ -41,6 +41,11 @@ func recordRequestPasskeyReset(e *core.RequestEvent) error {
 		return fmt.Errorf("failed to fetch %s record with email %s: %w", collection.Name, form.Email, err)
 	}
 
+	// banned accounts get no reset email (and no hint why) (#93)
+	if silentlyRefuseBanned(e, record) {
+		return errors.New("the account is banned")
+	}
+
 	resendKey := getPasskeyResetResendKey(record)
 	if e.App.Store().Has(resendKey) {
 		e.NoContent(http.StatusNoContent)

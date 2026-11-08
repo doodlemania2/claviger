@@ -38,6 +38,11 @@ func recordRequestPasswordReset(e *core.RequestEvent) error {
 		return fmt.Errorf("failed to fetch %s record with email %s: %w", collection.Name, form.Email, err)
 	}
 
+	// fork-local (#93): banned accounts get no reset email (and no hint why)
+	if silentlyRefuseBanned(e, record) {
+		return errors.New("the account is banned")
+	}
+
 	resendKey := getPasswordResetResendKey(record)
 	if e.App.Store().Has(resendKey) {
 		// eagerly write 204 response as a very basic measure against emails enumeration

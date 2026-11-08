@@ -103,7 +103,7 @@ func enforceAPIKeyScopes(e *core.RequestEvent, key *core.APIKeyInfo) error {
 	switch segs[0] {
 	case "health":
 		return nil
-	case "apikeys", "oauth2-redirect":
+	case "apikeys", "sessions", "bans", "oauth2-redirect":
 		return apiKeyForbidden(e)
 	case "files":
 		if len(segs) < 2 || segs[1] == "token" {

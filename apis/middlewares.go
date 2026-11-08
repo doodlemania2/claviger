@@ -202,6 +202,9 @@ func loadAuthToken() *hook.Handler[*core.RequestEvent] {
 			}
 
 			record, err := e.App.FindAuthRecordByToken(token, core.TokenTypeAuth)
+			if err == nil {
+				err = checkSessionClaim(e, token, record) // fork-local (#93)
+			}
 			if err != nil {
 				e.App.Logger().Debug("loadAuthToken failure", "error", err)
 			} else if record != nil {

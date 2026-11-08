@@ -50,6 +50,11 @@ func recordAuthResponse(e *core.RequestEvent, authRecord *core.Record, token str
 		}
 	}
 
+	// fork-local (#93)
+	if err := checkNotBanned(e, authRecord); err != nil {
+		return err
+	}
+
 	originalRequestInfo, err := e.RequestInfo()
 	if err != nil {
 		return err
@@ -90,6 +95,13 @@ func recordAuthResponse(e *core.RequestEvent, authRecord *core.Record, token str
 			return ErrMFA
 		}
 		// ---
+
+		// fork-local (#93): start the server-side session, add its id to the token
+		if sessionToken, err := attachSession(e.RequestEvent, e.Record, e.Token, e.AuthMethod); err != nil {
+			return err
+		} else {
+			e.Token = sessionToken
+		}
 
 		// create a shallow copy of the cached request data and adjust it to the current auth record
 		requestInfo := *originalRequestInfo
