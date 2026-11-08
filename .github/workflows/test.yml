@@ -55,6 +55,49 @@ jobs:
           version: v2.14.0
           args: -c ./golangci.yml
 
+  # PostgreSQL storage (experimental, #106): the tagged integration tests against a
+  # real server. Runs after `test` so a broken SQLite suite stops here first.
+  postgres:
+    timeout-minutes: 15
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || (vars.RUNNER_LIGHT || 'tdp-k3s-claviger') }}
+    needs: test
+    services:
+      postgres:
+        # Minimum supported version is 16. Pinned to a patch release; bump it by hand
+        # (Dependabot does not scan workflow service images).
+        image: postgres:16.9
+        env:
+          POSTGRES_USER: pb
+          POSTGRES_PASSWORD: pb
+          POSTGRES_DB: pbtest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pb -d pbtest"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CLAVIGER_TEST_PG_URL: postgres://pb:pb@localhost:5432/pbtest?sslmode=disable
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      # -v and the count check below: a skipped package (CLAVIGER_TEST_PG_URL
+      # unset or unreachable) exits 0 and would verify nothing.
+      - name: Run Postgres tests
+        run: |
+          set -o pipefail
+          go test -tags postgres -count=1 -v ./tests/pgtests/... | tee pg-test.log
+          if grep -q -- '--- SKIP' pg-test.log; then
+            echo "::error::a Postgres test was skipped"
+            exit 1
+          fi
+          test "$(grep -c -- '--- PASS' pg-test.log)" -ge 6
+
   docker-build:
     timeout-minutes: 15
     runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || (vars.RUNNER_LIGHT || 'tdp-k3s-claviger') }}
