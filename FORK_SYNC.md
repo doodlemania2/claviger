@@ -304,7 +304,29 @@ The rule: SQLite behavior and SQL text are unchanged, and every engine-specific 
 | `apis/record_crud.go` (+1 -1), `apis/record_auth_with_password.go`, `apis/record_auth_with_oauth2.go` | `dummyRecordSelect` (typed dummy record of the create rule); `NoCaseEqual`. | New `COLLATE NOCASE` or `SELECT {:p} AS col` constructs. |
 | `tools/dialect/postgres.go` | The `C` collation of text columns. | |
 
-After a sync, also run `go test ./tools/search -run 'Golden|PostgresFilterSQL'` (SQL text of both dialects), `go test -tags postgres ./tests/pgtests/...` (the differential suite) and grep for the constructs above. Not yet routed through the dialect (M3/M4 in `docs/datastores.md`): `core/backup_*.go`, `core/log_query.go` (auxiliary db, stays SQLite), `apis/sql.go`.
+After a sync, also run `go test ./tools/search -run 'Golden|PostgresFilterSQL'` (SQL text of both dialects), `go test -tags postgres ./tests/pgtests/...` (the differential suite) and grep for the constructs above. `core/log_query.go` is the auxiliary db and stays SQLite.
+
+**M3 (migrations, import/export, backups) and M4 (fork features, test harness).** Fork-only files: `apis/sql_dialect.go`, `tests/app_postgres.go`, `tests/postgres_harness_test.go`, `tests/postgres_skip.txt`, `scripts/test_postgres_suites.sh`, `tests/pgtests/{sql_api,backup,import_export}_test.go`. Upstream-owned hunks:
+
+| File | Fork change | Re-check on sync |
+| --- | --- | --- |
+| `apis/sql.go` (+22 -3) | `isWriteQuery` / `sqlTouchesAuditLog` (apis/sql_dialect.go) replace the prefix guess and the audit substring check; the write path is a closure (`runWrite`) so a Postgres read that the server refuses as a write (SQLSTATE 25006) can take it; reads go through `runReadQuery` (a READ ONLY transaction on Postgres). The SQLite statements are unchanged. | New write prefixes in `knownWriteQueryPrefixes` (add to `postgresWriteKeywords` too); the audit guard text. |
+| `apis/backup.go` (+7) | `backupRestore` answers 400 when the database is not SQLite. | |
+| `apis/health.go` (+2 -1) | `data.database` for superusers (the admin UI backups notice). | |
+| `apis/collection.go` (+1 -1) | `collectionsList` gives its `SimpleFieldResolver` the dialect (`WithDialect`): without it `system=false` is sent as a number to a boolean column. | New `SimpleFieldResolver` users on tables other than the aux db. |
+| `tools/search/simple_field_resolver.go` (+29) | `WithDialect`, `Dialect()`, `DefaultOrder()` on the resolver. | |
+| `core/backup_create.go` (+41 -22) | The `VACUUM INTO` copy of `data.db` (and its manifest/exclude lines) is the `else` branch of a dialect check, so the block is **re-indented**: use `git diff -w` when merging. On Postgres the data database is skipped and the manifest gets `dataDatabase`; the `PRAGMA wal_checkpoint` of the data db is `Checkpoint()`. | Changes inside the data.db copy block; a new database file added to the archive. |
+| `core/backup_restore.go` (+7) | Refuses when the database is not SQLite. | |
+| `core/backup_verify.go` (+31 -1, fork-only file) | `BackupManifest.DataDatabase`/`Note`; a Postgres archive without `data.db` is `skipped`. | |
+| `core/view.go` (+10 -3), `core/db_table.go` (+2 -1) | `DropSuffix()` on `DROP VIEW` / `DROP TABLE`; `SaveView` detaches and recreates the dependent views (`DetachDependentViews`). | Any other `DROP` of a table or view. |
+| `core/field_encrypted_*.go`, `core/telemetry.go`, `core/db_connect_postgres*.go`, `cmd/keys.go`, `tools/telemetry/db.go` | Fork-only files: the plain text column from the dialect; the instrumented Postgres connection; `keys check` reads Postgres (`CLAVIGER_DB_URL`) read only; `db.system.name` follows the driver. | |
+| `migrations/1640988000_init.go` (+8 -1) | `_params.value` is `TEXT` on Postgres (an encrypted settings value is not JSON). | |
+| `tools/dialect/postgres.go` | `PortableIndex` (`TableIndexes` returns the backtick form); `ConvertMultiplicity` leaves a column that already has the target type alone. | |
+| `tests/app.go` (+14) | `pgCleanup` on `TestApp`, and `preparePostgres(&config, srcDataDir, tempDir)` ahead of `NewBaseApp`. The tests dir is upstream's helper package. | A rewritten `NewTestAppWithConfig`. |
+| `.github/workflows/test.yml` | The `postgres` job runs `scripts/test_postgres_suites.sh` after `tests/pgtests`. | |
+| `ui/src/settings/backups/pageBackupsSettings.js` (+41 -1), `ui/dist` | The Postgres notice (`health.data.database`). `ui/dist` rebuilt. | |
+
+Upstream test files were touched only for fork-owned behaviour: none of the upstream tests changed (the SQLite specific ones are in `tests/postgres_skip.txt`). Fork test files that wrote SQLite SQL now use `{{table}}` / `[[column]]` placeholders, `core.DialectOf(app).Checkpoint` and `tests.CompactJSON` (JSONB renders `{"a": 1}`). After a sync run `scripts/test_postgres_suites.sh`: a new upstream test that asserts SQLite SQL goes into `tests/postgres_skip.txt` with its reason (or is fixed), never into a silent skip.
 
 ## CI
 

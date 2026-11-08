@@ -4,7 +4,7 @@ Claviger stores its data in SQLite by default, exactly like PocketBase. Nothing 
 
 ## PostgreSQL (experimental)
 
-Status: **milestone 2 of 6** (issue #106). The storage layer sits behind a dialect interface (`tools/dialect`), the app starts on PostgreSQL, and the records API works: list, view, create, update, delete and batch, with filters, sorting, expand and view collections. Import and export, backups, the fork features and the migration tool are not ported yet, so do not run anything real on it. The lists below say exactly what is and is not there.
+Status: **milestone 4 of 6** (issue #106). The storage layer sits behind a dialect interface (`tools/dialect`), the app starts on PostgreSQL, the records API works (filters, sorting, expand, view collections), collections import and export and the migration commands work, and every fork feature runs on it. What is missing is the tool that copies an existing SQLite install over (M5), the full CI matrix (M6) and more than one replica (M7). Zip backups do not contain the database (see [Backups](#backups)). It is still marked experimental: try it on a copy, not on production data. The lists below say exactly what is and is not there.
 
 ### Turning it on
 
@@ -32,7 +32,22 @@ CLAVIGER_DB_URL='postgres://user:password@host:5432/dbname?sslmode=require'
 | Records API | List (paging, `totalItems`, `skipTotal`, `fields`, `expand` including back relations), view, create, update (with the `field+` and `field-` modifiers), delete (with relation cascade), batch (and its rollback). Field types: text, editor, number, bool, email, url, date, autodate, select (single and multiple), relation (single and multiple), file (the stored paths; uploads use the same file storage as on SQLite), JSON, geoPoint, password. |
 | Filters and rules | Every operator (`=` `!=` `>` `>=` `<` `<=` `~` `!~` and the `?` any-of variants), `null`, `true` and `false`, parameters, the datetime macros, the `:each` `:length` `:isset` `:changed` `:lower` modifiers, relation paths, back relations (`_via_`), JSON paths, `@request.*`, `@collection.*`, `geoDistance()` and `strftime()`. The list and create/update/delete rules use the same engine. |
 | Sorting | Any field, relation path or JSON path, `@rowid` and `@random`. Without a `sort`, records come back in insertion order, like on SQLite. |
-| View collections | Create, update, list, filter and expand. Field types are inferred from the real column types of the view. |
+| View collections | Create, update, list, filter and expand. Field types are inferred from the real column types of the view. Replacing a view recreates the views that select from it; deleting a table or view drops the views that depend on it. |
+| Collections import and export | `GET /api/collections`, the admin UI export and `PUT /api/collections/import` (also `deleteMissing`), with the indexes in PocketBase's portable form on both engines (see [Indexes](#indexes)). A snapshot exported from one engine imports on the other. |
+| Migrations | System migrations, user Go and JS migrations, `migratecmd` (`automigrate`, `migrate collections`, `migrate create`) and the JS `$app.db()` / `$dbx` helpers. The generated migrations apply on either engine. Raw SQL in your own migrations must be written for the database you run on ([Your own SQL](#your-own-sql)). |
+| Backups | Zip backups hold the files only, with a manifest that says so; verification reports `skipped`; a zip restore is refused. See [Backups](#backups). |
+| Superuser SQL (`/api/sql`) | Runs as written. Reads run in a read only transaction, a write that was mistaken for a read is refused by the server and then handled as a write, and the append-only audit log guard resolves quoting and escapes. |
+| Request logs | Stay in the local SQLite `auxiliary.db` (list, stats, view, delete). Nothing about logs touches the Postgres database. |
+| Audit log | Records, admin actions (collections, settings, keys), retention cleanup, and the append-only rule, including the redaction of secrets. |
+| Sessions and bans | Session create/refresh/revoke, conditional `lastSeen` updates (throttled), bans and expiry. |
+| API keys | Create, authenticate, `lastUsed` updates, revoke. |
+| TOTP | Enrolment, the `lastStep` replay protection, backup codes. |
+| Webhooks | Outbox, delivery attempts, retries and failure counters, export. |
+| Rate limits | The counters live in the local SQLite `auxiliary.db` (not the data database), so they are unchanged. They are per replica, like the logs. |
+| Field encryption | Encrypted text and JSON fields, `_fieldKeys`, key rotation (with its compare-and-swap row updates and resume), rewrap, convert and strict mode, and `claviger keys check` / `status` / `rotate` / `rewrap` / `convert` / `strict` / `prune`. |
+| OIDC provider | All `_oauth*` collections, authorization code flow, refresh token rotation and reuse detection, SSO, key rotation and the JWKS. |
+| Organizations and roles | The rule cookbook of [orgs.md](orgs.md) (membership and role rules) runs against Postgres. |
+| Passkeys | Registration and login. |
 
 The differences from SQLite that you can observe are listed under [Differences from SQLite](#differences-from-sqlite).
 
@@ -40,13 +55,12 @@ The differences from SQLite that you can observe are listed under [Differences f
 
 | Area | Milestone |
 | --- | --- |
-| Collection import and export, zip backups and restore (see below) | M3 |
-| Passkey, audit, session, API key, TOTP and webhook behavior under test (the tables exist, the flows are not verified) | M4 |
 | `claviger migrate-db` (copy an existing SQLite install to Postgres) | M5 |
-| Running the whole existing test suite against Postgres in CI | M6 |
-| More than one replica (realtime events, cron and rate limits are still per process) | M7 |
+| Running the whole existing test suite against Postgres in CI, as a matrix with SQLite (the selected suites run today, see [Running the Postgres tests](#running-the-postgres-tests)) | M6 |
+| More than one replica (realtime events, cron, the notify watcher and rate limits are still per process) | M7 |
+| Zip backup and restore of the database | not planned: use `pg_dump` or point-in-time recovery |
 
-Until M6 the Postgres CI job runs the integration tests in `tests/pgtests` only. A skipped test is not a pass: the job fails if one of them skips, except for the documented known gaps below, which are skipped on purpose and listed in the job log.
+A skipped test is not a pass: the `postgres` CI job fails if one of the tests skips, except for the documented known gaps (the `known_gap` tests in `tests/pgtests` and the list in `tests/postgres_skip.txt`), which are skipped on purpose and printed with their reason.
 
 ### How data is stored
 
@@ -75,6 +89,7 @@ The same data and the same request give the same records on both databases. `tes
 | `strftime()` | everything SQLite supports | the formats and modifiers below |
 | `strftime('%m-%d', '2024-01-31', '+1 month')` | Mar 2 (overflow rolls forward) | Feb 29 (clamped to the month end) |
 | Sorting `NULL` | first (`ASC`), last (`DESC`) | the same (emulated with `NULLS FIRST`/`LAST`) |
+| The text of a stored JSON value (a JSON field, the audit log `before`, `after` and `meta`, an exported webhook payload) | as it was written | normalized by `jsonb`: a space after `:` and `,`, keys ordered by length then name, duplicate keys dropped. Parsed JSON is identical, so API clients are not affected |
 
 Things that look like differences and are not: `~` is case-insensitive for ASCII letters on both (`ILIKE` under the `C` collation does not fold other letters, like SQLite), `!=` matches empty and `NULL` the same way, and records come back in insertion order without a `sort`.
 
@@ -91,9 +106,20 @@ The query of a view collection is **your SQL, run as written**, so on PostgreSQL
 
 Field types come from the real column types of the view: `text` and `varchar` become a text field, `double precision`, `numeric`, `bigint` and `integer` become a number field (integers get "no decimals"), `boolean` a bool field and `jsonb` a JSON field. A column that is a plain field of a collection keeps that field's type and options (select values, relation target, ...), exactly as on SQLite. Other types (dates and timestamps, uuid, arrays) become JSON fields; cast them to `text` in the view to get a text field. SQLite has no column types to read, so unknown expressions there are JSON fields.
 
+### Indexes
+
+The `indexes` of a collection are stored, exported and imported in PocketBase's portable form, the same on both engines, for example ``CREATE UNIQUE INDEX `idx_title` ON `posts` (`title` COLLATE NOCASE) WHERE `title` != ''``. On Postgres the index is built from it (``COLLATE NOCASE`` becomes a `lower(title)` index, the identifiers are quoted with `"`), and `app.TableIndexes()` converts the live definitions back to the portable form, so the indexes in the database can be compared with the ones in the collection. Two limits: an expression index is returned the way Postgres normalizes it (`lower(title || slug)` comes back as `lower((title || slug))`), and an index that uses an access method other than `btree` is returned as Postgres writes it.
+
 ### Backups
 
-Zip backups (`pb_data` plus a database copy) are a SQLite feature. On Postgres, back the database up with `pg_dump` or your provider's point-in-time recovery. Backup creation, the restore verifier and the Litestream and `entrypoint.sh` handover machinery are SQLite concerns and are not changed in M1; the zip backup of a Postgres install will contain files only once M3 lands.
+Zip backups (`pb_data` plus a copy of `data.db`) are a SQLite feature. On Postgres:
+
+- **Creating a backup** (the admin UI, `POST /api/backups`, the cron schedule) still works, and still writes the storage files (when they are local) and the local `auxiliary.db` (logs), but **not the database**. The archive says so in its manifest (`.claviger_backup_manifest.json`: `"dataDatabase": "postgres"` and a note), and the server log records that the database was skipped.
+- **Back the database up with `pg_dump`** (or `pg_basebackup`), or with your provider's point-in-time recovery. Do that on the schedule you need; Claviger does not run it for you. Keep the storage files and the dump of the same moment together: the file names are referenced from the records.
+- **Verification** (restore verify, #78, also the one after an automatic backup) reports `skipped: database is Postgres` for such an archive, not a failure, and logs it at info level. Archives that do contain `data.db` (taken before a migration to Postgres) still verify as before.
+- **Restore** of a zip backup is refused (`POST /api/backups/{key}/restore` answers 400, `RestoreBackup` returns an error) and changes nothing, because it replaces `data.db`. Restore the database with `pg_restore` or point-in-time recovery, and copy the storage files back.
+- The admin UI shows a notice on the backups page (`GET /api/health` tells superusers which engine is in use: `data.database`).
+- The Litestream and `entrypoint.sh` handover machinery is a SQLite concern and does not apply: leave `LITESTREAM_*` unset.
 
 ### Your own SQL
 
@@ -103,6 +129,10 @@ SQL you write yourself runs **as written**: view collections, the superuser `/ap
 - SQLite-only functions (`json_extract`, `strftime`, `randomblob`, ...) are not available.
 
 Claviger does not translate user SQL; translating it would turn this into a hard fork of the storage layer. That includes the SQL of a view collection: write it for the database you run on (see [View collections](#view-collections)).
+
+**Your own migrations.** Go migrations (`app.DB().NewQuery(...)`, `app.DB().Select(...)`) and JS migrations (`$app.db()`) run on the database of the app, so raw SQL in them must be written for it. Prefer the portable pieces where you can: the `dbx` builders (`app.DB().Select()`, `Insert()`, `Update()`, `AddColumn()`, `CreateIndex()`), `[[column]]` and `{{table}}` placeholders (they take the quote style of the engine), and the collection API (`app.Save(collection)`, which builds the tables, columns and indexes for the engine). In a migration that has to differ, ask the dialect: `core.DialectOf(app).Name()` (`"sqlite"` or `"postgres"`) in Go, or `$os.getenv("CLAVIGER_DB_URL") != ""` in JS (there is no dialect helper in the JS runtime). The helpers that the JS runtime exposes (`$app.db()`, `$dbx.*`, `DynamicModel`) work on both engines. Migrations generated by `automigrate` and `migrate collections` contain collection definitions, not SQL, so they apply on either engine.
+
+**The superuser SQL endpoint (`POST /api/sql`).** It runs the statement as written, so on Postgres it is Postgres SQL (quote camelCase names, no `json_extract`). The columns come back with the Postgres type names, and an error is the server's message. A statement that does not start with a write keyword (`SELECT`, `WITH`, `VALUES`, `SHOW`, `EXPLAIN`, ...) runs in a read only transaction; if the server refuses it because it writes (a `WITH ... DELETE ... RETURNING` is such a statement) it is treated as the write it is. Writes run in one transaction, so several statements either all apply or none. The `_auditLog` table is append only: a write that names it is refused whatever the quoting (`"_auditLog"`, `_auditlog`, `public."_auditLog"`, comments in between, `U&"\005faudit..."` escapes), and so is `DROP SCHEMA`, `DROP OWNED` and `DROP DATABASE`. This is a guard against mistakes and casual tampering, not a security boundary against a superuser who can run arbitrary SQL (anyone who can create a function with dynamic SQL can still reach a table); the append-only guarantee for the records API and the admin UI is unchanged.
 
 ### Running the Postgres tests
 
@@ -118,6 +148,22 @@ CLAVIGER_TEST_PG_URL='postgres://user:pass@localhost:5432/postgres?sslmode=disab
 Each test creates and drops its own database, so the URL can point at any database on the server (the role needs `CREATEDB`).
 
 The suite runs the same data and requests on a SQLite app and a Postgres app and compares the answers (`filters_test.go`, `records_api_test.go`, `views_test.go`, `strftime_test.go`). To add a filter, add a row to the table in `TestRecordFilters`; give it the number of records it must match so that a filter which matches nothing anywhere cannot pass. A difference that cannot be fixed goes in the table with a `gap:` reason: it runs on SQLite only, shows up in the log as `known_gap/...` with both answers, and fails as soon as the two databases start to agree (so the list can only shrink). Any other skip fails CI. The SQL text of both dialects is also pinned without a database in `tools/search/dialect_sqlite_golden_test.go` (must never change) and `dialect_postgres_test.go`.
+
+**The regular suites on Postgres (M4).** The `core`, `apis`, `oidc`, `cmd`, `forms`, `mails` and `plugins/jsvm`/`migratecmd` suites also run against Postgres, with the fork features (audit log, sessions and bans, API keys, TOTP, webhooks, field encryption and key rotation, OIDC, organizations) exercised by their own tests:
+
+```sh
+CLAVIGER_TEST_PG_URL='postgres://user:pass@localhost:5432/postgres?sslmode=disable' \
+  scripts/test_postgres_suites.sh
+```
+
+`tests.NewTestApp` does it when `CLAVIGER_TEST_DB=postgres` (the script sets it). The SQLite fixture in `tests/data` cannot be used by Postgres, and a hand written Postgres copy would drift from upstream's. So `tests/app_postgres.go` converts it once per test process: the fixture is opened as a normal SQLite app, its collections are imported into an empty Postgres app (which builds the tables, indexes and views through the same import path as production, and exercises it), and the rows of every table are copied with their values adapted to the column types. The result is a template database, and every test app is a `CREATE DATABASE ... TEMPLATE` clone of it (a few ms), dropped in `Cleanup`. Every upstream test therefore keeps its fixture and its assertions. `TestPostgresHarness` fails if the apps are not really on Postgres.
+
+The tests that cannot pass on Postgres are listed in `tests/postgres_skip.txt`, one per line with the reason: they assert SQLite SQL text, SQLite column definitions, query a SQLite catalog or expect `data.db` in a backup. The behavior they cover is tested on Postgres in `tests/pgtests`. The list may only shrink; the CI job prints it, and fails on any other skip, on a failure, on a run that did not use Postgres and on a run that passes fewer tests than the minimum.
+
+### Next milestones
+
+- **M5, `claviger migrate-db`.** The row copy of the test fixture converter (`copyFixtureRows` and `adaptFixtureValue` in `tests/app_postgres.go`) is the prototype: collections first (so the tables, indexes and views are built for Postgres), then the rows of every table in `rowid` order, with SQLite's loose values adapted to the column types (0/1 to boolean, numeric text to double, empty JSON to `NULL`, non-string values in text columns to text). `_params.value` is `TEXT` on Postgres, `_collections` is copied as stored, and the zip backups, `auxiliary.db` and `_migrations` are not copied. Verify with the per-table row counts and the `claviger keys check`.
+- **M6, the CI matrix.** Today one `postgres` job runs `tests/pgtests` and the regular suites through `scripts/test_postgres_suites.sh` (about 2 minutes on a laptop). M6 turns that into a SQLite/Postgres matrix (also Postgres 17), runs the suites that are not selected yet (`tools/...` do not use a database), and shrinks `tests/postgres_skip.txt`.
 
 ### For developers
 

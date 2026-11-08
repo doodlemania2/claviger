@@ -33,7 +33,7 @@ go test -count=1 -v -p 2 -skip "$skip_regex" "$@" $PACKAGES 2>&1 | tee "$log" | 
 
 if grep -q -- '^--- FAIL\|^FAIL\|^panic:' "$log"; then
   echo "::error::Postgres suites failed"
-  grep -A8 -- '^--- FAIL\|^panic:' "$log" | head -150
+  grep -A6 -- '--- FAIL\|^panic:' "$log" | head -200
   exit 1
 fi
 
