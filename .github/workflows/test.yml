@@ -120,6 +120,13 @@ jobs:
           docker run --rm -v "$PWD:/w:ro" -w /w alpine:3 \
             sh -c 'TEST_SH=sh sh scripts/test_entrypoint_encryption.sh'
 
+      # Field-encryption key pre-flight (#75): only an explicit "keys check: FAILED"
+      # blocks the start, before the handover request; everything else fails open.
+      - name: Field-key pre-flight
+        run: |
+          docker run --rm -v "$PWD:/w:ro" -w /w alpine:3 \
+            sh -c 'TEST_SH=sh sh scripts/test_entrypoint_keys_preflight.sh'
+
       # entrypoint.sh's handover scenarios (#35, #54) under the shell prod
       # actually runs — busybox ash in alpine — with util-linux flock. T3 replays
       # the transition from whatever deploy/azure currently deploys, and skips
