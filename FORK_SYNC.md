@@ -192,6 +192,17 @@ Upstream-owned files the fork edits. Re-check these on every sync merge (conflic
 | `apis/record_auth_impersonate_test.go` | Success scenarios send a `reason` (#93). |
 | `apis/collection_test.go`, `apis/collection_import_test.go`, `core/collection_query_test.go` | System collection count 19 -> 21 for `_sessions` and `_bans` (#93); the paging/sorting scenario now expects `_apiKeys` on page 2. The conductor reconciles the count across agents. |
 | `ui/src/main.js`, `ui/src/records/recordUpsertModal.js`, `ui/src/records/recordImpersonateModal.js` | "Sessions and ban" menu entry and modal import; impersonation asks for a reason (#93). |
+| `core/settings_model.go` | `Settings.Captcha` field, validated in `PostValidate`, `Captcha.SecretKey` masked in `MarshalJSON` (#91). Exact-JSON assertions in `core/settings_model_test.go` carry the `captcha` object. |
+| `apis/record_auth.go` | `requireCaptcha(...)` bound after the rate limit on auth-with-password, request-otp, login-begin, request-(password\|passkey)-reset and request-verification (#91). |
+| `apis/record_crud.go` | `recordCreate`: `checkCaptcha(e, CaptchaActionSignUp)` for guests creating auth records (#91). |
+| `apis/record_auth_methods.go` | `authMethodsResponse.Captcha` (omitted when no action requires a captcha) (#91). |
+| `apis/middlewares_rate_limit.go` | `newPersistentRateLimiter`, `rateLimiter.name/persist`, `rateClient.attach` and the `record` call in `consume`; `destroyRateLimitersStore` calls `forgetRateLimitStoreEntries` (#91). |
+| `apis/serve.go`, `apis/extensions.go` | The admin UI CSP comes from `adminUICSP(e.App)` (equals `defaultCSP` unless the login requires a captcha) (#91). |
+| `tools/telemetry/telemetry.go` | `captchaVerifications` counter (`claviger.captcha.verifications`) (#91). |
+| `ui/src/router.js`, `ui/src/store.js`, `ui/src/auth/pageSuperuserLogin.js` | `#/settings/captcha` route and nav entry; captcha token on the superuser password and OTP request (#91). |
+| `plugins/jsvm/internal/types/generated/types.d.ts` | Needs `make jstypes` for `Settings.captcha` (not regenerated on the #91 branch to avoid alias-name churn). |
+
+Fork-only files for #91: `core/settings_captcha.go`, `tools/captcha/`, `tools/telemetry/captcha.go`, `apis/captcha.go`, `apis/rate_limit_store.go`, `ui/src/auth/captcha.js`, `ui/src/settings/captcha/`. Fork-owned files touched: `apis/record_auth_with_webauthn_login_begin_limit.go` (its two limiters are persistent, rule names prefixed `webauthn:` so a Settings reload does not reset them), `apis/passkeys_page.go` (CSP builder, `getCaptchaToken` client option and widget loader), `apis/apikey_auth.go` and `apis/record_auth_totp.go` (unchanged; they reach the persistent store through `checkRateLimit`).
 
 Fork-only files for #95: `core/apikey.go`, `migrations/1780000400_add_api_keys.go`, `apis/apikey_auth.go`, `apis/apikeys.go`, `ui/src/settings/apikeys/`. `core/audit_model.go` (fork-owned) gained `AuditActor.APIKeyId` and the `_apiKeys` lastUsed noise rule.
 

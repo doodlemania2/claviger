@@ -1,0 +1,44 @@
+# Claviger on Fly.io. One machine, one volume. See README.md.
+# Change `app` and `primary_region`, then follow the steps in the README.
+
+app = "your-claviger-app"
+primary_region = "iad"
+
+[build]
+  # Pin a release tag. Do not use latest.
+  image = "ghcr.io/doodlemania2/claviger:0.1.0"
+
+[env]
+  PB_HOST = "0.0.0.0"
+  PB_PORT = "8090"
+  # Optional, not secret:
+  # CLAVIGER_AUDIT_RETENTION_DAYS = "365"
+  # Fly machines do not overlap during a stop/start deploy. See README.md.
+
+[mounts]
+  source = "claviger_data"
+  destination = "/pb_data"
+
+[http_service]
+  internal_port = 8090
+  force_https = true
+  # Single writer: the machine must never stop on idle, and there must be
+  # exactly one. Do not raise these.
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/api/health"
+
+[deploy]
+  # Stop the old machine before the new one starts, so two never share the database.
+  strategy = "immediate"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

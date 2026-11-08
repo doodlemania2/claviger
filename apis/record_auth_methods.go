@@ -69,6 +69,9 @@ type authMethodsResponse struct {
 	OTP      otpResponse      `json:"otp"`
 	WebAuthn webauthnResponse `json:"webauthn"`
 
+	// Captcha is present only when an action requires a captcha (#91).
+	Captcha *captchaInfo `json:"captcha,omitempty"`
+
 	// legacy fields
 	// @todo remove after dropping v0.22 support
 	AuthProviders    []providerInfo `json:"authProviders"`
@@ -118,6 +121,8 @@ func recordAuthMethods(e *core.RequestEvent) error {
 			PasskeyOnly:  collection.IsPasskeyOnly(),
 		},
 	}
+
+	result.Captcha = publicCaptchaInfo(e.App)
 
 	if collection.PasswordAuth.Enabled {
 		result.Password.Enabled = true

@@ -232,6 +232,13 @@ func recordCreate(responseWriteAfterTx bool, optFinalizer func(data any) error) 
 			return e.ForbiddenError("Only superusers can perform this action.", nil)
 		}
 
+		// sign-up captcha (no-op unless enabled in Settings.Captcha)
+		if collection.IsAuth() && !hasSuperuserAuth {
+			if err = checkCaptcha(e, core.CaptchaActionSignUp); err != nil {
+				return err
+			}
+		}
+
 		record := core.NewRecord(collection)
 
 		data, err := recordDataFromRequest(e, record)
