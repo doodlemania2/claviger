@@ -110,6 +110,46 @@ narrow table `/passkeys` and the admin UI use, with still no `unsafe-inline`. A 
 gets exactly the strict policy above. Other pages (consent, errors) never get the extension. A provider outage
 follows `failClosed` as everywhere else (open by default, so a church is not locked out of sign-in).
 
+## Rate limits
+
+The protocol endpoints have their own limits. They are **always on**, independent of Settings, Rate limits (like
+the passkey login-begin throttle), and use the persistent counters, so a restart or a rollout does not refill a
+spent budget. They do nothing, and write nothing, until the first client is registered.
+
+| Endpoint | Per IP / minute | Per client / minute |
+| --- | --- | --- |
+| `/oidc/authorize` | 120 | 1200 |
+| `/oidc/oauth/token` | 120 | 600 |
+| `/oidc/oauth/introspect` | 600 | 1200 |
+| `/oidc/revoke` | 60 | 300 |
+| `/oidc/userinfo` | 300 | 60 per access token |
+
+Why these numbers: a congregation has a few hundred people behind one NAT address and a few relying parties
+whose servers each share one address, so the per-IP budgets leave room for a Sunday morning but stop a loop or
+a sweep within a minute. The introspection budget is high because a resource server holding opaque tokens may
+call it per request. The per-client budget is a ceiling against a runaway client, not an abuse control: a client
+id is public, so anyone could spend it, and it is therefore generous and only counted for registered clients.
+UserInfo carries no client id, so its "client" budget is per access token.
+
+**Failed client authentication** (a `401` from the token, introspection or revocation endpoint: wrong or missing
+secret) is counted separately and is far stricter: **10 failures per 5 minutes per (IP, client)** and **30 per 5
+minutes per IP**. When either is spent the three endpoints answer `429` before looking at the credentials, until
+the window ends. The key is the pair, not the client alone, on purpose: a stranger who knows a client id cannot lock
+the real client out by failing on purpose. (The token endpoint checks the authorization code before the client's
+secret, so guessing a secret there needs a valid code; introspection and revocation check the client first.)
+
+A refused request is `HTTP 429` with `Retry-After` (seconds) and `Cache-Control: no-store`. RFC 6749 has no 429
+and the `slow_down` error of RFC 8628 is for device-flow polling, so the body uses the closest registered OAuth
+error code, `temporarily_unavailable` (RFC 6749, 4.1.2.1):
+
+```json
+{"error":"temporarily_unavailable","error_description":"Too many requests. Retry after 31 seconds."}
+```
+
+`/oidc/authorize` is a browser navigation, so it answers with the hosted error page and the same status and
+header. Budget refusals are logged by the application logger (`Info`; a client whose authentication keeps
+failing is a `Warn`).
+
 ## Tokens and claims
 
 - **Authorization code**: single use, valid for 1 minute, stored hashed. Using a code twice fails and revokes
@@ -185,6 +225,5 @@ redirect happens.
 - No account chooser or single sign-on session: every authorize request asks for a sign-in (#94).
 - The hosted pages are English only (#97). Email OTP and the OAuth2 "sign in with" providers are not offered
   on the hosted page.
-- No rate limit of its own on the protocol endpoints beyond what the underlying sign-in endpoints enforce.
 - The library logs through the global `slog` default, not the application logger.
 - Formal OpenID conformance (the Basic OP profile) has not been run yet; the plan is to run the suite in CI.

@@ -46,6 +46,7 @@ type module struct {
 	app   core.App
 	store *Store
 
+	limMu    sync.Mutex // guards the creation of the rate limiters
 	mu       sync.Mutex
 	provider *op.Provider
 	handler  http.Handler
@@ -215,9 +216,22 @@ func (m *module) serveLibrary(e *core.RequestEvent) error {
 		return e.NotFoundError(why, nil)
 	}
 
+	done, after := m.limited(e)
+	if done {
+		return nil
+	}
+
 	r := m.withClientAlg(e.Request)
 
-	handler.ServeHTTP(e.Response, r)
+	if after == nil {
+		handler.ServeHTTP(e.Response, r)
+
+		return nil
+	}
+
+	rec := &statusRecorder{ResponseWriter: e.Response}
+	handler.ServeHTTP(rec, r)
+	after(rec.status)
 
 	return nil
 }
@@ -230,10 +244,7 @@ func (m *module) withClientAlg(r *http.Request) *http.Request {
 		return r
 	}
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
-	_ = r.Body.Close()
-	r.Body = io.NopCloser(bytes.NewReader(body))
-
+	body, err := readAndRestore(r)
 	if err != nil {
 		return r
 	}
@@ -250,6 +261,15 @@ func (m *module) withClientAlg(r *http.Request) *http.Request {
 	}
 
 	return r
+}
+
+// readAndRestore reads (at most 64 KiB of) the request body and puts it back.
+func readAndRestore(r *http.Request) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyForAuth))
+	_ = r.Body.Close()
+	r.Body = io.NopCloser(bytes.NewReader(body))
+
+	return body, err
 }
 
 // bufferedResponse captures a handler's response so the discovery document

@@ -121,6 +121,7 @@ func newEnv(t testing.TB, opts ...envOpts) *env {
 type browser struct {
 	env     *env
 	cookies map[string]string
+	ip      string // the client address; empty keeps the httptest default
 }
 
 func (e *env) browser() *browser { return &browser{env: e, cookies: map[string]string{}} }
@@ -133,6 +134,9 @@ func (b *browser) do(method, target string, headers map[string]string, body io.R
 	}
 
 	req := httptest.NewRequest(method, target, body)
+	if b.ip != "" {
+		req.RemoteAddr = b.ip + ":4321"
+	}
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
@@ -487,3 +491,15 @@ func basic(user, pass string) string {
 }
 
 func jsonMarshal(v any) ([]byte, error) { return json.Marshal(v) }
+
+// browserAt is a browser that connects from the address.
+func (e *env) browserAt(ip string) *browser {
+	b := e.browser()
+	b.ip = ip
+
+	return b
+}
+
+var requestCounter int
+
+func (b *browser) counter() int { requestCounter++; return requestCounter }
