@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strings"
 
 	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/types"
 )
 
@@ -34,26 +37,38 @@ func init() {
 
 		// -----------------------------------------------------------
 
-		_, execerr := txApp.DB().NewQuery(`
+		// fork: the column definitions come from the storage dialect
+		// (identical to the historic SQLite ones when running on SQLite)
+		d := core.DialectOf(txApp)
+
+		_, execerr := txApp.DB().NewQuery(fmt.Sprintf(`
 			CREATE TABLE {{_collections}} (
-				[[id]]         TEXT PRIMARY KEY DEFAULT ('r'||lower(hex(randomblob(7)))) NOT NULL,
+				[[id]]         TEXT PRIMARY KEY DEFAULT %[1]s NOT NULL,
 				[[system]]     BOOLEAN DEFAULT FALSE NOT NULL,
-				[[type]]       TEXT DEFAULT "base" NOT NULL,
+				[[type]]       TEXT DEFAULT %[2]s NOT NULL,
 				[[name]]       TEXT UNIQUE NOT NULL,
-				[[fields]]     JSON DEFAULT "[]" NOT NULL,
-				[[indexes]]    JSON DEFAULT "[]" NOT NULL,
+				[[fields]]     %[3]s DEFAULT %[4]s NOT NULL,
+				[[indexes]]    %[3]s DEFAULT %[4]s NOT NULL,
 				[[listRule]]   TEXT DEFAULT NULL,
 				[[viewRule]]   TEXT DEFAULT NULL,
 				[[createRule]] TEXT DEFAULT NULL,
 				[[updateRule]] TEXT DEFAULT NULL,
 				[[deleteRule]] TEXT DEFAULT NULL,
-				[[options]]    JSON DEFAULT "{}" NOT NULL,
-				[[created]]    TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%fZ')) NOT NULL,
-				[[updated]]    TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%fZ')) NOT NULL
+				[[options]]    %[3]s DEFAULT %[5]s NOT NULL,
+				[[created]]    TEXT DEFAULT %[6]s NOT NULL,
+				[[updated]]    TEXT DEFAULT %[6]s NOT NULL%[7]s
 			);
 
 			CREATE INDEX IF NOT EXISTS idx__collections_type on {{_collections}} ([[type]]);
-		`).Execute()
+		`,
+			d.RandomIDDefault(),
+			d.StringDefault("base"),
+			d.JSONType(),
+			d.StringDefault("[]"),
+			d.StringDefault("{}"),
+			d.NowDefault(),
+			hiddenColumnsDDL(d),
+		)).Execute()
 		if execerr != nil {
 			return fmt.Errorf("_collections exec error: %w", execerr)
 		}
@@ -105,16 +120,35 @@ func init() {
 }
 
 func createParamsTable(txApp core.App) error {
-	_, execErr := txApp.DB().NewQuery(`
+	d := core.DialectOf(txApp)
+
+	_, execErr := txApp.DB().NewQuery(fmt.Sprintf(`
 		CREATE TABLE {{_params}} (
-			[[id]]      TEXT PRIMARY KEY DEFAULT ('r'||lower(hex(randomblob(7)))) NOT NULL,
-			[[value]]   JSON DEFAULT NULL,
-			[[created]] TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%fZ')) NOT NULL,
-			[[updated]] TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%fZ')) NOT NULL
+			[[id]]      TEXT PRIMARY KEY DEFAULT %[1]s NOT NULL,
+			[[value]]   %[2]s DEFAULT NULL,
+			[[created]] TEXT DEFAULT %[3]s NOT NULL,
+			[[updated]] TEXT DEFAULT %[3]s NOT NULL%[4]s
 		);
-	`).Execute()
+	`, d.RandomIDDefault(), d.JSONType(), d.NowDefault(), hiddenColumnsDDL(d))).Execute()
 
 	return execErr
+}
+
+// hiddenColumnsDDL returns the extra ",\n [[col]] def" CREATE TABLE
+// lines of the dialect hidden columns (empty on SQLite).
+func hiddenColumnsDDL(d dialect.Dialect) string {
+	names := make([]string, 0, 1)
+	for name := range d.HiddenColumns() {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var sb strings.Builder
+	for _, name := range names {
+		sb.WriteString(",\n\t\t\t[[" + name + "]] " + d.HiddenColumns()[name])
+	}
+
+	return sb.String()
 }
 
 func createMFAsCollection(txApp core.App) error {

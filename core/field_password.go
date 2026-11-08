@@ -144,7 +144,7 @@ func (f *PasswordField) SetHidden(hidden bool) {
 
 // ColumnType implements [Field.ColumnType] interface method.
 func (f *PasswordField) ColumnType(app App) string {
-	return "TEXT DEFAULT '' NOT NULL"
+	return dialectOf(app).TextColumn()
 }
 
 // DriverValue implements the [DriverValuer] interface.

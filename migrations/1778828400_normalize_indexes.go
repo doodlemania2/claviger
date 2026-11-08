@@ -7,11 +7,18 @@ import (
 	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/doodlemania2/claviger/core"
 	"github.com/doodlemania2/claviger/tools/dbutils"
+	"github.com/doodlemania2/claviger/tools/dialect"
 )
 
 // see https://ganigeorgiev.com/pocketbase/discussions/7689
 func init() {
 	core.SystemMigrations.Register(func(txApp core.App) error {
+		// fork: it only repairs indexes of databases created before v0.23,
+		// and no Postgres database can be in that state
+		if core.DialectOf(txApp).Name() != dialect.SQLiteName {
+			return nil
+		}
+
 		collections, err := txApp.FindAllCollections()
 		if err != nil {
 			return err
