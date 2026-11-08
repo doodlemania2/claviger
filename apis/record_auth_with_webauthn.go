@@ -1047,7 +1047,14 @@ func finishWebAuthnLogin(e *core.RequestEvent, collection *core.Collection, reco
 	event.Credential = storedProxy
 
 	return e.App.OnRecordAuthWithWebAuthnRequest().Trigger(event, func(e *core.RecordAuthWithWebAuthnRequestEvent) error {
-		return RecordAuthResponse(e.RequestEvent, e.Record, core.MFAMethodWebAuthn, nil)
+		// the token records when the passkey assertion happened so routes can
+		// require a fresh one (see RequireFreshPasskey)
+		token, err := e.Record.NewPasskeyAuthToken(time.Now(), true)
+		if err != nil {
+			return e.InternalServerError("Failed to create auth token.", err)
+		}
+
+		return recordAuthResponse(e.RequestEvent, e.Record, token, core.MFAMethodWebAuthn, nil)
 	})
 }
 

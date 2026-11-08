@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/doodlemania2/claviger/core"
 )
@@ -159,7 +160,22 @@ func TestWebAuthnCredentialOwnershipDelete(t *testing.T) {
 	t.Parallel()
 	f := newOwnershipFixture(t)
 
-	status, body := f.env.do(http.MethodDelete, credentialsPath+"/"+f.credID, nil, f.tokenB)
+	// deleting a passkey requires a fresh passkey assertion, so both users
+	// carry one here and the ownership boundary is what is under test
+	userA, err := f.env.app.FindRecordById("users", ceremonyUserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	freshA, err := userA.NewPasskeyAuthToken(time.Now(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	freshB, err := f.userB.NewPasskeyAuthToken(time.Now(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	status, body := f.env.do(http.MethodDelete, credentialsPath+"/"+f.credID, nil, freshB)
 	if status != http.StatusNotFound {
 		t.Fatalf("user B DELETE of A's credential: expected 404, got %d (%v)", status, body)
 	}
@@ -167,7 +183,7 @@ func TestWebAuthnCredentialOwnershipDelete(t *testing.T) {
 		t.Fatal("credential was deleted by a non-owner")
 	}
 
-	status, body = f.env.do(http.MethodDelete, credentialsPath+"/"+f.credID, nil, f.tokenA)
+	status, body = f.env.do(http.MethodDelete, credentialsPath+"/"+f.credID, nil, freshA)
 	if status != http.StatusNoContent {
 		t.Fatalf("owner DELETE: expected 204, got %d (%v)", status, body)
 	}

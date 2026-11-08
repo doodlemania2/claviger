@@ -26,6 +26,12 @@ const (
 	TokenClaimEmail        = "email"
 	TokenClaimNewEmail     = "newEmail"
 	TokenClaimRefreshable  = "refreshable"
+
+	// TokenClaimPasskeyAt is the unix time (seconds) of the passkey assertion
+	// that produced the auth token. It is present only on tokens issued by a
+	// passkey sign-in or a passkey step-up, and is what step-up gated routes
+	// (apis.RequireFreshPasskey) check. Token refresh does not carry it over.
+	TokenClaimPasskeyAt = "passkeyAt"
 )
 
 // Common token related errors
@@ -71,6 +77,34 @@ func (m *Record) newAuthToken(duration time.Duration, refreshable bool) (string,
 	}
 
 	return security.NewJWT(claims, key, duration)
+}
+
+// NewPasskeyAuthToken generates a new record authentication token that records
+// the time of the passkey assertion behind it (the [TokenClaimPasskeyAt] claim).
+//
+// It is used by passkey sign-in and passkey step-up. refreshable should mirror
+// the token it replaces on a step-up; passkey sign-in passes true.
+func (m *Record) NewPasskeyAuthToken(assertedAt time.Time, refreshable bool) (string, error) {
+	if !m.Collection().IsAuth() {
+		return "", ErrNotAuthRecord
+	}
+
+	key := (m.TokenKey() + m.Collection().AuthToken.Secret)
+	if key == "" {
+		return "", ErrMissingSigningKey
+	}
+
+	return security.NewJWT(
+		jwt.MapClaims{
+			TokenClaimType:         TokenTypeAuth,
+			TokenClaimId:           m.Id,
+			TokenClaimCollectionId: m.Collection().Id,
+			TokenClaimRefreshable:  refreshable,
+			TokenClaimPasskeyAt:    assertedAt.Unix(),
+		},
+		key,
+		m.Collection().AuthToken.DurationTime(),
+	)
 }
 
 // NewVerificationToken generates and returns a new record verification token.

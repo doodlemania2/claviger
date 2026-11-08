@@ -565,7 +565,7 @@ func TestRecordWebAuthnDeleteCredential(t *testing.T) {
 			Method: http.MethodDelete,
 			URL:    "/api/collections/users/auth-with-webauthn/credentials/nonexistent",
 			Headers: map[string]string{
-				"Authorization": "eyJhbGciOiJIUzI1NiJ9.eyJpZCI6IjRxMXhsY2xtZmxva3UzMyIsInR5cGUiOiJhdXRoIiwiY29sbGVjdGlvbklkIjoiX3BiX3VzZXJzX2F1dGhfIiwiZXhwIjoyNTI0NjA0NDYxLCJyZWZyZXNoYWJsZSI6dHJ1ZX0.ZT3F0Z3iM-xbGgSG3LEKiEzHrPHr8t8IuHLZGGNuxLo",
+				"Authorization": freshUserToken(t),
 			},
 			BeforeTestFunc: func(t testing.TB, app *tests.TestApp, e *core.ServeEvent) {
 				usersCol, err := app.FindCollectionByNameOrId("users")

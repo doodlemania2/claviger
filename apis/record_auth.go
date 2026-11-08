@@ -66,6 +66,17 @@ func bindRecordAuthApi(app core.App, rg *router.RouterGroup[*core.RequestEvent])
 		collectionPathRateLimit("", "webauthnLoginFinishDiscoverable", "auth"),
 	)
 
+	// passkey step-up: a signed-in user proves a fresh passkey assertion and
+	// receives a replacement token carrying it (see RequireFreshPasskey)
+	sub.POST("/auth-with-webauthn/step-up-begin", recordWebAuthnStepUpBegin).Bind(
+		collectionPathRateLimit("", "webauthnStepUpBegin"),
+		RequireSameCollectionContextAuth(""),
+	)
+	sub.POST("/auth-with-webauthn/step-up-finish", recordWebAuthnStepUpFinish).Bind(
+		collectionPathRateLimit("", "webauthnStepUpFinish"),
+		RequireSameCollectionContextAuth(""),
+	)
+
 	// WebAuthn credential management (owner can list/delete own credentials)
 	sub.GET("/auth-with-webauthn/credentials", recordWebAuthnListCredentials).Bind(
 		collectionPathRateLimit("", "webauthnListCredentials"),
@@ -78,6 +89,10 @@ func bindRecordAuthApi(app core.App, rg *router.RouterGroup[*core.RequestEvent])
 	sub.DELETE("/auth-with-webauthn/credentials/{credentialId}", recordWebAuthnDeleteCredential).Bind(
 		collectionPathRateLimit("", "webauthnDeleteCredential"),
 		RequireSameCollectionContextAuth(""),
+		// deleting a passkey needs a passkey assertion from the last
+		// webauthnStepUpMaxAge; the emailed passkey-reset flow replaces
+		// credentials through its own endpoint and is not gated
+		RequireFreshPasskey(webauthnStepUpMaxAge),
 	)
 
 	// WebAuthn admin recovery (superuser can clear all credentials for a user)
