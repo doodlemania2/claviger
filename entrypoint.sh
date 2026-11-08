@@ -54,6 +54,7 @@ INSTANCE_ID="${PB_INSTANCE_ID:-$(hostname 2>/dev/null || echo unknown)}"
 # the released list must never be what stops a replica from starting.
 trim_file() {
     [ -f "$1" ] || return 0
+    # shellcheck disable=SC2015 # intentional: if the rewrite or the mv fails, drop the temp file
     tail -n "$2" "$1" > "$1.tmp.$$" 2>/dev/null && mv -f "$1.tmp.$$" "$1" 2>/dev/null || rm -f "$1.tmp.$$" 2>/dev/null
     return 0
 }
@@ -81,6 +82,7 @@ otlp_event() {
     command -v wget >/dev/null 2>&1 || return 0
 
     # the message and ids are ours, but keep the JSON valid whatever they hold
+    # shellcheck disable=SC1003 # intentional: tr deletes a double quote and a literal backslash
     msg=$(printf '%s' "$1" | tr -d '"\\')
     now_ns="$(date +%s)000000000"
 
@@ -91,6 +93,7 @@ otlp_event() {
     IFS=','
     for kv in ${OTEL_RESOURCE_ATTRIBUTES:-}; do
         k=$(printf '%s' "${kv%%=*}" | tr -d '"\\ ')
+        # shellcheck disable=SC1003 # intentional: tr deletes a double quote and a literal backslash
         v=$(printf '%s' "${kv#*=}" | tr -d '"\\')
         [ -n "$k" ] || continue
         if [ "$k" = "service.name" ]; then has_name=1; fi

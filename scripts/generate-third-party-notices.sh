@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2129 # sequential appends to one file read better than a brace group here
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -37,6 +38,7 @@ fi
 # Collect npm dependency license metadata from installed ui/node_modules packages.
 (
   cd "$ROOT_DIR/ui"
+  # shellcheck disable=SC2016 # the JS program is deliberately single-quoted: no shell expansion wanted
   node -e '
 const fs = require("fs");
 const path = require("path");

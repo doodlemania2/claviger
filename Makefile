@@ -1,5 +1,9 @@
-lint:
+lint: shellcheck
 	golangci-lint run -c ./golangci.yml ./...
+
+# CI runs the same check with the pinned koalaman/shellcheck-alpine image.
+shellcheck:
+	shellcheck entrypoint.sh scripts/*.sh
 
 test:
 	go test ./... -v --cover
