@@ -1,0 +1,10 @@
+# Caddy gets and renews a certificate for this name on its own.
+# Ports 80 and 443 must reach this host, and DNS must point here.
+{$CLAVIGER_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy claviger:8090 {
+		# Claviger reads the client IP from X-Forwarded-For once you tell it
+		# to trust that header. See README.md, "Real client IPs".
+		header_up X-Forwarded-For {remote_host}
+	}
+}

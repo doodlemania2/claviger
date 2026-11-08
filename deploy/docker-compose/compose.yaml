@@ -1,0 +1,63 @@
+# Claviger, production-ish. Copy this folder, copy .env.example to .env, edit, then:
+#   docker compose up -d                       (Claviger only, port 8090 on localhost)
+#   docker compose --profile caddy up -d       (plus Caddy with automatic HTTPS)
+# Run exactly ONE Claviger container per data volume. Never use `--scale`.
+
+name: claviger
+
+services:
+  claviger:
+    image: ghcr.io/doodlemania2/claviger:${CLAVIGER_VERSION:?set CLAVIGER_VERSION in .env, for example 0.1.0}
+    restart: unless-stopped
+    env_file: .env
+    # Not published to the network. Caddy reaches it on the compose network.
+    # For a quick local test, uncomment the next two lines.
+    # ports:
+    #   - "127.0.0.1:8090:8090"
+    expose:
+      - "8090"
+    volumes:
+      - claviger_data:/pb_data
+      # Optional. Uncomment to serve static files or load JS hooks.
+      # - ./pb_public:/pb_public:ro
+      # - ./pb_hooks:/pb_hooks:ro
+      # Optional. Uncomment for Litestream replication to S3-compatible storage
+      # (the image's built-in config targets Azure Blob).
+      # - ./litestream.s3.yml:/etc/litestream.yml:ro
+    # The entrypoint only writes to /pb_data and /tmp.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8090/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Reverse proxy with automatic HTTPS. Enable with: --profile caddy
+  caddy:
+    profiles: ["caddy"]
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      CLAVIGER_DOMAIN: ${CLAVIGER_DOMAIN:?set CLAVIGER_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      claviger:
+        condition: service_healthy
+
+volumes:
+  claviger_data:
+  caddy_data:
+  caddy_config:

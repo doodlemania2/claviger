@@ -1,0 +1,31 @@
+# Replaces /etc/litestream.yml in the image. The image's own file targets Azure Blob.
+# The entrypoint starts Litestream only when LITESTREAM_REPLICA_URL is non-empty,
+# and restores from the replica only when /pb_data/data.db does not exist yet.
+# Set LITESTREAM_REPLICA_URL to any non-empty value (for example s3://bucket/claviger);
+# the values below come from the other LITESTREAM_* variables in .env.
+dbs:
+  - path: /pb_data/data.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_S3_BUCKET}
+        path: ${LITESTREAM_S3_PATH}/data.db
+        endpoint: ${LITESTREAM_S3_ENDPOINT}
+        region: ${LITESTREAM_S3_REGION}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        sync-interval: 10s
+        snapshot-interval: 1h
+        retention: 168h
+
+  - path: /pb_data/auxiliary.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_S3_BUCKET}
+        path: ${LITESTREAM_S3_PATH}/auxiliary.db
+        endpoint: ${LITESTREAM_S3_ENDPOINT}
+        region: ${LITESTREAM_S3_REGION}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        sync-interval: 10s
+        snapshot-interval: 1h
+        retention: 168h
