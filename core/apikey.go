@@ -231,6 +231,11 @@ func AuthenticateAPIKey(app App, token string) (*Record, *APIKeyInfo, error) {
 		return nil, nil, ErrInvalidAPIKey
 	}
 
+	// a banned owner's keys stop working (#93)
+	if IsBanned(app, owner) {
+		return nil, nil, ErrInvalidAPIKey
+	}
+
 	touchAPIKeyLastUsed(app, keyRecord)
 
 	var scopes []string
