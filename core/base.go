@@ -1496,6 +1496,7 @@ func (app *BaseApp) registerBaseHooks() {
 	app.registerAuthOriginHooks()
 	app.registerNotifyWatcherHooks()
 	app.registerWebAuthnCredentialHooks()
+	app.registerTOTPHooks()
 	app.registerAuditHooks()
 }
 
