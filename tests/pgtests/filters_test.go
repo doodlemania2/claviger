@@ -179,6 +179,10 @@ func TestRecordFilters(t *testing.T) {
 		{name: "number relation field eq", filter: `author.rank = 2.5`, want: 3},
 		{name: "number vs relation number", filter: `views > author.rank`, want: 6},
 
+		{name: "text eq number", filter: `title = 5`, gap: "a text column compared with a number token: SQLite coerces, Postgres rejects the type mismatch", want: -1},
+		{name: "number eq non numeric text", filter: `views = "abc"`, gap: "a number column compared with non numeric text: SQLite is false, Postgres can't parse the text as a number", want: -1},
+		{name: "select eq number", filter: `status = 1`, gap: "a text column compared with a number token: SQLite coerces, Postgres rejects the type mismatch", want: -1},
+
 		// ----- bool -----
 		{name: "bool eq true", filter: `active = true`, want: 5},
 		{name: "bool eq false", filter: `active = false`, want: 3},
@@ -363,6 +367,30 @@ func TestRecordFilters(t *testing.T) {
 		{name: "strftime unsupported format", filter: `strftime('%J', when) = '1'`, gap: "strftime formats %J and the century/locale ones are rejected on Postgres (SQLite %J returns a julian day float)", want: -1},
 		{name: "strftime unsupported modifier", filter: `strftime('%Y', when, 'localtime') = '2024'`, gap: "the localtime and ceiling/floor strftime modifiers are rejected on Postgres", want: -1},
 		{name: "strftime month overflow", filter: `strftime('%m-%d', '2024-01-31', '+1 month') = '03-02'`, gap: "SQLite normalizes month overflow forward (Jan 31 + 1 month = Mar 2), Postgres clamps to the last day (Feb 29)", want: -1},
+
+		// ----- combinations -----
+		{name: "multi relation or single relation", filter: `tags.name ?= "go" || author.name = "bob"`, want: 6},
+		{name: "back relation chain to author", filter: `comments_via_post.post.author.rank > 0`, want: 2},
+		{name: "relation chain through back relation", collection: "authors", filter: `posts_via_author.tags.name ?= "Rust"`, want: 2},
+		{name: "two multi matches", filter: `tags.name ?= "go" && labels:each ?= "b"`, want: 2},
+		{name: "json inside relation and like", filter: `author.name ~ "a" && meta.s ~ "b"`, want: 1},
+		{name: "same relation twice", filter: `author.name = "bob" && author.rank = 2.5`, want: 3},
+		{name: "relation id shortcut", filter: `author.id != "" && author.id ~ "a2"`, want: 3},
+		{name: "deep nesting", filter: `((views > 1 && (active = true || status = "draft")) || (title ~ "o" && !(0=1) = false))`, wantErr: true, want: -1},
+		{name: "compare two relation fields", filter: `author.name = tags.name`, want: 1},
+		{name: "compare field with relation field", filter: `title = author.name`, want: 0},
+		{name: "any compare two multi", filter: `tags.name ?= labels`, want: 0},
+		{name: "length of relation path", collection: "authors", filter: `posts_via_author.tags:length ?> 1`, want: 1},
+		{name: "lower on multi relation field", filter: `tags.name:lower ?= "rust"`, want: 3},
+		{name: "each on relation path", collection: "comments", filter: `post.labels:each ?= "a"`, want: 2},
+		{name: "like on relation path json", collection: "comments", filter: `post.meta.s ~ "b"`, want: 3},
+		{name: "not like multi relation", filter: `tags.name !~ "go"`, want: 2},
+		{name: "any not like multi relation", filter: `tags.name ?!~ "go"`, want: 5},
+		{name: "collection join and relation", filter: `@collection.tags.name ?= author.name`, want: 0},
+		{name: "number compare across relation", collection: "comments", filter: `post.views > post.author.rank`, want: 3},
+		{name: "bool across relation", collection: "comments", filter: `post.active = true && post.author.name != ""`, want: 2},
+		{name: "null across relation", collection: "comments", filter: `post.author = null`, want: 1},
+		{name: "date across relation", collection: "comments", filter: `post.when > "2024-02-01"`, want: 1},
 
 		// ----- null / empty / boolean logic -----
 		{name: "and or", filter: `(views > 5 && active = true) || title = "Zebra"`, want: 5},
