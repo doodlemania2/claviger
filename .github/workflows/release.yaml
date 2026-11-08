@@ -1,25 +1,25 @@
 name: basebuild
 
+# Releases only: version tags, or a manual run (which builds a snapshot, no release).
+# Branch pushes and PRs are covered by test.yml.
 on:
-  pull_request:
   push:
-    # Dependabot never causes a CI run: its branches are notices only.
-    branches-ignore: ['dependabot/**']
-  # Runs CI on purpose on any branch, Dependabot's included.
+    tags: ['v*']
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
   goreleaser:
-    # Dependabot PRs are notices and never run CI; label one `run-ci` to test it.
-    if: >-
-      github.event.pull_request.user.login != 'dependabot[bot]' ||
-      contains(github.event.pull_request.labels.*.name, 'run-ci')
-    # Trusted runs use our k3s pool. A PR from a fork runs unreviewed code, so it stays on
-    # GitHub-hosted runners and never reaches our network.
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || (vars.RUNNER_LIGHT || 'tdp-k3s-claviger') }}
+    # Tags and workflow_dispatch need write access, so every run is trusted
+    # (and never Dependabot's): the k3s pool is safe here.
+    runs-on: ${{ vars.RUNNER_LIGHT || 'tdp-k3s-claviger' }}
+    timeout-minutes: 40
     env:
       flags: ""
     steps:

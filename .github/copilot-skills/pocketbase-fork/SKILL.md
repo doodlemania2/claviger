@@ -1,41 +1,29 @@
 ---
 name: pocketbase-fork
-description: "Context for this PocketBase fork with WebAuthn/Passkey support and Azure Container Apps deployment. Provides branch strategy, WebAuthn API reference, Docker/Litestream patterns, Azure infrastructure details, and upstream sync workflow. WHEN: WebAuthn, passkey, fork, upstream sync, rebase, deploy, docker, litestream, pocketbase fork, container apps, azure files, branch strategy."
+description: "Context for Claviger, this PocketBase fork with WebAuthn/Passkey support and container packaging. Provides branch model, WebAuthn API reference, Docker/Litestream patterns, deployment notes, and the upstream sync pointer. WHEN: WebAuthn, passkey, fork, upstream sync, merge, deploy, docker, litestream, claviger, pocketbase fork, container apps, azure files, branch model."
 ---
 
-# PocketBase Fork — WebAuthn + Azure Deployment
+# Claviger (PocketBase fork) — WebAuthn + container packaging
 
 ## Fork Context
 
-This is a maintained fork of [pocketbase/pocketbase](https://ganigeorgiev.com/pocketbase/pocketbase) (upstream left GitHub after v0.40.6; the `upstream` remote is `https://ganigeorgiev.com/git/pocketbase/pocketbase`, and v0.41.0 renamed the Go module, see FORK_SYNC.md) that adds WebAuthn/Passkey authentication. The fork is designed to stay in sync with upstream via a layered branch strategy.
+This is a maintained fork of [pocketbase/pocketbase](https://ganigeorgiev.com/pocketbase/pocketbase) (upstream left GitHub after v0.40.6; the `upstream` remote is `https://ganigeorgiev.com/git/pocketbase/pocketbase`) that adds WebAuthn/Passkey authentication and container packaging. The fork's Go module path is `github.com/doodlemania2/claviger`; the binary is `claviger`.
 
-**CRITICAL RULES for working in this repo:**
+**Rules for working in this repo:**
 
-1. **Never modify upstream files on `deploy/azure`** — Only add new files on this branch. All upstream modifications belong on `feat/webauthn-passkey-support`.
-2. **WebAuthn changes are additive** — New fields appended to existing structs, new hook methods appended to interfaces, new routes appended to route lists. Do not restructure existing code.
-3. **Keep `deploy/azure` conflict-free** — Every file on this branch must be a new file that doesn't exist upstream.
+1. **One trunk.** All work, WebAuthn and packaging included, lands on `master` by PR.
+2. **WebAuthn changes are additive.** Append new fields to existing structs, new hook methods to interfaces, new routes to route lists. Do not restructure upstream code, so upstream merges stay small.
+3. **Nothing deployment-specific.** This repo is public. Deployment details live in the private repo `doodlemania2/stfoa-auth`.
 
-## Branch Strategy
+## Branches
 
-```
-upstream/master (ganigeorgiev.com/git/pocketbase/pocketbase)
-    |
-    |  git rebase upstream/master
-    v
-feat/webauthn-passkey-support    <-- WebAuthn only (4 new + 15 modified files)
-    |
-    |  git rebase feat/webauthn-passkey-support
-    v
-deploy/azure                     <-- Docker + infra + CI/CD + docs (ALL new files)
-```
+| Branch | Role |
+|--------|------|
+| `master` | The trunk. Target every change here. |
+| `deploy/azure` | Release pointer only. Fast-forwarded to a tested, approved `master` SHA with `git push origin <sha>:deploy/azure`. Never commit to it. |
+| `feat/webauthn-passkey-support` | Retired and frozen. Do not push to it. |
 
-**Which branch to target for changes:**
-
-| Change type | Target branch |
-|------------|---------------|
-| WebAuthn Go code (core/, apis/) | `feat/webauthn-passkey-support` |
-| Docker, Bicep, CI/CD, docs | `deploy/azure` |
-| Upstream bug fixes | `feat/webauthn-passkey-support` (then rebase deploy) |
+Never rebase or force-push `master`.
 
 ## WebAuthn API Reference
 
@@ -100,7 +88,7 @@ MFA: WebAuthn counts as a valid MFA method (`MFAMethodWebAuthn = "webauthn"`).
 ### Build
 
 ```bash
-docker build -t pocketbase-fork .
+docker build -t claviger .
 ```
 
 Multi-stage: `golang:1.27-alpine` (build) -> `alpine:3` (runtime with Litestream).
@@ -137,23 +125,16 @@ Deploy: `azd up`
 
 ## Upstream Sync Workflow
 
-See `FORK_SYNC.md` for full instructions. Summary:
+Upstream is brought in by merge, never rebase. See `FORK_SYNC.md` for the full runbook and pitfall checklist. Summary:
 
-1. `git fetch upstream`
-2. Rebase `feat/webauthn-passkey-support` onto `upstream/master` (conflicts here)
-3. `make test`
-4. Rebase `deploy/azure` onto updated webauthn branch (conflict-free)
-5. `make test && docker build`
+1. `git fetch upstream --tags`; list the delta with `git log --oneline <last-synced-tag>..<new-tag>`. The owner approves each upstream change first.
+2. Branch `sync/<tag>` off `origin/master`, then `git merge --no-ff <tag>`.
+3. Run `scripts/rewrite-module-path.sh` (rewrites upstream's module path to `github.com/doodlemania2/claviger`), then `go mod tidy`, `go build ./...`, `go test ./...`.
+4. Re-check the pitfalls in `FORK_SYNC.md` (token secret redaction, modernc test value, jsvm hook count, `ui/dist` rebuild).
+5. PR to `master`, CI green, merge with a merge commit.
+6. After testing and approval, fast-forward the release pointer: `git push origin <sha>:deploy/azure`.
 
-### Conflict-Prone Files
-
-| File | Risk |
-|------|------|
-| `go.mod` / `go.sum` | MEDIUM |
-| `core/collection_model_auth_options.go` | MEDIUM |
-| `core/app.go`, `core/base.go` | LOW |
-| `apis/record_auth.go` | LOW |
-| Test files (count assertions) | LOW |
+Conflict-prone files are listed in `FORK_SYNC.md`.
 
 ## Companion Package
 
