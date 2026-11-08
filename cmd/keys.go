@@ -33,6 +33,12 @@ func NewKeysCommand(app core.App) *cobra.Command {
 	}
 
 	command.AddCommand(keysCheckCommand(app))
+	command.AddCommand(keysStatusCommand(app))
+	command.AddCommand(keysRotateCommand(app))
+	command.AddCommand(keysRewrapCommand(app))
+	command.AddCommand(keysConvertCommand(app))
+	command.AddCommand(keysStrictCommand(app))
+	command.AddCommand(keysPruneCommand(app))
 
 	return command
 }
