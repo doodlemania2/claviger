@@ -33,6 +33,12 @@ func NewKeysCommand(app core.App) *cobra.Command {
 	}
 
 	command.AddCommand(keysCheckCommand(app))
+	command.AddCommand(keysStatusCommand(app))
+	command.AddCommand(keysRotateCommand(app))
+	command.AddCommand(keysRewrapCommand(app))
+	command.AddCommand(keysConvertCommand(app))
+	command.AddCommand(keysStrictCommand(app))
+	command.AddCommand(keysPruneCommand(app))
 
 	return command
 }
@@ -123,7 +129,7 @@ func CheckFieldKeys(ctx context.Context, dataDir, appKeyEnv string, getenv func(
 		return "OK (no encrypted fields)", nil
 	}
 
-	src, srcErr := keys.LoadFromEnv(getenv, appKeyEnv)
+	src, srcErr := keys.LoadWithOld(getenv, appKeyEnv)
 	if srcErr != nil {
 		return "", fmt.Errorf("%s: %d encrypted field key(s) exist but the key-encryption key is unusable: %w", KeysCheckFailedPrefix, len(liveRows), srcErr)
 	}
@@ -219,7 +225,7 @@ func readFieldKeys(ctx context.Context, dbPath string) (rows []fieldKeysCheckRow
 		}
 
 		for _, f := range fields {
-			if f.Type == core.FieldTypeEncryptedText {
+			if core.IsEncryptedFieldType(f.Type) {
 				live[id+"|"+f.Id] = name + "." + f.Name
 			}
 		}

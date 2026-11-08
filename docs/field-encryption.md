@@ -1,6 +1,6 @@
 # Field encryption
 
-Claviger adds the field type **Encrypted text** (`encryptedText`). Its values are stored encrypted in `data.db` (and so in backups and Litestream replicas) and are plaintext everywhere above the database: the records API, hooks, realtime and the admin UI.
+Claviger adds two field types, **Encrypted text** (`encryptedText`) and **Encrypted JSON** (`encryptedJSON`). Their values are stored encrypted in `data.db` (and so in backups and Litestream replicas) and are plaintext everywhere above the database: the records API, hooks, realtime and the admin UI.
 
 Use it for values that should not be readable from a database file, a leaked backup or a SQL console: phone numbers, national ids, pastoral notes. It does not hide a value from the API. Anyone allowed to read the field through the API (a rule, or a superuser) gets the plaintext. Hide it with the field's **Hidden** option or a collection rule if that is what you need.
 
@@ -22,7 +22,7 @@ With no encrypted fields defined, nothing changes: no key is needed and no extra
    | `CLAVIGER_KEK_FILE` | Path of a file holding the same base64 text. The file must not be readable by group or others (`chmod 600`). Setting both `CLAVIGER_KEK` and `CLAVIGER_KEK_FILE` is an error. |
    | the app encryption key (`PB_ENCRYPTION_KEY`, or whatever `--encryptionEnv` names) | Fallback. The key is derived with HKDF-SHA256 and the fixed info string `claviger/kek/v1`, so the same string is never used as two different keys. One secret then guards the settings and the fields, and rotating it means rotating both. |
 
-3. Add the field in the collection editor (type **Encrypted text**) or through the API with `"type": "encryptedText"`. Saving a collection that has such a field without a key configured fails with an error naming the variables.
+3. Add the field in the collection editor (type **Encrypted text** or **Encrypted JSON**) or through the API with `"type": "encryptedText"` / `"type": "encryptedJSON"`. Saving a collection that has such a field without a key configured fails with an error naming the variables.
 
 ## What is stored
 
@@ -39,6 +39,16 @@ claviger/field/v1 | collection id | field id | record id | key id
 so a ciphertext copied into another record or another field does not decrypt, and the API cannot be used to decrypt a ciphertext someone found in a backup. The field id (not its name) is used, so renaming the field is safe. Empty values are stored as an empty string, which means which rows are empty is not hidden.
 
 Saving a record without changing the field stores the same ciphertext again instead of encrypting anew.
+
+## Encrypted JSON
+
+`encryptedJSON` uses the same scheme, the same stored format, the same AAD and the same key hierarchy; each field gets its own data key. The JSON text is sealed as a whole, and above the database the value is an ordinary JSON value: the records API accepts and returns real JSON (an object, an array, a number, a string), hooks see a `json` value.
+
+- The column is plain `TEXT`, not a JSON column. `null` and the empty value are stored as an empty string.
+- Options: **Max size** (bytes of the plaintext JSON, default about 1 MB), **Required** (not `null`, `""`, `[]`, `{}`), **Hidden**, help text. Presentable is not offered.
+- Input is parsed like a `json` field (the same string normalizations apply). A string that merely looks like ciphertext (`"enc:v1:..."`) is stored as a JSON string; ciphertext cannot be pasted in.
+- Not filterable, sortable, indexable or usable in API rules, with the same errors as `encryptedText`. A JSON path into the field (`profile.a = 1`) is rejected as an invalid path.
+- The admin UI uses the same code editor as the `json` field.
 
 ## Key hierarchy
 
@@ -73,11 +83,11 @@ There is no searchable or exact-match encryption. To find a record by phone numb
 - Min, max (default 5000) and Required apply to the plaintext length in characters.
 - Hooks (`$app` in JS) see plaintext. A raw `$app.db()` query sees ciphertext.
 - Realtime events carry the same plaintext the API would return to that subscriber.
-- Converting an existing `text` field to Encrypted text is not automated yet. Values already in the column are read as plaintext and are encrypted the next time their record is saved. A bulk conversion command and key rotation are planned.
+- Changing an existing `text` (or `json`) field to the encrypted type keeps the values readable: a stored value without the `enc:v1:` prefix is read as plaintext and is encrypted the next time its record is saved. `claviger keys convert` encrypts them all at once, and strict mode (below) then forbids unencrypted values.
 
 ## Audit log and webhooks
 
-The audit log redacts every `encryptedText` field **by type**, whatever its name (other fields are still redacted by the existing name and `hidden` rules). Webhook payloads are built from the audit entry, so they inherit this. Request logs do not store bodies.
+The audit log redacts every `encryptedText` and `encryptedJSON` field **by type**, whatever its name (other fields are still redacted by the existing name and `hidden` rules). Webhook payloads are built from the audit entry, so they inherit this. Request logs do not store bodies.
 
 ## Fail closed
 
@@ -100,20 +110,110 @@ Exit 0: the keys open, or there are no encrypted fields, or the database could n
 
 `entrypoint.sh` runs it before the single-writer handover request is written. Without that, a bad key would be discovered only after the outgoing replica had already released `/pb_data`, with nothing left serving. Only the explicit `keys check: FAILED` verdict blocks the start; a timeout, a crash or an old binary without the command logs a warning and the start goes on, like the rest of the handover. It is skipped when there is no `data.db` yet. Set `PB_KEYS_PREFLIGHT=0` to disable it.
 
+## Key rotation
+
+There are two independent rotations.
+
+| | What changes | Cost | Command |
+|---|---|---|---|
+| **Data key (DEK)** | A new random key for the field; every row is re-encrypted under it. | Proportional to the data. | `keys rotate` |
+| **Key-encryption key (KEK)** | Every data key is re-wrapped under the new KEK. Row data is not touched. | Seconds. | `keys rewrap` (or `keys rotate --new-kek`) |
+
+Both are safe on a live system and both can be started in the **Settings > Encryption keys** page of the dashboard (superusers).
+
+### Where it runs, and why
+
+The deployment is single-writer: one process owns `/pb_data` (SQLite, NFS, Litestream, the handover in `entrypoint.sh`). A second process that opens the same database to rotate keys would be a second writer. So the primary way to rotate is **inside the serving process**:
+
+```
+GET  /api/field-keys           the keys and pending work of every encrypted field (+ the current job)
+GET  /api/field-keys/job       the current or last job
+POST /api/field-keys/rotate    {collection?, field?, batchSize?}
+POST /api/field-keys/rewrap    {}
+POST /api/field-keys/convert   {collection, field?}
+POST /api/field-keys/prune     {collection?, field?}
+POST /api/field-keys/strict    {collection, field, strict}      (synchronous)
+```
+
+Superusers only; an API key is refused even if it is scoped `*`. The `POST`s other than `strict` start a background job and answer `202`; one job runs at a time (`409` otherwise). A job stops between two batches when the server shuts down. Every run writes **one** audit entry (action `field_key_rotate`, `field_key_rewrap`, `field_key_convert`, `field_key_prune`, `field_key_strict`, target `_fieldKeys`; counts and key ids, no plaintext, no key material), never one per row.
+
+The CLI does the same operations offline:
+
+```sh
+claviger keys status
+claviger keys rotate  [--collection X] [--field Y] [--batch-size 500]
+claviger keys rotate  --new-kek          # = keys rewrap
+claviger keys rewrap
+claviger keys convert --collection X [--field Y]
+claviger keys strict  --collection X --field Y [--off]
+claviger keys prune   [--collection X] [--field Y]
+```
+
+Because the CLI opens the data directory, it **refuses to run** when it finds a live server: the single-writer lock `.pb_singlewriter.lock` is held (the whole process tree of a replica holds it) or `.pb_handover` exists (a handover is in progress). The message says what it found. Pass `--offline-ok` if you are certain no server is running; it also overrides a false positive. A server started without `entrypoint.sh` takes no lock and cannot be detected, so `--offline-ok` is then simply your statement. While a CLI command runs it holds the lock, so a replica that starts meanwhile waits for it. `docker exec` into the running replica and running the CLI there is refused for this reason; use the dashboard or the API instead.
+
+### Rotating a data key
+
+```sh
+claviger keys rotate --collection people --field phone
+```
+
+1. A new data key (new `keyId`) is created for the field and the old one is marked **retired**. The retired key stays available for reads. From this moment the app seals every write with the new key.
+2. The rows are re-encrypted in batches of 500 rows per transaction, with a progress log. Each row update is a compare-and-swap on the stored value, so a row the app saved in the meantime is never overwritten with stale data: it was written under the new key already, or a final pass catches it.
+3. When no row uses the old key, `keys prune` deletes it. Pruning a key that a row still uses is refused (the command reports how many rows use it).
+
+It is **resumable and idempotent** without a stored cursor. The work set is "rows whose value is not on the current key". If a run stops half way (a crash, a restart, an error), run the same command again: it finds the field with a retired key and rows still on it, continues with the same new key and skips the rows already moved. `keys status` shows a half-finished rotation (rows on old keys, a retired key that is still in use). Rows that cannot be decrypted (corrupt, or a ciphertext moved to another record) are left alone and make the run end with an error naming how many; they keep their old key from being pruned.
+
+Rotation uses raw SQL, so it fires no record hooks, no realtime events and no per-row audit entries, and it does not change `updated`. Rows holding unencrypted legacy values are not touched by it (see `keys convert`).
+
+Rotate on a schedule that suits you; there is no hard limit, but every DEK should stay well under 2^32 values sealed (random 96-bit nonces), which in practice means a rotation every few years for most deployments.
+
+### Rotating the key-encryption key
+
+The app must be able to read the data keys while you switch, so both KEKs are made available for a while:
+
+1. Generate the new KEK (`openssl rand -base64 32`) and store it.
+2. Deploy with the **new** KEK as the primary one and the **previous** one declared:
+
+   | Setting | Meaning |
+   |---|---|
+   | `CLAVIGER_KEK_OLD` | The previous KEK (base64). |
+   | `CLAVIGER_KEK_FILE_OLD` | A file holding it (mode 600). |
+   | `CLAVIGER_KEK_OLD_FROM_APP_KEY=1` | The previous KEK is the one derived from `PB_ENCRYPTION_KEY`: use this to move from the fallback to a dedicated `CLAVIGER_KEK`. |
+
+   Set only one of them. The app starts, reads every data key through the previous KEK, and writes new keys under the primary. `keys check` (the entrypoint pre-flight) accepts the same variables. A previous KEK that is set but malformed or unreadable is an error: it fails closed.
+3. Run **Re-wrap** in the dashboard, `POST /api/field-keys/rewrap`, or `claviger keys rewrap`. All data keys, retired ones included, are re-wrapped in one transaction; each is unwrapped again and compared before the commit. If a data key is wrapped under a KEK that is not available, nothing is changed and the error names the missing KEK id and the variables to set.
+4. Remove the `*_OLD` variable and redeploy. From now on the old KEK opens nothing.
+
+Rewrap needs both KEKs, so you cannot rewrap a database with only the new key.
+
+### Converting an existing column, and strict mode
+
+Change the field type of an existing `text` field to `encryptedText` (or `json` to `encryptedJSON`), keeping the field id. The old values stay readable as plaintext. To encrypt them all:
+
+```sh
+claviger keys convert --collection people --field phone     # or "Encrypt legacy values" in the dashboard
+claviger keys strict  --collection people --field phone     # then forbid unencrypted values
+```
+
+`convert` is idempotent and resumable (the work set is "non-empty values without the prefix"); legacy JSON that is not valid JSON becomes a JSON string. **Strict mode** makes a stored value without the `enc:v1:` prefix a read error ("holds an unencrypted value and the field is in strict mode"), so a value written around the app (a SQL console, a bad restore) cannot silently pass as data. Turning it on is refused while unencrypted values exist, so run `convert` first. The flag is stored with the field's data key (`strictMode` in `_fieldKeys`), not in the field options, so it is not exported with the collection; it carries over to a rotated key and survives restarts. `strict --off` turns it off. Empty values are always fine.
+
 ## Losing the key loses the data
 
 The KEK is the only way to read the encrypted values. Backups contain `data.db` with the ciphertext **and** the wrapped DEKs, which is useless without the KEK.
 
 - Store the KEK in at least one place that is not the server and not the backup storage (a password manager, a sealed envelope held by two people).
 - Test a restore together with the key before you rely on it.
-- Changing `CLAVIGER_KEK`, or `PB_ENCRYPTION_KEY` when it is the source, makes the existing data unreadable and the app will not start. There is no rotation command yet; do not change the key of a database that holds encrypted fields. To move to a dedicated `CLAVIGER_KEK` from the derived key, wait for the rotation command.
+- Changing `CLAVIGER_KEK`, or `PB_ENCRYPTION_KEY` when it is the source, without the rotation steps above makes the existing data unreadable and the app will not start. Rotate with `CLAVIGER_KEK_OLD` and `keys rewrap`.
+- Pruning a retired data key is final. A backup taken before the prune still holds the key, but also the rows of its time: restore the two together. Keep a backup from before you prune until you are satisfied with the rotation.
+- During a DEK rotation, a backup holds a mix of old and new keys; that is fine, all of them are in `_fieldKeys`.
 
 ## Deployment notes
 
 - Single replica / handover: nothing to change besides providing the variable to the container and the pre-flight step above. Provide the same variable to every command that opens the database (`superuser`, `migrate`, ...), since they bootstrap the app and fail closed too.
-- `ui/dist` contains the field type; there is nothing to configure in the dashboard.
+- Rotate through the dashboard or the API, not by `docker exec` of the CLI (it refuses, see above).
+- `ui/dist` contains the field types and the Encryption keys page; there is nothing to configure in the dashboard.
 - Metadata is not hidden: the length of values, whether a value is empty, and when a row was written.
 
 ## Roadmap
 
-`encryptedJSON`, key rotation (KEK rewrap and DEK re-encryption), bulk conversion of an existing column, and cloud key sources (Azure Key Vault first) are tracked in #75. The `keyId` in every ciphertext and the `retired` column of `_fieldKeys` exist so that rotation can be added without rewriting existing data first.
+Cloud key sources (Azure Key Vault first) are tracked in #75. The `keyId` in every ciphertext and the `retired` column of `_fieldKeys` are what rotation is built on; a KMS source only has to implement wrap and unwrap.

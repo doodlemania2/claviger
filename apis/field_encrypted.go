@@ -31,7 +31,7 @@ func encryptedFieldFilterError(err error, collection *core.Collection) error {
 		name = m[1]
 	} else if m := invalidSortErrRegex.FindStringSubmatch(err.Error()); m != nil && collection != nil {
 		// the sort expression builder drops the resolver error
-		if f := collection.Fields.GetByName(strings.TrimLeft(m[1], "+-")); f != nil && f.Type() == core.FieldTypeEncryptedText {
+		if f := collection.Fields.GetByName(strings.TrimLeft(m[1], "+-")); f != nil && core.IsEncryptedFieldType(f.Type()) {
 			name = f.GetName()
 		}
 	}

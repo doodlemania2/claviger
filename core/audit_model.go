@@ -469,7 +469,7 @@ func buildRecordAuditEntry(record, original *Record, action string) (*AuditEntry
 		}
 
 		redact := f.GetHidden() || auditSensitiveNameRegex.MatchString(name)
-		if _, isPassword := f.(*PasswordField); isPassword || f.Type() == FieldTypeEncryptedText {
+		if _, isPassword := f.(*PasswordField); isPassword || IsEncryptedFieldType(f.Type()) {
 			redact = true // encrypted fields are redacted by type (#75), whatever their name
 		}
 

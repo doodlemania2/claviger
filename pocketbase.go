@@ -281,9 +281,11 @@ func (pb *PocketBase) skipBootstrap() bool {
 		return true // unknown command
 	}
 
-	// fork-local (#75): `keys check` must not open or migrate the database
-	// (it runs while another replica still owns it)
-	if cmd.Name() == "check" && cmd.Parent() != nil && cmd.Parent().Name() == "keys" {
+	// fork-local (#75): the `keys` commands must not open or migrate the
+	// database before they have looked at it: `keys check` runs while another
+	// replica still owns it, and the maintenance commands first check that no
+	// server does (each of them bootstraps the app itself)
+	if cmd.Parent() != nil && cmd.Parent().Name() == "keys" {
 		return true
 	}
 
