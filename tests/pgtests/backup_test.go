@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/doodlemania2/claviger/core"
 )
@@ -112,4 +113,50 @@ func keys[V any](m map[string]V) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// TestLogsStayInTheLocalAuxiliaryDatabase: request logs are written to, queried
+// from and deleted from the local SQLite auxiliary.db, never the Postgres data database.
+func TestLogsStayInTheLocalAuxiliaryDatabase(t *testing.T) {
+	app := newApp(t)
+	c := newAPIClient(t, app)
+
+	if app.HasTable("_logs") {
+		t.Fatal("the Postgres data database must not have a _logs table")
+	}
+
+	log := &core.Log{}
+	log.Id = "pglogtest000001"
+	log.Level = 1
+	log.Message = "hello from pg test"
+	if err := app.AuxSave(log); err != nil {
+		t.Fatalf("save log: %v", err)
+	}
+
+	r := c.do("GET", "/api/logs?filter=message%7E%27pg+test%27", "super", nil)
+	if r.Status != 200 || len(r.Body.(map[string]any)["items"].([]any)) != 1 {
+		t.Fatalf("list logs: %d %v", r.Status, r.Body)
+	}
+	if r := c.do("GET", "/api/logs/stats", "super", nil); r.Status != 200 || len(r.Body.([]any)) == 0 {
+		t.Fatalf("logs stats: %d %v", r.Status, r.Body)
+	}
+	if r := c.do("GET", "/api/logs/"+log.Id, "super", nil); r.Status != 200 {
+		t.Fatalf("view log: %d %v", r.Status, r.Body)
+	}
+
+	var n int
+	if err := app.AuxConcurrentDB().NewQuery("SELECT count(*) FROM _logs").Row(&n); err != nil || n != 1 {
+		t.Fatalf("expected the log in auxiliary.db: %d, %v", n, err)
+	}
+	if err := app.DB().NewQuery("SELECT count(*) FROM _logs").Row(&n); err == nil {
+		t.Fatal("the data database must not have _logs")
+	}
+
+	if err := app.DeleteOldLogs(time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	_ = app.AuxConcurrentDB().NewQuery("SELECT count(*) FROM _logs").Row(&n)
+	if n != 0 {
+		t.Fatalf("old logs were not deleted: %d", n)
+	}
 }

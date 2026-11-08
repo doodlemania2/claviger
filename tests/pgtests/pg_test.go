@@ -218,7 +218,8 @@ func TestIntrospection(t *testing.T) {
 		t.Fatalf("unexpected indexes: %v", idx)
 	}
 	for name, def := range idx {
-		if name != "idx__collections_type" || !strings.HasPrefix(def, "CREATE INDEX idx__collections_type ON _collections (") {
+		// the portable (backtick) form of the collection "indexes" field
+		if name != "idx__collections_type" || !strings.HasPrefix(def, "CREATE INDEX `idx__collections_type` ON `_collections` (") {
 			t.Errorf("unexpected index %s: %s", name, def)
 		}
 	}
@@ -270,8 +271,13 @@ func TestCollectionLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(indexes["idx_posts_title_nocase"], "lower(") {
-		t.Errorf("expected a lower() index, got %q", indexes["idx_posts_title_nocase"])
+	var pgDef string
+	if err := app.DB().NewQuery("SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_posts_title_nocase'").Row(&pgDef); err != nil || !strings.Contains(pgDef, "lower(") {
+		t.Errorf("expected a lower() index in the catalog, got %q (%v)", pgDef, err)
+	}
+	// TableIndexes returns the portable form of it
+	if !strings.Contains(indexes["idx_posts_title_nocase"], "`title` COLLATE NOCASE") {
+		t.Errorf("expected the portable NOCASE form, got %q", indexes["idx_posts_title_nocase"])
 	}
 	if !strings.Contains(indexes["idx_posts_title"], "UNIQUE") {
 		t.Errorf("expected a unique index, got %q", indexes["idx_posts_title"])

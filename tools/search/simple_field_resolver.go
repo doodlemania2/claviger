@@ -2,6 +2,7 @@ package search
 
 import (
 	"fmt"
+	"github.com/doodlemania2/claviger/tools/dialect"
 	"strconv"
 	"strings"
 
@@ -78,6 +79,34 @@ func NewSimpleFieldResolver(allowedFields ...string) *SimpleFieldResolver {
 // If `allowedFields` are empty no fields filtering is applied.
 type SimpleFieldResolver struct {
 	allowedFields []string
+
+	// fork (#106): the dialect of the queried table, nil means SQLite
+	dialect  dialect.Dialect
+	rowOrder string
+}
+
+// WithDialect sets the database dialect of the queried table (fork, #106).
+// table is the table that has the hidden insertion order column on the
+// engines that need one ("" for none).
+func (r *SimpleFieldResolver) WithDialect(d dialect.Dialect, table string) *SimpleFieldResolver {
+	r.dialect = d
+	r.rowOrder = ""
+
+	if _, ok := d.HiddenColumns()[dialect.RowIDColumn]; ok && table != "" {
+		r.rowOrder = "[[" + table + "." + dialect.RowIDColumn + "]] ASC"
+	}
+
+	return r
+}
+
+// Dialect implements [DialectProvider].
+func (r *SimpleFieldResolver) Dialect() dialect.Dialect {
+	return r.dialect
+}
+
+// DefaultOrder implements [DefaultOrderProvider].
+func (r *SimpleFieldResolver) DefaultOrder() string {
+	return r.rowOrder
 }
 
 // UpdateQuery implements `search.UpdateQuery` interface.
