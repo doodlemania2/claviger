@@ -5,6 +5,9 @@ lint: shellcheck
 shellcheck:
 	shellcheck entrypoint.sh scripts/*.sh
 
+test-entrypoint:
+	TEST_SH=sh sh scripts/test_entrypoint_encryption.sh
+
 test:
 	go test ./... -v --cover
 

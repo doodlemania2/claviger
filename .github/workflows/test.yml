@@ -70,6 +70,13 @@ jobs:
           docker run --rm -v "$PWD:/mnt:ro" -w /mnt koalaman/shellcheck-alpine:v0.11.0 \
             shellcheck entrypoint.sh scripts/*.sh
 
+      # Opt-in settings encryption: --encryptionEnv reaches claviger iff
+      # PB_ENCRYPTION_KEY is set, and a wrong-length key stops the start.
+      - name: Settings encryption flag
+        run: |
+          docker run --rm -v "$PWD:/w:ro" -w /w alpine:3 \
+            sh -c 'TEST_SH=sh sh scripts/test_entrypoint_encryption.sh'
+
       # entrypoint.sh's handover scenarios (#35, #54) under the shell prod
       # actually runs — busybox ash in alpine — with util-linux flock. T3 replays
       # the transition from whatever deploy/azure currently deploys, and skips

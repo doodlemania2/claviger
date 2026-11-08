@@ -10,8 +10,19 @@ PORT=${PB_PORT:-8090}
 DATA_DIR=${PB_DATA_DIR:-/pb_data}
 PB_BIN=${PB_BIN:-/usr/local/bin/claviger}
 
+# Opt-in settings encryption. Claviger/PocketBase takes the NAME of the env var
+# that holds a 32-character key (global flag --encryptionEnv), never the key
+# itself. The flag is passed only when PB_ENCRYPTION_KEY is set and non-empty,
+# so without it behaviour is exactly as before. It must reach every command that
+# opens the settings (serve, superuser, migrate, ...). ENC_ARG is one
+# whitespace-free word, expanded unquoted on purpose. See check_encryption_key.
+ENC_ARG=""
+if [ -n "${PB_ENCRYPTION_KEY:-}" ]; then
+    ENC_ARG="--encryptionEnv=PB_ENCRYPTION_KEY"
+fi
+
 # Default serve command arguments
-DEFAULT_SERVE_ARGS="serve --http=${HOST}:${PORT} --dir=${DATA_DIR} --publicDir=/pb_public --hooksDir=/pb_hooks"
+DEFAULT_SERVE_ARGS="serve --http=${HOST}:${PORT} --dir=${DATA_DIR} --publicDir=/pb_public --hooksDir=/pb_hooks${ENC_ARG:+ $ENC_ARG}"
 
 LITESTREAM_PID=""
 PB_PID=""
@@ -435,14 +446,27 @@ create_superuser() {
             return 0
             ;;
     esac
-    out=$("$PB_BIN" superuser create "$PB_ADMIN_EMAIL" "$PB_ADMIN_PASSWORD" --dir="$DATA_DIR" 2>&1) || true
+    # shellcheck disable=SC2086 # ENC_ARG is empty or one word
+    out=$("$PB_BIN" superuser create "$PB_ADMIN_EMAIL" "$PB_ADMIN_PASSWORD" --dir="$DATA_DIR" $ENC_ARG 2>&1) || true
     case "$out" in
         ""|*"already exists"*|*"UNIQUE constraint"*|*"Value must be unique"*|*"Successfully"*) ;;
         *) echo "[entrypoint] superuser create: $out" ;;
     esac
 }
 
+# Fail fast on a wrong-length key: starting with it would either fail to read
+# existing encrypted settings or write them under a key nobody can reproduce.
+# Reports the length only, never the key.
+check_encryption_key() {
+    [ -n "$ENC_ARG" ] || return 0
+    if [ "${#PB_ENCRYPTION_KEY}" -ne 32 ]; then
+        echo "[entrypoint] ERROR: PB_ENCRYPTION_KEY must be exactly 32 characters (got ${#PB_ENCRYPTION_KEY}); refusing to start." >&2
+        exit 1
+    fi
+}
+
 run_serve() {
+    check_encryption_key
     # The main shell's pid, for the watcher subshell to signal.
     MAIN_PID=$$
 
@@ -499,4 +523,6 @@ fi
 
 # Otherwise: subcommand passthrough (migrate, superuser, …) — no Litestream
 # supervision, no graceful trap, because these are short-lived admin commands.
-exec "$PB_BIN" "$@"
+check_encryption_key
+# shellcheck disable=SC2086 # ENC_ARG is empty or one word
+exec "$PB_BIN" $ENC_ARG "$@"
