@@ -20,6 +20,7 @@ With no encrypted fields defined, nothing changes: no key is needed and no extra
    |---|---|
    | `CLAVIGER_KEK` | The key itself: base64 of exactly 32 bytes. Preferred. |
    | `CLAVIGER_KEK_FILE` | Path of a file holding the same base64 text. The file must not be readable by group or others (`chmod 600`). Setting both `CLAVIGER_KEK` and `CLAVIGER_KEK_FILE` is an error. |
+   | `CLAVIGER_KEK_AZURE_KEY_ID` | Use a key in Azure Key Vault or Managed HSM instead of a local key: see [Azure Key Vault](#azure-key-vault). Excludes `CLAVIGER_KEK` and `CLAVIGER_KEK_FILE` (setting both is an error). |
    | the app encryption key (`PB_ENCRYPTION_KEY`, or whatever `--encryptionEnv` names) | Fallback. The key is derived with HKDF-SHA256 and the fixed info string `claviger/kek/v1`, so the same string is never used as two different keys. One secret then guards the settings and the fields, and rotating it means rotating both. |
 
 3. Add the field in the collection editor (type **Encrypted text** or **Encrypted JSON**) or through the API with `"type": "encryptedText"` / `"type": "encryptedJSON"`. Saving a collection that has such a field without a key configured fails with an error naming the variables.
@@ -179,6 +180,7 @@ The app must be able to read the data keys while you switch, so both KEKs are ma
    | `CLAVIGER_KEK_OLD` | The previous KEK (base64). |
    | `CLAVIGER_KEK_FILE_OLD` | A file holding it (mode 600). |
    | `CLAVIGER_KEK_OLD_FROM_APP_KEY=1` | The previous KEK is the one derived from `PB_ENCRYPTION_KEY`: use this to move from the fallback to a dedicated `CLAVIGER_KEK`. |
+   | `CLAVIGER_KEK_AZURE_KEY_ID_OLD` | The previous KEK is a Key Vault key (URL as for `CLAVIGER_KEK_AZURE_KEY_ID`): use this to move from Key Vault back to a local key, or to another Key Vault key. |
 
    Set only one of them. The app starts, reads every data key through the previous KEK, and writes new keys under the primary. `keys check` (the entrypoint pre-flight) accepts the same variables. A previous KEK that is set but malformed or unreadable is an error: it fails closed.
 3. Run **Re-wrap** in the dashboard, `POST /api/field-keys/rewrap`, or `claviger keys rewrap`. All data keys, retired ones included, are re-wrapped in one transaction; each is unwrapped again and compared before the commit. If a data key is wrapped under a KEK that is not available, nothing is changed and the error names the missing KEK id and the variables to set.
@@ -217,3 +219,63 @@ The KEK is the only way to read the encrypted values. Backups contain `data.db` 
 ## Roadmap
 
 Cloud key sources (Azure Key Vault first) are tracked in #75. The `keyId` in every ciphertext and the `retired` column of `_fieldKeys` are what rotation is built on; a KMS source only has to implement wrap and unwrap.
+
+## Azure Key Vault
+
+The key-encryption key can live in Azure Key Vault (or a Managed HSM) so that it never reaches the server. Claviger only asks the vault to wrap and unwrap the field data keys (envelope encryption); record data never goes to Azure. It talks to the Key Vault REST API directly (API version `7.5`), without the Azure SDK.
+
+### Configure
+
+| Variable | Meaning |
+|---|---|
+| `CLAVIGER_KEK_AZURE_KEY_ID` | `https://<vault>.vault.azure.net/keys/<name>[/<version>]` (or `https://<hsm>.managedhsm.azure.net/keys/...`). Without a version, the current version is resolved at startup and pinned for that process. |
+| `CLAVIGER_KEK_AZURE_KEY_ID_OLD` | The previous key during a rotation (see below). |
+| `CLAVIGER_KEK_AZURE_AUTH` | `auto` (default), `managed-identity`, `workload-identity` or `client-secret`. |
+
+Authentication, in `auto` order:
+
+1. **Workload identity federation** when `AZURE_FEDERATED_TOKEN_FILE` is set (with `AZURE_CLIENT_ID` and `AZURE_TENANT_ID`). The token file is re-read on every refresh. `AZURE_AUTHORITY_HOST` overrides `login.microsoftonline.com`.
+2. **Client secret** when `AZURE_CLIENT_SECRET` is set (with `AZURE_CLIENT_ID` and `AZURE_TENANT_ID`). For development; prefer an identity without a secret in production.
+3. **Managed identity** otherwise: the App Service / Container Apps / Functions identity endpoint (`IDENTITY_ENDPOINT` + `IDENTITY_HEADER`) when present, else the instance metadata service (`169.254.169.254`). Set `AZURE_CLIENT_ID` to pick a user-assigned identity; leave it unset for the system-assigned one.
+
+Client certificates are not supported. Tokens are cached and refreshed shortly before they expire. The token scope is derived from the vault host (`https://vault.azure.net/.default`, or `https://managedhsm.azure.net/.default` for a Managed HSM, and the matching sovereign-cloud hosts).
+
+### What to create in Azure
+
+- **Key**: an **RSA** key, 3072 or 4096 bits recommended (2048 works). Claviger uses `RSA-OAEP-256`. The key needs the `wrapKey` and `unwrapKey` operations. A Managed HSM **AES** key is also accepted (`A256KW`). EC keys cannot wrap and are refused.
+- **Permission** for the identity Claviger runs as, on the key (least privilege) or the vault:
+  - Azure RBAC vault: **Key Vault Crypto User** (it includes reading the key's metadata, which Claviger does once at startup, and wrap/unwrap). On a Managed HSM: **Managed HSM Crypto User**.
+  - Access-policy vault: the key permissions `get`, `wrapKey` and `unwrapKey`.
+- **Network**: the server must reach `<vault>.vault.azure.net` (HTTPS, 443) and, for the identity, `login.microsoftonline.com` or the metadata endpoint. With the vault firewall on, allow the app's network (a service endpoint or private endpoint) or the "trusted Microsoft services" exception does not apply to your own app. A blocked path looks like a timeout: Claviger treats it as an outage, not as a wrong key.
+
+### Cost and availability
+
+Calls happen only at startup (one read of the key, one unwrap per data key), when a new encrypted field gets its data key, and when you rotate or rewrap. Data keys are unwrapped once and held in memory, so reads and writes do not call Key Vault: an outage while the app is running changes nothing. Plan for a handful of operations per start, far below any Key Vault throttling limit, and negligible cost.
+
+### Failure behaviour
+
+- **Fail closed.** If encrypted fields exist and Key Vault cannot be reached or refuses the request at startup, the app does not start. If no encrypted field exists, no call is made and a Key Vault outage does not matter.
+- **`keys check` and the entrypoint pre-flight.** A definite refusal is reported as `keys check: FAILED` and stops the rollout before the handover: bad credentials, missing permission (403), key not found (404), a key that cannot unwrap the stored data keys. An *inconclusive* result (timeout, network error, throttling, 5xx) is reported as `skipped (could not reach the key-encryption key service ...)` with exit 0, so the pre-flight fails open like the rest of the handover and the app itself decides when it starts. Calls are retried a few times with exponential backoff and jitter first.
+- Tokens, client secrets, federated assertions and key material are never logged or put in error messages.
+
+### Key ids and rotation in Key Vault
+
+The stored key id is `azkv:<host>/<name>/<version>`. Creating a new version of the key in Key Vault (manual rotation or a rotation policy) is a KEK rotation:
+
+1. Existing data keys keep working: Claviger unwraps each one with the version recorded with it. A running server keeps wrapping with the version it pinned at start.
+2. Restart (or deploy). With no version in `CLAVIGER_KEK_AZURE_KEY_ID`, the new version becomes the primary one.
+3. Run `claviger keys rewrap` (or **Re-wrap** in the dashboard). Data keys wrapped under older versions are re-wrapped under the new one.
+4. Once nothing uses the old version, you may disable it in Key Vault. Do not disable or delete a version while data keys still use it. If you pin a version in the URL, nothing changes until you edit it.
+
+Keep the Key Vault key backed up and enable soft delete and purge protection: deleting the key makes the data unreadable.
+
+### Moving between a local key and Key Vault
+
+Both directions use the same rewrap flow as any KEK rotation:
+
+- Local to Key Vault: set `CLAVIGER_KEK_AZURE_KEY_ID` and move the local key to `CLAVIGER_KEK_OLD` (or `CLAVIGER_KEK_OLD_FROM_APP_KEY=1`), start, `keys rewrap`, then remove the old variable.
+- Key Vault to local: set `CLAVIGER_KEK` and put the vault key in `CLAVIGER_KEK_AZURE_KEY_ID_OLD`, start, `keys rewrap`, then remove the old variable.
+
+### Live test
+
+`CLAVIGER_LIVE_KEY_URL=https://<vault>.vault.azure.net/keys/<name> go test -tags azurekv_live -run Live ./tools/keys/azurekv` runs a wrap/unwrap round trip against a real vault with the credentials from the environment. It is not part of CI.

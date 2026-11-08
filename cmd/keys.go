@@ -49,10 +49,11 @@ func keysCheckCommand(app core.App) *cobra.Command {
 		Use:   "check",
 		Short: "Checks that the configured key-encryption key can open the field keys",
 		Long: "Checks, without starting the app and without writing anything, that the configured\n" +
-			"key-encryption key (CLAVIGER_KEK, CLAVIGER_KEK_FILE or the app encryption key)\n" +
+			"key-encryption key (CLAVIGER_KEK, CLAVIGER_KEK_FILE, CLAVIGER_KEK_AZURE_KEY_ID or the app encryption key)\n" +
 			"can unwrap the data keys of the encrypted fields in <dir>/data.db.\n\n" +
 			"Exit status 0: the keys are fine, there are no encrypted fields, or the database\n" +
-			"could not be inspected (the check fails open on infrastructure problems).\n" +
+			"could not be inspected, or the key service (Azure Key Vault) could not be reached\n" +
+			"(the check fails open on infrastructure problems).\n" +
 			"Exit status 1: the key is definitely missing or wrong.\n\n" +
 			"entrypoint.sh runs it before asking the previous replica to hand over the data\n" +
 			"directory, so a wrong key stops a rollout instead of an outage.",
@@ -86,8 +87,11 @@ type fieldKeysCheckRow struct {
 // still in the WAL.
 //
 // It returns a non-nil error only when the key is definitely missing or
-// wrong. Every problem with inspecting the database (no file, not readable,
-// a torn read, a timeout) is reported in msg and returns a nil error.
+// wrong (including a key service that answered and refused: bad credentials,
+// no permission, key not found, unwrap failure). Every problem with inspecting
+// the database (no file, not readable, a torn read, a timeout) and every
+// indeterminate failure of a remote key service (timeout, network error,
+// throttling, 5xx) is reported in msg and returns a nil error.
 func CheckFieldKeys(ctx context.Context, dataDir, appKeyEnv string, getenv func(string) string) (msg string, err error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -130,7 +134,30 @@ func CheckFieldKeys(ctx context.Context, dataDir, appKeyEnv string, getenv func(
 		return "OK (no encrypted fields)", nil
 	}
 
-	src, srcErr := keys.LoadWithOld(getenv, appKeyEnv)
+	// loading a remote source (Key Vault) makes network calls: bound it
+	type loaded struct {
+		src keys.KeySource
+		err error
+	}
+	loadDone := make(chan loaded, 1)
+	go func() {
+		src, err := keys.LoadWithOld(getenv, appKeyEnv)
+		loadDone <- loaded{src, err}
+	}()
+
+	var src keys.KeySource
+	var srcErr error
+	select {
+	case l := <-loadDone:
+		src, srcErr = l.src, l.err
+	case <-ctx.Done():
+		return "skipped (timed out reaching the key-encryption key service; the app will check the keys itself when it starts)", nil
+	}
+
+	if srcErr != nil && keys.IsIndeterminate(srcErr) {
+		return "skipped (could not reach the key-encryption key service: " + srcErr.Error() + "; the app will check the keys itself when it starts)", nil
+	}
+
 	if srcErr != nil {
 		return "", fmt.Errorf("%s: %d encrypted field key(s) exist but the key-encryption key is unusable: %w", KeysCheckFailedPrefix, len(liveRows), srcErr)
 	}
@@ -142,6 +169,9 @@ func CheckFieldKeys(ctx context.Context, dataDir, appKeyEnv string, getenv func(
 		}
 
 		if _, unwrapErr := src.Unwrap(ctx, row.kekId, wrapped); unwrapErr != nil {
+			if keys.IsIndeterminate(unwrapErr) || (ctx.Err() != nil) {
+				return "skipped (could not reach the key-encryption key service: " + unwrapErr.Error() + "; the app will check the keys itself when it starts)", nil
+			}
 			return "", fmt.Errorf("%s: cannot open the data key of encrypted field %s with the %s key source (key id %s; the data was wrapped under %s): %w",
 				KeysCheckFailedPrefix, res.live[row.collectionRef+"|"+row.fieldRef], src.Name(), src.KeyID(), row.kekId, unwrapErr)
 		}
