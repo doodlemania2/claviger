@@ -133,6 +133,9 @@ func bindRecordAuthApi(app core.App, rg *router.RouterGroup[*core.RequestEvent])
 		collectionPathRateLimit("", "confirmEmailChange"),
 	)
 
+	// TOTP authenticator app second factor (see record_auth_totp.go)
+	bindTOTPApi(sub)
+
 	sub.POST("/impersonate/{id}", recordAuthImpersonate).Bind(RequireSuperuserAuth())
 }
 

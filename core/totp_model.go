@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	"github.com/doodlemania2/claviger/tools/hook"
 	"github.com/doodlemania2/claviger/tools/security"
 	"github.com/doodlemania2/claviger/tools/types"
 )
@@ -259,4 +260,29 @@ func DeleteTOTPByRecord(app App, authRecord *Record) error {
 
 func (app *BaseApp) registerTOTPHooks() {
 	recordRefHooks[*TOTP](app, CollectionNameTOTPs, CollectionTypeAuth)
+
+	// Superusers get every hidden field unhidden by the records API (and by
+	// realtime), which would hand the TOTP secret and the backup code hashes
+	// to anyone holding a superuser session. Force them hidden again, on both
+	// sides of the chain because the REST and the realtime paths unhide at
+	// different points relative to the enrich hooks. The dedicated /totp
+	// endpoints never serialize the record.
+	app.OnRecordEnrich(CollectionNameTOTPs).Bind(&hook.Handler[*RecordEnrichEvent]{
+		Id: "__pbTOTPHideSecrets__",
+		Func: func(e *RecordEnrichEvent) error {
+			names := e.Record.Collection().Fields.FieldNames()
+			e.Record.Hide(names...)
+
+			err := e.Next()
+
+			e.Record.Hide(names...)
+
+			return err
+		},
+		Priority: 100,
+	})
 }
+
+// MFAMethodTOTP is the MFA method name of an authenticator app (or backup
+// code) second factor, see apis auth-with-totp.
+const MFAMethodTOTP = "totp"
