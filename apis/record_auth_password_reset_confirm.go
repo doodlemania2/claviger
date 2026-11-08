@@ -47,7 +47,7 @@ func recordConfirmPasswordReset(e *core.RequestEvent) error {
 			}
 		}
 
-		err = e.App.Save(authRecord)
+		err = e.App.SaveWithContext(auditContextAs(e.RequestEvent, authRecord), authRecord)
 		if err != nil {
 			return firstApiError(err, e.BadRequestError("Failed to set new password.", err))
 		}

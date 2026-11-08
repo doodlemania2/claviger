@@ -21,3 +21,27 @@ func auditContext(e *core.RequestEvent) context.Context {
 
 	return core.WithAuditContext(context.Background(), actor, e.RealIP())
 }
+
+// auditContextAs is auditContext for flows whose subject is a record that may
+// act without an authenticated session (confirm flows authorized by an
+// emailed token, OTP, OAuth2, ...). An authenticated request keeps its own
+// actor; otherwise the subject record is the actor, flagged meta.self=true.
+// (#110)
+func auditContextAs(e *core.RequestEvent, subject *core.Record) context.Context {
+	if e.Auth != nil || subject == nil {
+		return auditContext(e)
+	}
+
+	return core.WithAuditContext(context.Background(), core.NewSelfAuditActor(subject), e.RealIP())
+}
+
+// auditContextForCreate is auditContext for record creates: an anonymous
+// create of an auth record (sign-up) is attributed to the record being
+// created once it has an id.
+func auditContextForCreate(e *core.RequestEvent, collection *core.Collection) context.Context {
+	if e.Auth != nil || collection == nil || !collection.IsAuth() {
+		return auditContext(e)
+	}
+
+	return core.WithAuditContext(context.Background(), core.NewPendingSelfAuditActor(), e.RealIP())
+}

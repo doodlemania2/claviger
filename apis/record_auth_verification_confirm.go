@@ -52,7 +52,7 @@ func recordConfirmVerification(e *core.RequestEvent) error {
 				e.Record.SetRandomPassword()
 			}
 
-			if err := e.App.Save(e.Record); err != nil {
+			if err := e.App.SaveWithContext(auditContextAs(e.RequestEvent, e.Record), e.Record); err != nil {
 				return firstApiError(err, e.BadRequestError("An error occurred while saving the verified state.", err))
 			}
 		}

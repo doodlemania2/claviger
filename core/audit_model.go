@@ -38,8 +38,10 @@ const (
 	AuditActorTypeRecord    = "record"
 	AuditActorTypeSystem    = "system"
 
-	// AuditRetentionDaysEnv is the environment variable holding the audit
-	// retention in days. Unset, empty, zero or invalid means "keep forever".
+	// AuditRetentionDaysEnv is the environment variable that overrides the
+	// retention in days from Settings.Audit.RetentionDays. When it is set to a
+	// valid non-negative number it wins (0 = keep forever); unset, empty or
+	// invalid means "use the setting".
 	AuditRetentionDaysEnv = "CLAVIGER_AUDIT_RETENTION_DAYS"
 
 	auditRedactedValue   = "[redacted]"
@@ -77,6 +79,24 @@ var auditSensitiveNameRegex = regexp.MustCompile(`(?i)(password|passwd|passphras
 
 type auditCtxKey struct{}
 type auditWriterCtxKey struct{}
+type auditSchemaCtxKey struct{}
+
+// WithAuditSchemaChange returns a copy of ctx that lets a change of the
+// _auditLog collection definition (fields, indexes, rules) through its
+// update guard (#110). It is meant for fork migrations that evolve the audit
+// schema:
+//
+//	txApp.SaveWithContext(core.WithAuditSchemaChange(context.Background()), auditCollection)
+//
+// It does not allow deleting the collection, and it does not allow writing,
+// changing or deleting entries (the record guards ignore it).
+func WithAuditSchemaChange(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	return context.WithValue(ctx, auditSchemaCtxKey{}, true)
+}
 
 type auditCtxValue struct {
 	actor AuditActor
@@ -95,6 +115,11 @@ type AuditActor struct {
 	// APIKeyId is set when the request was authenticated with an API key
 	// (#95). It is written to the entry's meta.apiKeyId.
 	APIKeyId string `json:"apiKeyId,omitempty"`
+
+	// Self is set when the record acted on itself without an authenticated
+	// session (password reset confirm, sign-up, ...; #110). It is written to
+	// the entry's meta.self.
+	Self bool `json:"self,omitempty"`
 }
 
 // NewAuditActorFromRecord returns the actor for the provided auth record
@@ -226,13 +251,14 @@ func DeleteExpiredAuditEntries(app App, createdBefore time.Time) (int64, error) 
 	return res.RowsAffected()
 }
 
-func auditRetentionDays() int {
-	days, err := strconv.Atoi(strings.TrimSpace(os.Getenv(AuditRetentionDaysEnv)))
-	if err != nil || days <= 0 {
-		return 0
+// auditRetentionDays returns the effective retention: the environment
+// override if valid, otherwise Settings.Audit.RetentionDays. 0 means forever.
+func auditRetentionDays(app App) int {
+	if days, err := strconv.Atoi(strings.TrimSpace(os.Getenv(AuditRetentionDaysEnv))); err == nil && days >= 0 {
+		return days
 	}
 
-	return days
+	return max(app.Settings().Audit.RetentionDays, 0)
 }
 
 // -------------------------------------------------------------------
@@ -264,7 +290,7 @@ func (app *BaseApp) registerAuditHooks() {
 	app.OnCollectionUpdate().Bind(&hook.Handler[*CollectionEvent]{
 		Id: "__pbAuditCollectionGuard__",
 		Func: func(e *CollectionEvent) error {
-			if e.Collection.IsNew() {
+			if e.Collection.IsNew() || (e.Context != nil && e.Context.Value(auditSchemaCtxKey{}) != nil) {
 				return e.Next()
 			}
 
@@ -313,9 +339,12 @@ func (app *BaseApp) registerAuditHooks() {
 		Priority: 100,
 	})
 
+	// admin actions: settings and schema changes (#110)
+	app.registerAdminAuditHooks()
+
 	// retention
 	app.Cron().Add(auditCleanupCronId, auditCleanupCronExpr, func() {
-		days := auditRetentionDays()
+		days := auditRetentionDays(app)
 		if days == 0 {
 			return // keep forever
 		}
@@ -398,6 +427,7 @@ func auditNextAndWrite(e *RecordEvent, action string) error {
 		if v.actor.APIKeyId != "" {
 			entry.Meta["apiKeyId"] = v.actor.APIKeyId
 		}
+		resolveSelfAuditActor(entry, e.Record)
 	} else {
 		entry.Actor = AuditActor{Type: AuditActorTypeSystem}
 	}
