@@ -205,7 +205,7 @@ func ValidateWebhookURL(raw string) error {
 	switch u.Scheme {
 	case "https":
 	case "http":
-		if !(allowLocal && isLocalhostName(host)) {
+		if !allowLocal || !isLocalhostName(host) {
 			return fmt.Errorf("must use https (plain http is only allowed for localhost when %s=true)", WebhooksAllowLocalhostEnv)
 		}
 	default:
@@ -249,7 +249,7 @@ func webhookIPBlocked(ip netip.Addr, allowLoopback bool) bool {
 }
 
 var webhookReservedPrefixes = func() []netip.Prefix {
-	var out []netip.Prefix
+	out := make([]netip.Prefix, 0, 11)
 	for _, s := range []string{
 		"0.0.0.0/8",       // "this" network
 		"100.64.0.0/10",   // CGNAT
