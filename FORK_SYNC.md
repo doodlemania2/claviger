@@ -146,6 +146,23 @@ Git refuses a non-fast-forward push. If it refuses, stop and find out why; do no
 
 Pushing `deploy/azure` does not deploy. Production deploys are a separate manual step in the private repo `doodlemania2/stfoa-auth` (start a dry run, then the deploy, then watch `/api/health`).
 
+## Fork-modified upstream files
+
+Upstream-owned files the fork edits. Re-check these on every sync merge (conflicts, and tests that assert exact output).
+
+| File | Fork change (issue) |
+| --- | --- |
+| `core/backup.go` | Auto backup starts a background restore verification after the heartbeat (#78). |
+| `core/backup_create.go` | Writes `.claviger_backup_manifest.json` (per-table row counts) into every archive; `zipWriter.copyBytesToZip` (#78). |
+| `core/backup_restore.go` | Drops the manifest from the extracted dir so it never lands in `pb_data` (#78). |
+| `core/settings_model.go` | `BackupsConfig.DisableVerify` (#78). Exact-JSON assertions in `core/settings_model_test.go` carry the field. |
+| `core/backup_test.go` | `verifyBackupContent` expects the manifest entry (#78). |
+| `apis/backup.go` | `POST /api/backups/{key}/verify`; list adds `verification`/`verifying`; delete clears the stored result (#78). |
+| `ui/src/settings/backups/backupsList.js`, `backupsForm.js` | Verification badge and button; auto-verify switch (#78). |
+| `plugins/jsvm/internal/types/generated/types.d.ts` | `BackupsConfig.disableVerify` (regenerates with `make jstypes`) (#78). |
+
+Fork-only files for #78: `core/backup_verify*.go`, `core/diskfree_*.go`.
+
 ## CI
 
 | Workflow | File | Runs on |
