@@ -49,6 +49,7 @@ npm run build    # regenerates ui/dist
 - `apis/` — HTTP route handlers, bound in `apis/base.go` (records CRUD, auth flows including WebAuthn, collections, settings, files, backups, batch, realtime).
 - `forms/` — validation/submit structs for record and collection upserts and auth.
 - `tools/` — standalone utilities: `hook/` (the event system), `router/`, `auth/` (OAuth2 providers), `filesystem/`, `mailer/`, `cron/`, `subscriptions/` (realtime broker), `search/` (filter/sort parsing), `security/`.
+- `oidc/` — fork-only OpenID Connect provider (#71) on `zitadel/oidc` `pkg/op`, mounted under `/oidc`; registered from `pocketbase.go`. Inert until an OAuth client exists; needs the settings encryption env outside dev mode. See `docs/oidc.md`.
 - `plugins/` — `jsvm/` (Goja-based JS hooks runtime; hooks loaded from a `pb_hooks` dir), `migratecmd/` (user migration CLI), `ghupdate/`.
 - `migrations/` — system schema migrations (the WebAuthn collection lives in `migrations/1712966400_add_webauthn.go`).
 - `cmd/` — cobra commands: serve, superuser, version.

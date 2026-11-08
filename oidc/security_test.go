@@ -444,3 +444,29 @@ func TestNoSecretsInAPIResponsesOrAudit(t *testing.T) {
 		check("an audit entry", string(raw))
 	}
 }
+
+func TestAuthnContextMapping(t *testing.T) {
+	cases := []struct {
+		method  string
+		passkey bool
+		amr     string
+		acr     string
+	}{
+		{"password", false, "pwd", oidc.ACRPassword},
+		{"totp", false, "pwd otp mfa", oidc.ACRMFA},
+		{"mfa", false, "pwd mfa", oidc.ACRMFA},
+		{"otp", false, "otp", oidc.ACRPassword},
+		{"webauthn", true, "hwk user", oidc.ACRPasskey},
+		{"discoverable", true, "hwk user", oidc.ACRPasskey},
+		{"password", true, "pwd hwk user", oidc.ACRPasskey}, // a fresh passkey step-up on top of a password sign-in
+		{"mfa", true, "pwd mfa hwk user", oidc.ACRPasskey},
+		{"", false, "pwd", oidc.ACRPassword},
+	}
+
+	for _, c := range cases {
+		amr, acr := oidc.AuthnContext(c.method, c.passkey)
+		if strings.Join(amr, " ") != c.amr || acr != c.acr {
+			t.Errorf("%q passkey=%v: got %v %s, want %s %s", c.method, c.passkey, amr, acr, c.amr, c.acr)
+		}
+	}
+}
