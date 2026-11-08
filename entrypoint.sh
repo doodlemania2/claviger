@@ -10,8 +10,19 @@ PORT=${PB_PORT:-8090}
 DATA_DIR=${PB_DATA_DIR:-/pb_data}
 PB_BIN=${PB_BIN:-/usr/local/bin/claviger}
 
+# Opt-in settings encryption. Claviger/PocketBase takes the NAME of the env var
+# that holds a 32-character key (global flag --encryptionEnv), never the key
+# itself. The flag is passed only when PB_ENCRYPTION_KEY is set and non-empty,
+# so without it behaviour is exactly as before. It must reach every command that
+# opens the settings (serve, superuser, migrate, ...). ENC_ARG is one
+# whitespace-free word, expanded unquoted on purpose. See check_encryption_key.
+ENC_ARG=""
+if [ -n "${PB_ENCRYPTION_KEY:-}" ]; then
+    ENC_ARG="--encryptionEnv=PB_ENCRYPTION_KEY"
+fi
+
 # Default serve command arguments
-DEFAULT_SERVE_ARGS="serve --http=${HOST}:${PORT} --dir=${DATA_DIR} --publicDir=/pb_public --hooksDir=/pb_hooks"
+DEFAULT_SERVE_ARGS="serve --http=${HOST}:${PORT} --dir=${DATA_DIR} --publicDir=/pb_public --hooksDir=/pb_hooks${ENC_ARG:+ $ENC_ARG}"
 
 LITESTREAM_PID=""
 PB_PID=""
@@ -54,6 +65,7 @@ INSTANCE_ID="${PB_INSTANCE_ID:-$(hostname 2>/dev/null || echo unknown)}"
 # the released list must never be what stops a replica from starting.
 trim_file() {
     [ -f "$1" ] || return 0
+    # shellcheck disable=SC2015 # intentional: if the rewrite or the mv fails, drop the temp file
     tail -n "$2" "$1" > "$1.tmp.$$" 2>/dev/null && mv -f "$1.tmp.$$" "$1" 2>/dev/null || rm -f "$1.tmp.$$" 2>/dev/null
     return 0
 }
@@ -81,6 +93,7 @@ otlp_event() {
     command -v wget >/dev/null 2>&1 || return 0
 
     # the message and ids are ours, but keep the JSON valid whatever they hold
+    # shellcheck disable=SC1003 # intentional: tr deletes a double quote and a literal backslash
     msg=$(printf '%s' "$1" | tr -d '"\\')
     now_ns="$(date +%s)000000000"
 
@@ -91,6 +104,7 @@ otlp_event() {
     IFS=','
     for kv in ${OTEL_RESOURCE_ATTRIBUTES:-}; do
         k=$(printf '%s' "${kv%%=*}" | tr -d '"\\ ')
+        # shellcheck disable=SC1003 # intentional: tr deletes a double quote and a literal backslash
         v=$(printf '%s' "${kv#*=}" | tr -d '"\\')
         [ -n "$k" ] || continue
         if [ "$k" = "service.name" ]; then has_name=1; fi
@@ -432,14 +446,27 @@ create_superuser() {
             return 0
             ;;
     esac
-    out=$("$PB_BIN" superuser create "$PB_ADMIN_EMAIL" "$PB_ADMIN_PASSWORD" --dir="$DATA_DIR" 2>&1) || true
+    # shellcheck disable=SC2086 # ENC_ARG is empty or one word
+    out=$("$PB_BIN" superuser create "$PB_ADMIN_EMAIL" "$PB_ADMIN_PASSWORD" --dir="$DATA_DIR" $ENC_ARG 2>&1) || true
     case "$out" in
         ""|*"already exists"*|*"UNIQUE constraint"*|*"Value must be unique"*|*"Successfully"*) ;;
         *) echo "[entrypoint] superuser create: $out" ;;
     esac
 }
 
+# Fail fast on a wrong-length key: starting with it would either fail to read
+# existing encrypted settings or write them under a key nobody can reproduce.
+# Reports the length only, never the key.
+check_encryption_key() {
+    [ -n "$ENC_ARG" ] || return 0
+    if [ "${#PB_ENCRYPTION_KEY}" -ne 32 ]; then
+        echo "[entrypoint] ERROR: PB_ENCRYPTION_KEY must be exactly 32 characters (got ${#PB_ENCRYPTION_KEY}); refusing to start." >&2
+        exit 1
+    fi
+}
+
 run_serve() {
+    check_encryption_key
     # The main shell's pid, for the watcher subshell to signal.
     MAIN_PID=$$
 
@@ -496,4 +523,6 @@ fi
 
 # Otherwise: subcommand passthrough (migrate, superuser, …) — no Litestream
 # supervision, no graceful trap, because these are short-lived admin commands.
-exec "$PB_BIN" "$@"
+check_encryption_key
+# shellcheck disable=SC2086 # ENC_ARG is empty or one word
+exec "$PB_BIN" $ENC_ARG "$@"

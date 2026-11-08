@@ -10,6 +10,7 @@
 # macOS). Usage: scripts/test_entrypoint_handover.sh [path-to-old-entrypoint]
 # The optional old entrypoint enables T3, the pre-#54 -> #54 transition.
 
+# shellcheck disable=SC2015 # the pass/fail helpers always return 0, so `A && pass || fail` is an if/else here
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SH=${TEST_SH:-dash}
@@ -167,6 +168,77 @@ t0=$(date +%s)
 pb=$(start_replica "$D" "$B" "$NEW"); PIDS="$PIDS $pb"
 wait_until 15 serving "$D" "$B" && pass "B back after $(( $(date +%s) - t0 ))s without waiting for an ack" || fail "B did not come back"
 no_overlap "$D"
+cleanup_scenario
+
+echo "T5: PB_HANDOVER_TIMEOUT=0 disables the mechanism (kill switch) even with the lock held"
+D="$WORK/t5"; mkdir -p "$D"; PIDS=""
+: > "$D/.pb_singlewriter.lock"
+flock -x "$D/.pb_singlewriter.lock" sleep 20 &
+holder=$!
+sleep 1
+pa=$(start_replica "$D" "$A" "$NEW" PB_HANDOVER_TIMEOUT=0); PIDS="$PIDS $pa"
+wait_until 5 serving "$D" "$A" && pass "A served immediately" || fail "A did not start with the mechanism disabled"
+grep -q "single-writer handover disabled" "$D/.console.$A" && pass "disabled warning logged" || fail "no disabled warning: $(tail -2 "$D/.console.$A")"
+[ -e "$D/.pb_owner" ] || [ -e "$D/.pb_handover" ] && fail "handover files were written" || pass "no owner or request files written"
+kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+cleanup_scenario
+
+echo "T6: flock missing -> request is still written, WARN logged, replica starts anyway"
+D="$WORK/t6"; mkdir -p "$D"; PIDS=""
+# A PATH with the tools entrypoint.sh needs and no flock.
+NOFLOCK="$WORK/bin-noflock"; mkdir -p "$NOFLOCK"
+for tool in cat grep tail mv rm date hostname sleep mkdir touch kill tr sed basename wget; do
+    src=$(command -v "$tool" 2>/dev/null) && [ -x "$src" ] && ln -sf "$src" "$NOFLOCK/$tool"
+done
+SH_ABS=$(command -v "$SH")
+# env resolves the shell through the new PATH, so hand it an absolute path
+SH_SAVED=$SH; SH=$SH_ABS
+pa=$(start_replica "$D" "$A" "$NEW" PATH="$NOFLOCK")
+SH=$SH_SAVED
+PIDS="$PIDS $pa"
+wait_until 10 serving "$D" "$A" && pass "A started without flock" || fail "A never started: $(tail -3 "$D/.console.$A")"
+grep -q "flock not found" "$D/.console.$A" && pass "flock-not-found WARN on console" || fail "no flock warning: $(tail -3 "$D/.console.$A")"
+grep -q "WARN.*flock not found" "$D/.pb_handover.log" && pass "WARN recorded durably" || fail "WARN not in the event log"
+no_overlap "$D"
+cleanup_scenario
+
+echo "T7: lock file uncreatable -> WARN, replica starts anyway"
+D="$WORK/t7"; mkdir -p "$D"; PIDS=""
+ln -s /nonexistent-dir/lock "$D/.pb_singlewriter.lock" # dangling: touch fails even as root
+pa=$(start_replica "$D" "$A" "$NEW"); PIDS="$PIDS $pa"
+wait_until 10 serving "$D" "$A" && pass "A started without a lock file" || fail "A never started: $(tail -3 "$D/.console.$A")"
+grep -q "cannot create .*pb_singlewriter.lock" "$D/.console.$A" && pass "uncreatable-lock WARN logged" || fail "no lock warning: $(tail -3 "$D/.console.$A")"
+cleanup_scenario
+
+echo "T8: fail-open timeout — lock held by a process that never lets go, no watcher"
+D="$WORK/t8"; mkdir -p "$D"; PIDS=""
+: > "$D/.pb_singlewriter.lock"
+echo "some-other-replica" > "$D/.pb_owner"
+flock -x "$D/.pb_singlewriter.lock" sleep 25 &
+holder=$!
+sleep 1
+pb=$(start_replica "$D" "$B" "$NEW" PB_HANDOVER_TIMEOUT=4); PIDS="$PIDS $pb"
+t0=$(date +%s)
+wait_until 15 serving "$D" "$B" && pass "B started anyway after $(( $(date +%s) - t0 ))s" || fail "B never started (timeout is fatal?): $(tail -3 "$D/.console.$B")"
+grep -q "no handover after 4s" "$D/.console.$B" && pass "fail-open WARN logged" || fail "no fail-open WARN: $(tail -3 "$D/.console.$B")"
+kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+cleanup_scenario
+
+echo "T9: self-id guard — a request carrying our own id is ignored"
+D="$WORK/t9"; mkdir -p "$D"; PIDS=""
+pa=$(start_replica "$D" "$A" "$NEW"); PIDS="$PIDS $pa"
+wait_until 10 serving "$D" "$A" || fail "A never started"
+echo "$A" > "$D/.pb_handover"
+sleep 4
+serving "$D" "$A" && pass "A kept serving its own request" || fail "A released the volume to itself"
+grep -q "handover requested" "$D/.console.$A" && fail "A answered its own request" || pass "request not answered"
+cleanup_scenario
+
+echo "T10: invalid PB_ADMIN_EMAIL skips the superuser bootstrap and still serves"
+D="$WORK/t10"; mkdir -p "$D"; PIDS=""
+pa=$(start_replica "$D" "$A" "$NEW" PB_ADMIN_EMAIL=not-an-email PB_ADMIN_PASSWORD=pw); PIDS="$PIDS $pa"
+wait_until 10 serving "$D" "$A" && pass "A serving" || fail "A never started"
+grep -q "is not a valid email; skipping superuser bootstrap" "$D/.console.$A" && pass "bootstrap skipped with a warning" || fail "no skip warning: $(tail -3 "$D/.console.$A")"
 cleanup_scenario
 
 echo

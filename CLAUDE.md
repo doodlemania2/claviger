@@ -87,3 +87,6 @@ API tests are table-driven `tests.ApiScenario` slices (method, URL, body, auth h
 
 <!-- BEGIN derek-task-inbox — shared block, identical in every CLAUDE.md under /Volumes/Data/repos. Edit all copies together. Canonical source: the Outline "Protocol" page linked below. -->
 
+## Settings encryption
+
+Opt-in. `entrypoint.sh` passes PocketBase's global `--encryptionEnv=PB_ENCRYPTION_KEY` (the flag takes the *name* of the env var, whose value is the key) to `serve`, the superuser bootstrap and subcommand passthrough only when `PB_ENCRYPTION_KEY` is set and non-empty; otherwise behaviour is unchanged. The key must be exactly 32 characters or the entrypoint refuses to start (it reports the length, never the key). Existing plaintext settings keep loading and are encrypted on the next settings save; once encrypted, losing the key (or unsetting it) loses the settings and fails startup, so the deployment repo must supply the key from its secret store and back it up. Covered by `scripts/test_entrypoint_encryption.sh`.
