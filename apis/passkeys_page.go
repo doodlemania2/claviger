@@ -48,16 +48,7 @@ func bindPasskeysPage(app core.App) {
 				// audit M6: tight CSP. Inline script/style are required because
 				// the helper module is consumed at runtime and the page applies
 				// minimal inline styles. img-src includes data: for the favicon.
-				header.Set("Content-Security-Policy",
-					"default-src 'self'; "+
-						"script-src 'self' 'unsafe-inline'; "+
-						"style-src 'self' 'unsafe-inline'; "+
-						"img-src 'self' data:; "+
-						"connect-src 'self'; "+
-						"frame-ancestors 'self'; "+
-						"base-uri 'self'; "+
-						"form-action 'self'",
-				)
+				header.Set("Content-Security-Policy", passkeysPageCSP(e.App.Settings().Captcha))
 				e.Response.WriteHeader(http.StatusOK)
 				_, err := e.Response.Write([]byte(passkeysPageHTML))
 				return err
@@ -66,6 +57,49 @@ func bindPasskeysPage(app core.App) {
 			return se.Next()
 		},
 	})
+}
+
+// passkeysPageCSP returns the page Content-Security-Policy. It is tight by
+// default; only when a captcha is configured AND at least one action requires
+// it does it open the chosen provider's domains (and only those) for scripts,
+// frames, XHR and styles, so an install without captcha is unchanged.
+func passkeysPageCSP(cfg core.CaptchaConfig) string {
+	var script, frame, connect, style string
+
+	if len(cfg.Required()) > 0 {
+		switch cfg.Provider {
+		case core.CaptchaProviderTurnstile:
+			script = " https://challenges.cloudflare.com"
+			frame = " https://challenges.cloudflare.com"
+			connect = " https://challenges.cloudflare.com"
+		case core.CaptchaProviderHCaptcha:
+			script = " https://hcaptcha.com https://*.hcaptcha.com"
+			frame = " https://hcaptcha.com https://*.hcaptcha.com"
+			connect = " https://hcaptcha.com https://*.hcaptcha.com"
+			style = " https://hcaptcha.com https://*.hcaptcha.com"
+		case core.CaptchaProviderRecaptchaV2, core.CaptchaProviderRecaptchaV3:
+			script = " https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/"
+			frame = " https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/"
+			connect = " https://www.google.com/recaptcha/"
+		}
+	}
+
+	// audit M6: tight CSP. Inline script/style are required because the
+	// helper module is consumed at runtime and the page applies minimal inline
+	// styles. img-src includes data: for the favicon.
+	csp := "default-src 'self'; " +
+		"script-src 'self' 'unsafe-inline'" + script + "; " +
+		"style-src 'self' 'unsafe-inline'" + style + "; " +
+		"img-src 'self' data:; " +
+		"connect-src 'self'" + connect + "; "
+
+	if frame != "" {
+		csp += "frame-src 'self'" + frame + "; "
+	}
+
+	return csp + "frame-ancestors 'self'; " +
+		"base-uri 'self'; " +
+		"form-action 'self'"
 }
 
 // passkeysClientJS is a self-contained ES module that wraps the
@@ -130,7 +164,7 @@ const encodeAssertion = (cred) => ({
 export const helpers = { b64uToBuf, bufToB64u, decodePublicKeyOptions, encodeAttestation, encodeAssertion };
 
 export class PasskeysClient {
-  constructor({ baseUrl, collection, authToken, onToken } = {}) {
+  constructor({ baseUrl, collection, authToken, onToken, getCaptchaToken } = {}) {
     if (!baseUrl) throw new Error("baseUrl is required");
     if (!collection) throw new Error("collection is required");
     this.baseUrl = baseUrl.replace(/\/+$/, "");
@@ -138,6 +172,16 @@ export class PasskeysClient {
     this.authToken = authToken || null;
     // called with the replacement token after a successful step-up
     this.onToken = onToken || null;
+    // optional async (action) => token, called before the unauthenticated
+    // requests that may need a captcha (see auth-methods "captcha"). The token
+    // is sent as the X-Captcha-Token header.
+    this.getCaptchaToken = getCaptchaToken || null;
+  }
+
+  async _captchaHeaders(action) {
+    if (!this.getCaptchaToken) return {};
+    const token = await this.getCaptchaToken(action);
+    return token ? { "X-Captcha-Token": token } : {};
   }
 
   _collectionPath() {
@@ -152,9 +196,10 @@ export class PasskeysClient {
 
   // requestReset(email) asks for the emailed passkey recovery link. The server
   // answers 204 whether or not the address is registered.
-  requestReset(email) {
+  async requestReset(email) {
     return this._fetch(this._collectionPath() + "/request-passkey-reset", {
       method: "POST",
+      headers: await this._captchaHeaders("reset_request"),
       body: JSON.stringify({ email }),
     });
   }
@@ -189,6 +234,7 @@ export class PasskeysClient {
     if (!identity) throw new Error("identity is required");
     const begin = await this._fetch(this._path() + "/login-begin", {
       method: "POST",
+      headers: await this._captchaHeaders("passkey_login"),
       body: JSON.stringify({ identity }),
     });
     let publicKey = begin.options || begin.publicKey || begin;
@@ -394,6 +440,7 @@ const passkeysPageHTML = `<!DOCTYPE html>
   <label>Email or username
     <input type="text" id="identity" autocomplete="username webauthn" autofocus>
   </label>
+  <div id="captchaBox" hidden></div>
   <button id="btnLogin">Sign in with passkey</button>
   <p class="muted" id="pwHint" style="margin-top:1.5em;">
     No passkey yet? <a href="#" id="linkPasswordLogin">Sign in with password to register one.</a>
@@ -454,9 +501,62 @@ function saveAuth(v) {
   if (v) localStorage.setItem(STORAGE_KEY, JSON.stringify(v));
   else localStorage.removeItem(STORAGE_KEY);
 }
+// ---- optional captcha (auth-methods "captcha") --------------------------
+// The provider script is loaded ONLY when the collection requires a captcha
+// for the action being performed, and never otherwise.
+let captchaCfg = null;
+const captchaScripts = {};
+const CAPTCHA_SRC = {
+  turnstile: () => "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit",
+  hcaptcha: () => "https://js.hcaptcha.com/1/api.js?render=explicit",
+  recaptchaV2: () => "https://www.google.com/recaptcha/api.js?render=explicit",
+  recaptchaV3: (cfg) => "https://www.google.com/recaptcha/api.js?render=" + encodeURIComponent(cfg.siteKey),
+};
+function loadCaptchaScript(cfg) {
+  const src = CAPTCHA_SRC[cfg.provider] && CAPTCHA_SRC[cfg.provider](cfg);
+  if (!src) return Promise.reject(new Error("Unsupported captcha provider."));
+  if (!captchaScripts[src]) {
+    captchaScripts[src] = new Promise((resolve, reject) => {
+      const el = document.createElement("script");
+      el.src = src; el.async = true;
+      el.onload = resolve;
+      el.onerror = () => reject(new Error("Could not load the captcha."));
+      document.head.appendChild(el);
+    });
+  }
+  return captchaScripts[src];
+}
+async function getCaptchaToken(action) {
+  const cfg = captchaCfg;
+  if (!cfg || !cfg.required || cfg.required.indexOf(action) < 0) return undefined;
+  await loadCaptchaScript(cfg);
+  if (cfg.provider === "recaptchaV3") {
+    await new Promise((r) => grecaptcha.ready(r));
+    return grecaptcha.execute(cfg.siteKey, { action });
+  }
+  const api = cfg.provider === "turnstile" ? window.turnstile : cfg.provider === "hcaptcha" ? window.hcaptcha : window.grecaptcha;
+  if (cfg.provider === "recaptchaV2") await new Promise((r) => grecaptcha.ready(r));
+  const box = $("captchaBox");
+  box.hidden = false;
+  box.textContent = "";
+  const holder = document.createElement("div");
+  box.appendChild(holder);
+  return new Promise((resolve, reject) => {
+    const done = (fn, v) => { box.hidden = true; box.textContent = ""; fn(v); };
+    api.render(holder, {
+      sitekey: cfg.siteKey,
+      action: cfg.provider === "turnstile" ? action : undefined,
+      callback: (token) => done(resolve, token),
+      "error-callback": () => done(reject, new Error("Captcha failed, please try again.")),
+      "expired-callback": () => done(reject, new Error("Captcha expired, please try again.")),
+    });
+  });
+}
+
 function client() {
   const auth = loadAuth();
   return new PasskeysClient({
+    getCaptchaToken,
     baseUrl: BASE_URL,
     collection: COLLECTION,
     authToken: auth ? auth.token : null,
@@ -498,6 +598,7 @@ function stopAutofill() {
 async function setupMethods() {
   try {
     const methods = await client().methods();
+    captchaCfg = (methods && methods.captcha) || null;
     const wa = (methods && methods.webauthn) || {};
     if (wa.passkeyOnly) {
       // no password to fall back on: offer the emailed link instead
@@ -537,9 +638,12 @@ async function loginWithPasskey() {
 async function passwordLogin() {
   showMsg("");
   try {
+    const headers = { "Content-Type": "application/json" };
+    const captcha = await getCaptchaToken("login");
+    if (captcha) headers["X-Captcha-Token"] = captcha;
     const res = await fetch(BASE_URL + "/api/collections/" + encodeURIComponent(COLLECTION) + "/auth-with-password", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ identity: $("pwEmail").value, password: $("pwPass").value }),
     });
     const body = await res.json();

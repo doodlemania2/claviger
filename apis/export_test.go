@@ -41,3 +41,5 @@ func RateLimitTestForgetSettingsReload(app core.App) { forgetRateLimitStoreEntri
 func SetCaptchaVerifierForTest(app core.App, v captcha.Verifier) {
 	app.Store().Set(captchaVerifierStoreKey, v)
 }
+
+func PasskeysPageCSPForTest(cfg core.CaptchaConfig) string { return passkeysPageCSP(cfg) }

@@ -5,6 +5,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/doodlemania2/claviger/apis"
+	"github.com/doodlemania2/claviger/core"
 )
 
 func TestPasskeysPageAndClientCoverNewFlows(t *testing.T) {
@@ -48,5 +51,81 @@ func TestPasskeysPageAndClientCoverNewFlows(t *testing.T) {
 		if !strings.Contains(client, want) {
 			t.Errorf("passkeys client is missing %q", want)
 		}
+	}
+}
+
+func TestPasskeysPageCSPCaptcha(t *testing.T) {
+	t.Parallel()
+
+	const original = "default-src 'self'; " +
+		"script-src 'self' 'unsafe-inline'; " +
+		"style-src 'self' 'unsafe-inline'; " +
+		"img-src 'self' data:; " +
+		"connect-src 'self'; " +
+		"frame-ancestors 'self'; " +
+		"base-uri 'self'; " +
+		"form-action 'self'"
+
+	if got := apis.PasskeysPageCSPForTest(core.CaptchaConfig{}); got != original {
+		t.Fatalf("CSP must be unchanged without captcha, got %q", got)
+	}
+
+	// provider set but no action requires it: still unchanged
+	if got := apis.PasskeysPageCSPForTest(core.CaptchaConfig{Provider: "turnstile", SiteKey: "a", SecretKey: "b"}); got != original {
+		t.Fatalf("CSP must be unchanged while no action is enabled, got %q", got)
+	}
+
+	on := core.CaptchaActions{PasskeyLogin: true}
+
+	scenarios := []struct {
+		provider string
+		want     []string
+		notWant  []string
+	}{
+		{"turnstile", []string{"script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com;", "frame-src 'self' https://challenges.cloudflare.com;"}, []string{"hcaptcha", "google"}},
+		{"hcaptcha", []string{"https://*.hcaptcha.com", "frame-src 'self' https://hcaptcha.com"}, []string{"cloudflare", "google"}},
+		{"recaptchaV2", []string{"https://www.google.com/recaptcha/", "https://www.gstatic.com/recaptcha/", "frame-src"}, []string{"cloudflare", "hcaptcha"}},
+		{"recaptchaV3", []string{"https://www.google.com/recaptcha/"}, []string{"cloudflare", "hcaptcha"}},
+	}
+
+	for _, s := range scenarios {
+		got := apis.PasskeysPageCSPForTest(core.CaptchaConfig{Provider: s.provider, SiteKey: "a", SecretKey: "b", Actions: on})
+		for _, w := range s.want {
+			if !strings.Contains(got, w) {
+				t.Errorf("%s: CSP %q is missing %q", s.provider, got, w)
+			}
+		}
+		for _, w := range s.notWant {
+			if strings.Contains(got, w) {
+				t.Errorf("%s: CSP %q must not mention %q", s.provider, got, w)
+			}
+		}
+		if strings.Contains(got, "*.google") || strings.Contains(got, " *;") || strings.Contains(got, "default-src *") {
+			t.Errorf("%s: CSP too wide: %q", s.provider, got)
+		}
+		if !strings.Contains(got, "frame-ancestors 'self'") {
+			t.Errorf("%s: frame-ancestors lost: %q", s.provider, got)
+		}
+	}
+}
+
+func TestPasskeysPageServesCaptchaLoaderWithoutProviderScripts(t *testing.T) {
+	t.Parallel()
+
+	env := newCeremonyEnv(t)
+
+	rec := httptest.NewRecorder()
+	env.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/passkeys", nil))
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "getCaptchaToken") {
+		t.Error("page should know how to render a captcha on demand")
+	}
+	// the provider scripts are injected on demand, never referenced by a <script src>
+	if strings.Contains(body, `<script src="https://`) {
+		t.Error("page must not load third party scripts statically")
+	}
+	if csp := rec.Header().Get("Content-Security-Policy"); strings.Contains(csp, "cloudflare") || strings.Contains(csp, "hcaptcha") || strings.Contains(csp, "google") {
+		t.Errorf("default CSP must not mention captcha providers: %q", csp)
 	}
 }
