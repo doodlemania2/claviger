@@ -271,6 +271,7 @@ func TestOrgNoBehaviourChangeWithoutOrgs(t *testing.T) {
 	users, _ := app.FindCollectionByNameOrId("users")
 	u := core.NewRecord(users)
 	u.SetEmail("plain@orgs.test")
+	u.Set("username", "orgs_plain")
 	u.SetPassword("password123")
 	orgMust(t, app.Save(u))
 
