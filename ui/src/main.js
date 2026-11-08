@@ -63,6 +63,7 @@ import "./fields/json/init";
 import "./fields/geoPoint/init";
 import "./fields/password/init";
 import "./fields/encryptedText/init"; // fork-local (#75)
+import "./fields/encryptedJSON/init"; // fork-local (#75)
 import "./collections/indexUpsertModal";
 import "./collections/collectionUpsertModal";
 import "./collections/addCollectionFieldButton";

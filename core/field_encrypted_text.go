@@ -4,12 +4,10 @@ import (
 	"context"
 	"database/sql/driver"
 	"fmt"
-	"regexp"
 	"strings"
 
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
 	"github.com/doodlemania2/claviger/core/validators"
-	"github.com/doodlemania2/claviger/tools/dbutils"
 	"github.com/doodlemania2/claviger/tools/router"
 	"github.com/spf13/cast"
 )
@@ -116,61 +114,15 @@ func (f *EncryptedTextField) ColumnType(app App) string {
 	return "TEXT DEFAULT '' NOT NULL"
 }
 
-// reuse stash --------------------------------------------------------------
-
-// encryptedTextStash remembers the ciphertext a value was loaded from (or last
-// sealed to), so that saving an unchanged value stores the identical
-// ciphertext instead of sealing again. It lives in the record's original data
-// under a key no field can have, which Record.Original() copies.
-type encryptedTextStash struct {
-	plain    string
-	stored   string
-	recordId string
-	keyId    string
-}
-
-func (f *EncryptedTextField) stashKey() string {
-	return "\x00enc:" + f.Id
-}
-
-func (f *EncryptedTextField) getStash(record *Record) *encryptedTextStash {
-	s, _ := record.originalData[f.stashKey()].(*encryptedTextStash)
-	return s
-}
-
-func (f *EncryptedTextField) setStash(record *Record, s *encryptedTextStash) {
-	if record.originalData == nil {
-		return
-	}
-	record.originalData[f.stashKey()] = s
-}
-
 // PrepareValue implements [Field.PrepareValue] interface method.
 //
 // It is called for values scanned from the database (and for the zero value),
 // never for user input, which goes through the setter. A stored value that
 // carries the "enc:v1:" prefix is decrypted; anything else is taken as
 // plaintext, which is how a column converted from "text" stays readable until
-// its rows are saved again.
+// its rows are saved again (unless the field is in strict mode).
 func (f *EncryptedTextField) PrepareValue(record *Record, raw any) (any, error) {
-	str := cast.ToString(raw)
-
-	if !strings.HasPrefix(str, fieldCipherPrefix) {
-		return str, nil
-	}
-
-	if record.Id == "" {
-		return nil, fmt.Errorf("encrypted field %q: the record id is not available yet (the \"id\" field must come first in the collection)", f.Name)
-	}
-
-	plain, keyId, err := fieldKeys.open(record.Collection().Id, f.Id, record.Id, str)
-	if err != nil {
-		return nil, fmt.Errorf("encrypted field %q of record %q: %w", f.Name, record.Id, err)
-	}
-
-	f.setStash(record, &encryptedTextStash{plain: string(plain), stored: str, recordId: record.Id, keyId: keyId})
-
-	return string(plain), nil
+	return sealedPrepare(record, f.Name, f.Id, cast.ToString(raw))
 }
 
 // DriverValue implements the [DriverValuer] interface.
@@ -180,27 +132,7 @@ func (f *EncryptedTextField) DriverValue(record *Record) (driver.Value, error) {
 		plain = cast.ToString(record.GetRaw(f.Name))
 	}
 
-	if plain == "" {
-		return "", nil
-	}
-
-	collectionId := record.Collection().Id
-
-	// unchanged value, same record and still the current key: keep the stored ciphertext
-	if s := f.getStash(record); s != nil && s.plain == plain && s.recordId == record.Id {
-		if cur, _ := fieldKeys.currentKeyId(collectionId, f.Id); cur == s.keyId {
-			return s.stored, nil
-		}
-	}
-
-	stored, keyId, err := fieldKeys.seal(collectionId, f.Id, record.Id, []byte(plain))
-	if err != nil {
-		return nil, fmt.Errorf("encrypted field %q: %w", f.Name, err)
-	}
-
-	f.setStash(record, &encryptedTextStash{plain: plain, stored: stored, recordId: record.Id, keyId: keyId})
-
-	return stored, nil
+	return sealedDriverValue(record, f.Name, f.Id, plain)
 }
 
 // FindSetter implements the [SetterFinder] interface.
@@ -268,9 +200,9 @@ func (f *EncryptedTextField) ValidateSettings(ctx context.Context, app App, coll
 		validation.Field(&f.Id, validation.By(DefaultFieldIdValidationRule)),
 		validation.Field(&f.Name,
 			validation.By(DefaultFieldNameValidationRule),
-			validation.By(f.checkAfterId(collection)),
-			validation.By(f.checkNotIndexed(collection)),
-			validation.By(f.checkKeySource(app)),
+			validation.By(sealedCheckAfterId(collection, f.Name)),
+			validation.By(sealedCheckNotIndexed(collection, f.Name)),
+			validation.By(sealedCheckKeySource(app)),
 		),
 		validation.Field(&f.Help, validation.By(DefaultFieldHelpValidationRule)),
 		validation.Field(&f.Min, validation.Min(0), validation.Max(maxSafeJSONInt)),
@@ -278,77 +210,11 @@ func (f *EncryptedTextField) ValidateSettings(ctx context.Context, app App, coll
 	)
 }
 
-// checkAfterId requires the "id" field to precede this one: the record id is
-// part of the authenticated data, and values are decrypted field by field
-// while a row is scanned.
-func (f *EncryptedTextField) checkAfterId(collection *Collection) validation.RuleFunc {
-	return func(any) error {
-		for _, field := range collection.Fields {
-			if field.GetName() == FieldNameId {
-				return nil
-			}
-			if field.GetName() == f.Name {
-				break
-			}
-		}
-		return validation.NewError("validation_encrypted_field_before_id", `An encrypted field must come after the "id" field.`)
-	}
-}
-
-// checkNotIndexed rejects every index that mentions the field, unique ones
-// included: the column holds random ciphertext, so an index could never
-// enforce or accelerate anything, only give a false sense of it.
-func (f *EncryptedTextField) checkNotIndexed(collection *Collection) validation.RuleFunc {
-	return func(any) error {
-		if f.Name == "" {
-			return nil
-		}
-
-		ref := regexp.MustCompile(`(?i)(^|[^\w])` + regexp.QuoteMeta(f.Name) + `([^\w]|$)`)
-
-		for _, idx := range collection.Indexes {
-			parsed := dbutils.ParseIndex(idx)
-
-			hit := ref.MatchString(parsed.Where)
-			for _, col := range parsed.Columns {
-				if ref.MatchString(col.Name) {
-					hit = true
-				}
-			}
-
-			if hit {
-				return validation.NewError(
-					"validation_encrypted_field_indexed",
-					"Encrypted fields cannot be indexed (the index "+parsed.IndexName+" uses it). Remove the index.",
-				)
-			}
-		}
-
-		return nil
-	}
-}
-
-// checkKeySource fails the collection save early, with a clear message, when
-// there is no key-encryption key to protect the field's data key with.
-func (f *EncryptedTextField) checkKeySource(app App) validation.RuleFunc {
-	return func(any) error {
-		if app == nil {
-			return nil
-		}
-
-		if _, err := fieldKeySource(app); err != nil {
-			return validation.NewError("validation_encrypted_field_no_key", "Encrypted fields need a key-encryption key: "+err.Error())
-		}
-
-		return nil
-	}
-}
-
 // checkEncryptedFieldFilterable is called by the record field resolver for the
 // last segment of every filter, sort and API rule path. It is the only
 // upstream hook of the feature.
 func checkEncryptedFieldFilterable(field Field) error {
-	if field != nil && field.Type() == FieldTypeEncryptedText {
+	if field != nil && IsEncryptedFieldType(field.Type()) {
 		return newEncryptedFieldFilterError(field.GetName())
 	}
 	return nil

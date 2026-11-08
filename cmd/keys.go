@@ -219,7 +219,7 @@ func readFieldKeys(ctx context.Context, dbPath string) (rows []fieldKeysCheckRow
 		}
 
 		for _, f := range fields {
-			if f.Type == core.FieldTypeEncryptedText {
+			if core.IsEncryptedFieldType(f.Type) {
 				live[id+"|"+f.Id] = name + "." + f.Name
 			}
 		}

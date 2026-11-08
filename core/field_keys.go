@@ -75,11 +75,29 @@ type fieldKeyring struct {
 	mu      sync.RWMutex
 	byID    map[string]*fieldKeyEntry
 	current map[string]string // collectionId|fieldId -> key id
+	strict  map[string]bool   // collectionId|fieldId -> unencrypted values are an error
 }
 
 var fieldKeys = &fieldKeyring{
 	byID:    map[string]*fieldKeyEntry{},
 	current: map[string]string{},
+	strict:  map[string]bool{},
+}
+
+func (k *fieldKeyring) isStrict(collectionId, fieldId string) bool {
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	return k.strict[fieldKeyRef(collectionId, fieldId)]
+}
+
+func (k *fieldKeyring) setStrict(collectionId, fieldId string, strict bool) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if strict {
+		k.strict[fieldKeyRef(collectionId, fieldId)] = true
+	} else {
+		delete(k.strict, fieldKeyRef(collectionId, fieldId))
+	}
 }
 
 func fieldKeyRef(collectionId, fieldId string) string {
@@ -237,12 +255,12 @@ func scanFieldKeyRows(app App, where dbx.Expression) ([]fieldKeyRow, error) {
 	return rows, nil
 }
 
-// encryptedFieldsOf returns the encryptedText fields of a collection.
-func encryptedFieldsOf(collection *Collection) []*EncryptedTextField {
-	var result []*EncryptedTextField
+// encryptedFieldsOf returns the encrypted fields (any encrypted type) of a collection.
+func encryptedFieldsOf(collection *Collection) []Field {
+	var result []Field
 	for _, f := range collection.Fields {
-		if ef, ok := f.(*EncryptedTextField); ok {
-			result = append(result, ef)
+		if IsEncryptedFieldType(f.Type()) {
+			result = append(result, f)
 		}
 	}
 	return result
@@ -279,18 +297,18 @@ func ensureFieldKeys(app App, collection *Collection) error {
 	}
 
 	for _, f := range fields {
-		rows, err := scanFieldKeyRows(app, dbx.HashExp{"collectionRef": collection.Id, "fieldRef": f.Id, "retired": ""})
+		rows, err := scanFieldKeyRows(app, dbx.HashExp{"collectionRef": collection.Id, "fieldRef": f.GetId(), "retired": ""})
 		if err != nil {
 			return err
 		}
 
 		if len(rows) > 0 {
 			// make sure it is registered (e.g. a freshly imported database)
-			if _, ok := fieldKeys.currentKeyId(collection.Id, f.Id); ok {
+			if _, ok := fieldKeys.currentKeyId(collection.Id, f.GetId()); ok {
 				continue
 			}
 			if err := registerFieldKeyRows(src, rows, true); err != nil {
-				return fmt.Errorf("field %s.%s: %w", collection.Name, f.Name, err)
+				return fmt.Errorf("field %s.%s: %w", collection.Name, f.GetName(), err)
 			}
 			continue
 		}
@@ -302,7 +320,7 @@ func ensureFieldKeys(app App, collection *Collection) error {
 
 		wrapped, err := src.Wrap(context.Background(), dek)
 		if err != nil {
-			return fmt.Errorf("failed to wrap the data key of %s.%s: %w", collection.Name, f.Name, err)
+			return fmt.Errorf("failed to wrap the data key of %s.%s: %w", collection.Name, f.GetName(), err)
 		}
 
 		idBytes := make([]byte, 8)
@@ -314,7 +332,7 @@ func ensureFieldKeys(app App, collection *Collection) error {
 		_, err = app.NonconcurrentDB().Insert(CollectionNameFieldKeys, dbx.Params{
 			"id":            security.RandomString(15),
 			"collectionRef": collection.Id,
-			"fieldRef":      f.Id,
+			"fieldRef":      f.GetId(),
 			"keyId":         keyId,
 			"kekId":         src.KeyID(),
 			"wrapped":       base64.StdEncoding.EncodeToString(wrapped),
@@ -322,13 +340,13 @@ func ensureFieldKeys(app App, collection *Collection) error {
 			"created":       types.NowDateTime().String(),
 		}).Execute()
 		if err != nil {
-			return fmt.Errorf("failed to store the data key of %s.%s: %w", collection.Name, f.Name, err)
+			return fmt.Errorf("failed to store the data key of %s.%s: %w", collection.Name, f.GetName(), err)
 		}
 
 		// registered right away so that records can be saved in the same
 		// transaction. If the transaction rolls back, the field does not
 		// exist either, and the next save of it creates a new key.
-		if err := fieldKeys.add(keyId, collection.Id, f.Id, dek, true); err != nil {
+		if err := fieldKeys.add(keyId, collection.Id, f.GetId(), dek, true); err != nil {
 			return err
 		}
 	}
@@ -369,7 +387,7 @@ func loadFieldKeys(app App) error {
 	live := map[string]string{} // collectionId|fieldId -> "collection.field"
 	for _, c := range collections {
 		for _, f := range encryptedFieldsOf(c) {
-			live[fieldKeyRef(c.Id, f.Id)] = c.Name + "." + f.Name
+			live[fieldKeyRef(c.Id, f.GetId())] = c.Name + "." + f.GetName()
 		}
 	}
 
