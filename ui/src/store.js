@@ -93,6 +93,11 @@ window.app.store = store({
                 label: "Mail settings",
             },
             {
+                href: "#/settings/security",
+                icon: "ri-lock-password-line",
+                label: "Security (2FA)",
+            },
+            {
                 href: "#/settings/storage",
                 icon: "ri-archive-drawer-line",
                 label: "Files storage",
