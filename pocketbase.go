@@ -12,6 +12,7 @@ import (
 
 	"github.com/doodlemania2/claviger/cmd"
 	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/oidc"
 	"github.com/doodlemania2/claviger/tools/hook"
 	"github.com/doodlemania2/claviger/tools/list"
 	"github.com/doodlemania2/claviger/tools/osutils"
@@ -138,6 +139,9 @@ func NewWithConfig(config Config) *PocketBase {
 		DBConnect:        config.DBConnect,
 	})
 
+	// fork-local (#71): the OpenID Connect provider (inert until a client is registered)
+	oidc.Register(pb.App)
+
 	// hide the default help command (allow only `--help` flag)
 	pb.RootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 
@@ -169,6 +173,7 @@ func NewWithConfig(config Config) *PocketBase {
 func (pb *PocketBase) Start() error {
 	// register system commands
 	pb.RootCmd.AddCommand(cmd.NewSuperuserCommand(pb))
+	pb.RootCmd.AddCommand(oidc.NewCommand(pb))
 	pb.RootCmd.AddCommand(cmd.NewServeCommand(pb, !pb.hideStartBanner))
 
 	return pb.Execute()
