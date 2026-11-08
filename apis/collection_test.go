@@ -47,7 +47,7 @@ func TestCollectionsList(t *testing.T) {
 			ExpectedContent: []string{
 				`"page":1`,
 				`"perPage":30`,
-				`"totalItems":25`,
+				`"totalItems":31`,
 				`"items":[{`,
 				`"name":"` + core.CollectionNameSuperusers + `"`,
 				`"name":"` + core.CollectionNameAuthOrigins + `"`,
@@ -87,11 +87,11 @@ func TestCollectionsList(t *testing.T) {
 			ExpectedContent: []string{
 				`"page":2`,
 				`"perPage":2`,
-				`"totalItems":25`,
+				`"totalItems":31`,
 				`"items":[{`,
-				// newest first: _fieldKeys and _bans are page 1, _sessions and a webhook collection page 2
-				`"name":"` + core.CollectionNameSessions + `"`,
-				`"name":"` + core.CollectionNameWebhookDeliveries + `"`,
+				// newest first: _fieldKeys and one OIDC collection are page 1; page 2 holds two more
+				// OIDC collections from the same migration, whose relative order is not asserted
+				`"name":"_oauth`,
 			},
 			ExpectedEvents: map[string]int{
 				"*":                        0,

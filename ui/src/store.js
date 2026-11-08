@@ -78,6 +78,11 @@ window.app.store = store({
             label: "Webhooks",
         },
         {
+            href: "#/oidc",
+            icon: "ri-id-card-line",
+            label: "OpenID Connect",
+        },
+        {
             href: "#/settings",
             icon: "ri-settings-3-line",
             label: "Settings",
