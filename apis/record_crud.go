@@ -87,7 +87,7 @@ func recordsList(e *core.RequestEvent) error {
 	records := []*core.Record{}
 	result, err := searchProvider.ParseAndExec(e.Request.URL.Query().Encode(), &records)
 	if err != nil {
-		return firstApiError(err, e.BadRequestError("", err))
+		return firstApiError(err, encryptedFieldFilterError(err, collection), e.BadRequestError("", err))
 	}
 
 	event := new(core.RecordsListRequestEvent)

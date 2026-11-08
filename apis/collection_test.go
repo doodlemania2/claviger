@@ -47,7 +47,7 @@ func TestCollectionsList(t *testing.T) {
 			ExpectedContent: []string{
 				`"page":1`,
 				`"perPage":30`,
-				`"totalItems":24`,
+				`"totalItems":25`,
 				`"items":[{`,
 				`"name":"` + core.CollectionNameSuperusers + `"`,
 				`"name":"` + core.CollectionNameAuthOrigins + `"`,
@@ -87,10 +87,11 @@ func TestCollectionsList(t *testing.T) {
 			ExpectedContent: []string{
 				`"page":2`,
 				`"perPage":2`,
-				`"totalItems":24`,
+				`"totalItems":25`,
 				`"items":[{`,
-				// newest first: _sessions/_bans are page 1, the two webhook collections page 2
-				`"name":"` + core.CollectionNameWebhooks + `"`,
+				// newest first: _fieldKeys and _bans are page 1, _sessions and a webhook collection page 2
+				`"name":"` + core.CollectionNameSessions + `"`,
+				`"name":"` + core.CollectionNameWebhookDeliveries + `"`,
 			},
 			ExpectedEvents: map[string]int{
 				"*":                        0,

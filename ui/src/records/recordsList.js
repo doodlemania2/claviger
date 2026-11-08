@@ -485,6 +485,12 @@ window.app.components.recordsList = function(propsArg = {}) {
                                             return `sort-handle ${sortDir} col-field-type-${field.type} col-field-name-${field.name}`;
                                         },
                                         onclick: (e) => {
+                                            // fork-local (#75): e.g. encrypted fields
+                                            if (app.fieldTypes[field.type]?.sortable === false) {
+                                                app.toasts.info(`"${field.name}" cannot be sorted.`);
+                                                return;
+                                            }
+
                                             let newSort = "-" + field.name;
                                             if (props.sort == newSort) {
                                                 newSort = field.name;
