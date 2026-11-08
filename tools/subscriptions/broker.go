@@ -3,8 +3,8 @@ package subscriptions
 import (
 	"fmt"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/list"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/store"
+	"github.com/doodlemania2/claviger/tools/list"
+	"github.com/doodlemania2/claviger/tools/store"
 )
 
 // Broker defines a struct for managing subscriptions clients.

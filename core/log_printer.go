@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"strings"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/logger"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/store"
+	"github.com/doodlemania2/claviger/tools/logger"
+	"github.com/doodlemania2/claviger/tools/store"
 	"github.com/fatih/color"
 	"github.com/spf13/cast"
 )

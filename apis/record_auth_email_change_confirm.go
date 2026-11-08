@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/security"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/security"
 )
 
 func recordConfirmEmailChange(e *core.RequestEvent) error {

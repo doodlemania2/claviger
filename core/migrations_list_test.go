@@ -3,7 +3,7 @@ package core_test
 import (
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	"github.com/doodlemania2/claviger/core"
 )
 
 func TestMigrationsList(t *testing.T) {

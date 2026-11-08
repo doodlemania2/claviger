@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/mail"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/hook"
+	"github.com/doodlemania2/claviger/tools/hook"
 	"github.com/gabriel-vasile/mimetype"
 )
 

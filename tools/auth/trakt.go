@@ -5,7 +5,7 @@ import (
 	"encoding/json/v2"
 	"net/http"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
+	"github.com/doodlemania2/claviger/tools/types"
 	"golang.org/x/oauth2"
 )
 

@@ -7,7 +7,7 @@ import (
 
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
 	"ganigeorgiev.com/pocketbase/ozzo-validation/v4/is"
-	"ganigeorgiev.com/pocketbase/pocketbase/core/validators"
+	"github.com/doodlemania2/claviger/core/validators"
 	"github.com/spf13/cast"
 )
 

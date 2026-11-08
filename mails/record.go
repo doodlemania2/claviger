@@ -6,9 +6,9 @@ import (
 	"net/mail"
 	"slices"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/mails/templates"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/mailer"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/mails/templates"
+	"github.com/doodlemania2/claviger/tools/mailer"
 )
 
 // SendRecordAuthAlert sends a new device login alert to the specified auth record.

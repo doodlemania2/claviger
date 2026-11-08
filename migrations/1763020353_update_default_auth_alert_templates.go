@@ -1,7 +1,7 @@
 package migrations
 
 import (
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	"github.com/doodlemania2/claviger/core"
 )
 
 const oldAuthAlertTemplate = `<p>Hello,</p>

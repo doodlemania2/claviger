@@ -1,6 +1,6 @@
 version: 2
 
-project_name: pocketbase
+project_name: claviger
 
 dist: .builds
 
@@ -11,9 +11,9 @@ before:
 builds:
   - id: build_noncgo
     main: ./examples/base
-    binary: pocketbase
+    binary: claviger
     ldflags:
-      - -s -w -X ganigeorgiev.com/pocketbase/pocketbase.Version={{ .Version }}
+      - -s -w -X github.com/doodlemania2/claviger.Version={{ .Version }}
     env:
       - CGO_ENABLED=0
     goos:

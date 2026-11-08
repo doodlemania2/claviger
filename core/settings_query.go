@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"os"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/security"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
+	"github.com/doodlemania2/claviger/tools/security"
+	"github.com/doodlemania2/claviger/tools/types"
 )
 
 type Param struct {

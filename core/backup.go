@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/inflector"
+	"github.com/doodlemania2/claviger/tools/inflector"
 )
 
 const (

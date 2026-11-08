@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
+	"github.com/doodlemania2/claviger/tools/types"
 )
 
 // contextKey is an alias type to prevent collisions with other log context keys.

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core/validators"
+	"github.com/doodlemania2/claviger/core/validators"
 )
 
 func Equal(t *testing.T) {

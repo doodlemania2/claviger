@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/filesystem/internal/s3blob/s3"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/filesystem/internal/s3blob/s3/tests"
+	"github.com/doodlemania2/claviger/tools/filesystem/internal/s3blob/s3"
+	"github.com/doodlemania2/claviger/tools/filesystem/internal/s3blob/s3/tests"
 )
 
 func TestS3URL(t *testing.T) {

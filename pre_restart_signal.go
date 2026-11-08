@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/hook"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/hook"
 )
 
 const (

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/cron"
+	"github.com/doodlemania2/claviger/tools/cron"
 )
 
 func TestNewMoment(t *testing.T) {

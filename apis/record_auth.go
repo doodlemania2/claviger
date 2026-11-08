@@ -1,8 +1,8 @@
 package apis
 
 import (
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/router"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/router"
 )
 
 // bindRecordAuthApi registers the auth record api endpoints and

@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/plugins/migratecmd"
-	"ganigeorgiev.com/pocketbase/pocketbase/tests"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/list"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/plugins/migratecmd"
+	"github.com/doodlemania2/claviger/tests"
+	"github.com/doodlemania2/claviger/tools/list"
+	"github.com/doodlemania2/claviger/tools/types"
 )
 
 func TestAutomigrateCollectionCreate(t *testing.T) {
@@ -212,8 +212,8 @@ package _test_migrations
 import (
 	"encoding/json/v2"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
+	"github.com/doodlemania2/claviger/core"
+	m "github.com/doodlemania2/claviger/migrations"
 )
 
 func init() {
@@ -681,8 +681,8 @@ package _test_migrations
 import (
 	"encoding/json/v2"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
+	"github.com/doodlemania2/claviger/core"
+	m "github.com/doodlemania2/claviger/migrations"
 )
 
 func init() {
@@ -1083,8 +1083,8 @@ package _test_migrations
 import (
 	"encoding/json/v2"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
+	"github.com/doodlemania2/claviger/core"
+	m "github.com/doodlemania2/claviger/migrations"
 )
 
 func init() {

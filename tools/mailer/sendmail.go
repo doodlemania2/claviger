@@ -9,8 +9,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/hook"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/security"
+	"github.com/doodlemania2/claviger/tools/hook"
+	"github.com/doodlemania2/claviger/tools/security"
 )
 
 var _ Mailer = (*Sendmail)(nil)

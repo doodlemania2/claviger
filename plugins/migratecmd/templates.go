@@ -10,7 +10,7 @@ import (
 	"slices"
 	"strings"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	"github.com/doodlemania2/claviger/core"
 )
 
 const (
@@ -302,8 +302,8 @@ func (p *plugin) goBlankTemplate() (string, error) {
 	const template = `package %s
 
 import (
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
+	"github.com/doodlemania2/claviger/core"
+	m "github.com/doodlemania2/claviger/migrations"
 )
 
 func init() {
@@ -344,8 +344,8 @@ func (p *plugin) goSnapshotTemplate(collections []*core.Collection) (string, err
 	const template = `package %s
 
 import (
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
+	"github.com/doodlemania2/claviger/core"
+	m "github.com/doodlemania2/claviger/migrations"
 )
 
 func init() {
@@ -385,8 +385,8 @@ func (p *plugin) goCreateTemplate(collection *core.Collection) (string, error) {
 import (
 	"encoding/json/v2"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
+	"github.com/doodlemania2/claviger/core"
+	m "github.com/doodlemania2/claviger/migrations"
 )
 
 func init() {
@@ -438,8 +438,8 @@ func (p *plugin) goDeleteTemplate(collection *core.Collection) (string, error) {
 import (
 	"encoding/json/v2"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
+	"github.com/doodlemania2/claviger/core"
+	m "github.com/doodlemania2/claviger/migrations"
 )
 
 func init() {
@@ -624,8 +624,8 @@ func (p *plugin) goDiffTemplate(new *core.Collection, old *core.Collection) (str
 		imports += "\n\t\"encoding/json/v2\"\n"
 	}
 
-	imports += "\n\t\"ganigeorgiev.com/pocketbase/pocketbase/core\""
-	imports += "\n\tm \"ganigeorgiev.com/pocketbase/pocketbase/migrations\""
+	imports += "\n\t\"github.com/doodlemania2/claviger/core\""
+	imports += "\n\tm \"github.com/doodlemania2/claviger/migrations\""
 	// ---
 
 	const template = `package %s

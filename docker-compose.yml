@@ -1,10 +1,10 @@
 services:
-  pocketbase:
+  claviger:
     build:
       context: .
       args:
         - VERSION=dev
-    container_name: pocketbase
+    container_name: claviger
     restart: unless-stopped
     environment:
       PB_HOST: 0.0.0.0

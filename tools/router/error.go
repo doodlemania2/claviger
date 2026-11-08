@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/inflector"
+	"github.com/doodlemania2/claviger/tools/inflector"
 )
 
 // SafeErrorItem defines a common error interface for a printable public safe error.

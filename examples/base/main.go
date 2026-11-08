@@ -6,14 +6,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"ganigeorgiev.com/pocketbase/pocketbase"
-	"ganigeorgiev.com/pocketbase/pocketbase/apis"
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/plugins/jsvm"
-	"ganigeorgiev.com/pocketbase/pocketbase/plugins/migratecmd"
-	"ganigeorgiev.com/pocketbase/pocketbase/plugins/update"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/hook"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/osutils"
+	pocketbase "github.com/doodlemania2/claviger"
+	"github.com/doodlemania2/claviger/apis"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/plugins/jsvm"
+	"github.com/doodlemania2/claviger/plugins/migratecmd"
+	"github.com/doodlemania2/claviger/plugins/update"
+	"github.com/doodlemania2/claviger/tools/hook"
+	"github.com/doodlemania2/claviger/tools/osutils"
 )
 
 func main() {
