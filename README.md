@@ -83,6 +83,20 @@ storage. On a container platform that starts the new container before stopping t
 the entrypoint's handover keeps the two from writing at once. On network storage, use NFS,
 not SMB; SMB lacks the byte-range locks SQLite's WAL mode needs.
 
+### Deploy
+
+Copy-paste templates live in [`deploy/`](deploy/). Each folder has its own README.
+
+| Platform | Folder |
+|---|---|
+| Docker Compose, optional Caddy HTTPS and Litestream | [`deploy/docker-compose`](deploy/docker-compose) |
+| Fly.io | [`deploy/fly`](deploy/fly) |
+| Kubernetes | [`deploy/kubernetes`](deploy/kubernetes) |
+| Azure Container Apps (Bicep, NFS) | [`deploy/azure-container-apps`](deploy/azure-container-apps) |
+
+All of them run a single instance. Passkeys need HTTPS and a host name you do not
+change later.
+
 ## Passkey API
 
 Enable passkeys on an auth collection (`webauthn.enabled`), then:
