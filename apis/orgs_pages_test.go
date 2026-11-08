@@ -246,7 +246,7 @@ func TestOrgPagesScriptsMatchMarkup(t *testing.T) {
 
 		for _, src := range []string{js, auth} {
 			for _, m := range jsIDRe.FindAllStringSubmatch(src, -1) {
-				if !have[m[1]] && !(src == js && m[1] == "toSignUp") { // toSignUp only exists when there is no account yet
+				if !have[m[1]] && (src != js || m[1] != "toSignUp") { // toSignUp only exists when there is no account yet
 					t.Errorf("%s uses #%s which %s does not have", script, m[1], pageURL)
 				}
 			}
