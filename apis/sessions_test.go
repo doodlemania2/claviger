@@ -9,6 +9,7 @@ import (
 
 	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tests"
 	"github.com/doodlemania2/claviger/tools/security"
 	"github.com/doodlemania2/claviger/tools/types"
 )
@@ -583,8 +584,8 @@ func TestSessionForCustomAuthResponse(t *testing.T) {
 	if e.GetString("actorId") != sessSuperId || e.GetString("targetId") != sessUserId || e.GetString("actorType") != "superuser" {
 		t.Fatalf("entry: %v", e.PublicExport())
 	}
-	if !strings.Contains(e.GetString("meta"), "checking ticket 42") {
-		t.Fatalf("meta: %s", e.GetString("meta"))
+	if !strings.Contains(tests.CompactJSON(e.GetString("meta")), "checking ticket 42") {
+		t.Fatalf("meta: %s", tests.CompactJSON(e.GetString("meta")))
 	}
 }
 

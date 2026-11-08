@@ -68,7 +68,7 @@ func TestAuditLogRecordChanges(t *testing.T) {
 					e.GetString("targetCollection") != "demo2" || e.GetString("ip") == "" {
 					t.Fatalf("Unexpected entry: %s", e.PublicExport())
 				}
-				if !strings.Contains(e.GetString("changedFields"), `"title"`) || !strings.Contains(e.GetString("after"), `"title":"hello"`) {
+				if !strings.Contains(e.GetString("changedFields"), `"title"`) || !strings.Contains(tests.CompactJSON(e.GetString("after")), `"title":"hello"`) {
 					t.Fatalf("Unexpected diff: %s", e.PublicExport())
 				}
 			},
@@ -94,8 +94,8 @@ func TestAuditLogRecordChanges(t *testing.T) {
 					e.GetString("actorCollection") != "users" || e.GetString("actorId") != "4q1xlclmfloku33" {
 					t.Fatalf("Unexpected entry: %s", e.PublicExport())
 				}
-				if !strings.Contains(e.GetString("before"), `"title":"test1"`) || !strings.Contains(e.GetString("after"), `"title":"changed"`) {
-					t.Fatalf("Unexpected diff: before=%s after=%s", e.GetString("before"), e.GetString("after"))
+				if !strings.Contains(tests.CompactJSON(e.GetString("before")), `"title":"test1"`) || !strings.Contains(tests.CompactJSON(e.GetString("after")), `"title":"changed"`) {
+					t.Fatalf("Unexpected diff: before=%s after=%s", tests.CompactJSON(e.GetString("before")), tests.CompactJSON(e.GetString("after")))
 				}
 				if e.GetString("changedFields") != `["title"]` {
 					t.Fatalf("Unexpected changed fields: %s", e.GetString("changedFields"))
@@ -137,7 +137,7 @@ func TestAuditLogRecordChanges(t *testing.T) {
 					t.Fatalf("Expected the cascade entry to be attributed to the same actor (2 entries), got %d", n)
 				}
 				e := entries[0]
-				if e.GetString("action") != "delete" || !strings.Contains(e.GetString("before"), `"title":"test1"`) || strings.Contains(e.GetString("after"), "title") {
+				if e.GetString("action") != "delete" || !strings.Contains(tests.CompactJSON(e.GetString("before")), `"title":"test1"`) || strings.Contains(tests.CompactJSON(e.GetString("after")), "title") {
 					t.Fatalf("Unexpected entry: %s", e.PublicExport())
 				}
 			},
@@ -161,13 +161,13 @@ func TestAuditLogRecordChanges(t *testing.T) {
 				}
 				e := entries[0]
 				if e.GetString("actorType") != "record" || e.GetString("actorId") != "auditpwuser0001" ||
-					e.GetString("actorCollection") != "users" || !strings.Contains(e.GetString("meta"), `"self":true`) || e.GetString("ip") == "" {
+					e.GetString("actorCollection") != "users" || !strings.Contains(tests.CompactJSON(e.GetString("meta")), `"self":true`) || e.GetString("ip") == "" {
 					t.Fatalf("Expected the new record as (self) actor, got %s", e.PublicExport())
 				}
-				after := e.GetString("after")
+				after := tests.CompactJSON(e.GetString("after"))
 				record, _ := app.FindRecordById("users", "auditpwuser0001")
 				for _, leaked := range []string{"correct-horse-battery", record.GetString("tokenKey"), record.GetString("password:hash")} {
-					if leaked != "" && strings.Contains(e.GetString("before")+after, leaked) {
+					if leaked != "" && strings.Contains(tests.CompactJSON(e.GetString("before"))+after, leaked) {
 						t.Fatalf("Leaked sensitive value %q in %s", leaked, after)
 					}
 				}

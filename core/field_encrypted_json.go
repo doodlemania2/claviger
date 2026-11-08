@@ -98,7 +98,7 @@ func (f *EncryptedJSONField) SetHidden(hidden bool) { f.Hidden = hidden }
 // Plain TEXT on purpose: the stored value is an opaque string, and a JSON
 // column type would make the database validate or index ciphertext.
 func (f *EncryptedJSONField) ColumnType(app App) string {
-	return "TEXT DEFAULT '' NOT NULL"
+	return dialectOf(app).TextColumn()
 }
 
 // PrepareValue implements [Field.PrepareValue] interface method.

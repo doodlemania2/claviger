@@ -146,7 +146,7 @@ func TestAuditEntryHookEnrichAndSkip(t *testing.T) {
 		t.Fatal(err)
 	}
 	entries, _ := app.FindAllRecords(core.CollectionNameAuditLog)
-	if len(entries) != 1 || !strings.Contains(entries[0].GetString("meta"), `"enriched":true`) {
+	if len(entries) != 1 || !strings.Contains(tests.CompactJSON(entries[0].GetString("meta")), `"enriched":true`) {
 		t.Fatalf("Expected 1 enriched entry, got %v", entries)
 	}
 	if calls := app.EventCallsSnapshot()["OnAuditEntry"]; calls != 2 {
@@ -275,7 +275,7 @@ func TestAuditRedactionAndExclusions(t *testing.T) {
 	}
 
 	for _, e := range mustAll(t, app) {
-		raw := e.GetString("before") + e.GetString("after")
+		raw := tests.CompactJSON(e.GetString("before")) + tests.CompactJSON(e.GetString("after"))
 		for _, leaked := range []string{"super-secret-password", u.GetString("tokenKey"), u.GetString("password:hash"), "sk-live-123", "private note"} {
 			if strings.Contains(raw, leaked) {
 				t.Fatalf("Leaked %q in %s", leaked, raw)
@@ -530,8 +530,8 @@ func TestAuditSettingsNoOpAndSystemSave(t *testing.T) {
 		t.Fatalf("Expected the new entry: %v", err)
 	}
 	e := entries[0]
-	if e.GetString("actorType") != core.AuditActorTypeSystem || strings.Contains(e.GetString("after"), "go-side-secret") ||
-		!strings.Contains(e.GetString("after"), `"smtp.password":"[redacted]"`) {
+	if e.GetString("actorType") != core.AuditActorTypeSystem || strings.Contains(tests.CompactJSON(e.GetString("after")), "go-side-secret") ||
+		!strings.Contains(tests.CompactJSON(e.GetString("after")), `"smtp.password":"[redacted]"`) {
 		t.Fatalf("Unexpected entry %s", e.PublicExport())
 	}
 }
