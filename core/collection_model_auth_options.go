@@ -196,6 +196,10 @@ func (o *collectionAuthOptions) validate(cv *collectionValidator) error {
 		return err
 	}
 
+	if err := o.validateSignInMethods(cv); err != nil {
+		return err
+	}
+
 	if o.MFA.Enabled {
 		// if MFA is enabled require at least 2 auth methods
 		//
@@ -579,6 +583,15 @@ func (c OAuth2ProviderConfig) Validate() error {
 // for auth collections.
 type WebAuthnConfig struct {
 	Enabled bool `form:"enabled" json:"enabled"`
+
+	// Discoverable enables usernameless ("conditional UI" / autofill) sign-in:
+	// registration asks the authenticator for a discoverable (resident)
+	// credential and the discoverable login endpoints become available.
+	//
+	// It is off by default and omitted from the JSON when false, so
+	// collections saved before the option existed load and serialize
+	// exactly as before.
+	Discoverable bool `form:"discoverable" json:"discoverable,omitempty"`
 }
 
 // Validate makes WebAuthnConfig validatable by implementing [validation.Validatable] interface.

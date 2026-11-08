@@ -192,6 +192,7 @@ migrate((app) => {
     },
     "viewRule": "id = \"1\"",
     "webauthn": {
+      "discoverable": false,
       "enabled": false
     }
   });
@@ -384,6 +385,7 @@ func init() {
 			},
 			"viewRule": "id = \"1\"",
 			"webauthn": {
+				"discoverable": false,
 				"enabled": false
 			}
 		}` + "`" + `
@@ -665,6 +667,7 @@ migrate((app) => {
     },
     "viewRule": "id = \"1\"",
     "webauthn": {
+      "discoverable": false,
       "enabled": false
     }
   });
@@ -860,6 +863,7 @@ func init() {
 			},
 			"viewRule": "id = \"1\"",
 			"webauthn": {
+				"discoverable": false,
 				"enabled": false
 			}
 		}` + "`" + `
