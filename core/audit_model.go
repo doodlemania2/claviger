@@ -66,6 +66,7 @@ var auditExcludedCollections = []string{
 // (they change on every login).
 var auditNoiseFields = map[string][]string{
 	CollectionNameWebAuthnCredentials: {"signCount", "lastUsed"},
+	CollectionNameAPIKeys:             {"lastUsed"},
 }
 
 var auditSensitiveNameRegex = regexp.MustCompile(`(?i)(password|passwd|passphrase|secret|token|api[_-]?key|private[_-]?key|credential)`)
@@ -86,6 +87,10 @@ type AuditActor struct {
 	// Collection and Id are set for auth records and superusers.
 	Collection string `json:"collection"`
 	Id         string `json:"id"`
+
+	// APIKeyId is set when the request was authenticated with an API key
+	// (#95). It is written to the entry's meta.apiKeyId.
+	APIKeyId string `json:"apiKeyId,omitempty"`
 }
 
 // NewAuditActorFromRecord returns the actor for the provided auth record
@@ -386,6 +391,9 @@ func auditNextAndWrite(e *RecordEvent, action string) error {
 	if v, _ := e.Context.Value(auditCtxKey{}).(auditCtxValue); v.actor.Type != "" {
 		entry.Actor = v.actor
 		entry.IP = v.ip
+		if v.actor.APIKeyId != "" {
+			entry.Meta["apiKeyId"] = v.actor.APIKeyId
+		}
 	} else {
 		entry.Actor = AuditActor{Type: AuditActorTypeSystem}
 	}
