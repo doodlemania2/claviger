@@ -190,8 +190,13 @@ failing is a `Warn`).
 - **Refresh token**: opaque, 30 days, stored hashed, **rotated on every use**. Presenting a token that was
   already rotated is treated as theft: the whole chain is revoked and an audit entry is written. A refresh
   also fails when the Claviger session behind it is revoked or expired, or the account is banned or deleted.
-  Note that a refresh does not extend the session, so the collection's auth token duration limits how long a
-  client can stay signed in without the user signing in again.
+  **A refresh extends the session.** Each accepted refresh sets the Claviger session to end the collection's auth
+  token duration from now, never later than **30 days after the sign-in** (an absolute cap, `MaxSessionLifetime`)
+  and never earlier than it already ended. So an app in daily use keeps its user signed in for up to 30 days, then
+  the user signs in again; an app that is not used for longer than the auth token duration loses the session. The
+  cap is a constant, not a per-client setting (one knob fewer for a congregation; say so if a client needs its own).
+  A revoked, expired or banned session is never revived by a refresh: the check comes first. The single sign-on
+  cookie is not extended (12 hours from sign-in).
 
 | Claim | Value |
 | --- | --- |
@@ -207,6 +212,19 @@ failing is a `Warn`).
 Access tokens are not revocable offline: a revoked session or ban stops refresh, userinfo and introspection at
 once, but a JWT already issued stays valid until its 5 minutes are up. Use an opaque token plus introspection
 for instant cut-off.
+
+## Notes for client authors
+
+- **Native apps and loopback redirects (RFC 8252, 7.3).** For a *public* client (the library treats it as a
+  native app), a registered `http://127.0.0.1/callback` (or `localhost`, `[::1]`) also accepts the same path and
+  query on any port: the app picks a free port at run time. Only loopback hosts qualify, the path and query must
+  match exactly, and a registered `https` or custom-scheme URI is matched exactly as before. A *confidential*
+  client is always an exact match, port included.
+- **A failed PKCE check burns the code.** The authorization code is consumed by the first token request that
+  presents it, whatever happens next: a wrong `code_verifier` or a wrong client secret leaves the code spent
+  (`invalid_grant` afterwards), so a client that guesses cannot retry the same code and must start a new
+  authorization. This is deliberate (single use, RFC 6749 4.1.2): it gives an attacker holding a stolen code one
+  shot, not many. Presenting an already-used code a second time also revokes the tokens it produced.
 
 ## Signing keys
 
@@ -256,5 +274,9 @@ redirect happens.
   credentials.
 - The hosted pages are English only (#97). Email OTP and the OAuth2 "sign in with" providers are not offered
   on the hosted page.
-- The library logs through the global `slog` default, not the application logger.
+- The library logs through the process-global `slog` default (it ignores its `WithLogger` option), and the only
+  way to route that into the application logger is to replace the global default, which would also capture every
+  other package's `slog` output. Claviger does not do that: the library's lines (protocol errors such as a bad
+  `redirect_uri`) go to the process's standard slog destination, while Claviger's own OIDC log lines (rate limits,
+  failing client authentication, key and single sign-on problems) use the application logger.
 - Formal OpenID conformance (the Basic OP profile) has not been run yet; the plan is to run the suite in CI.

@@ -547,7 +547,51 @@ func (s *Store) CreateAccessAndRefreshTokens(ctx context.Context, req op.TokenRe
 		return "", "", time.Time{}, err
 	}
 
+	if current != "" {
+		s.extendSession(g.sid, g.collection)
+	}
+
 	return accessID, refresh, exp, nil
+}
+
+// extendSession keeps the Claviger session behind a refreshed grant alive: it
+// now ends the collection's auth token duration from this refresh, but never
+// later than MaxSessionLifetime after the sign-in, and it is never shortened.
+// Only a refresh does this, and only after the refresh token was accepted, so
+// the session was alive, the account not banned and the chain not revoked.
+func (s *Store) extendSession(sid, collectionRef string) {
+	if sid == "" {
+		return
+	}
+
+	col, err := s.app.FindCachedCollectionByNameOrId(collectionRef)
+	if err != nil || !col.IsAuth() || col.AuthToken.Duration <= 0 {
+		return
+	}
+
+	var row struct {
+		Created types.DateTime `db:"created"`
+		Expires types.DateTime `db:"expires"`
+	}
+
+	if err := s.app.ConcurrentDB().NewQuery(
+		"SELECT [[created]], [[expires]] FROM {{" + core.CollectionNameSessions + "}} WHERE [[id]] = {:sid} AND [[revoked]] = FALSE",
+	).Bind(dbx.Params{"sid": sid}).One(&row); err != nil {
+		return
+	}
+
+	target := time.Now().Add(time.Duration(col.AuthToken.Duration) * time.Second)
+	if limit := row.Created.Time().Add(MaxSessionLifetime); target.After(limit) {
+		target = limit
+	}
+
+	if !target.After(row.Expires.Time()) {
+		return
+	}
+
+	if err := core.SetSessionExpires(s.app, sid, target); err != nil {
+		s.app.Logger().Warn("Failed to extend the session on an OpenID Connect refresh", "error", err)
+	}
 }
 
 // TokenRequestByRefreshToken implements op.Storage.

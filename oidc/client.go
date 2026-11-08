@@ -30,6 +30,12 @@ const (
 	// needs the Claviger session behind it to be alive.
 	RefreshTokenLifetime = 30 * 24 * time.Hour
 
+	// MaxSessionLifetime is the absolute cap of a Claviger session that OIDC
+	// refreshes keep alive, counted from the sign-in. A refresh extends the
+	// session by the collection's auth token duration, never past this: after
+	// 30 days of uninterrupted use the user signs in again.
+	MaxSessionLifetime = 30 * 24 * time.Hour
+
 	authRequestLifetime = 10 * time.Minute
 	authCodeLifetime    = time.Minute
 )
