@@ -57,8 +57,10 @@ func TestPersistentRateLimitPartialBudgetSurvivesRestart(t *testing.T) {
 	apis.RateLimitTestRestart(app)
 
 	allow = apis.RateLimitTestLimiter(app, "rule-p", 3, 3600)
-	if !allow("ip") || !allow("ip") {
-		t.Fatal("2 requests should remain")
+	for i := 0; i < 2; i++ {
+		if !allow("ip") {
+			t.Fatalf("request %d of the 2 remaining should be allowed", i+1)
+		}
 	}
 	if allow("ip") {
 		t.Fatal("budget should be exhausted after 1+2 requests")

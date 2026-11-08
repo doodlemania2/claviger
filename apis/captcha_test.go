@@ -39,14 +39,12 @@ func (f *fakeCaptcha) Hits() int {
 }
 
 type captchaEndpoint struct {
-	action       string
-	url          string
-	body         string
-	okStatus     int // status when the captcha passes (or is not required)
-	enable       func(c *core.CaptchaActions)
-	prepare      func(t testing.TB, app *tests.TestApp)
-	authToken    string
-	notRequireOn string
+	action   string
+	url      string
+	body     string
+	okStatus int // status when the captcha passes (or is not required)
+	enable   func(c *core.CaptchaActions)
+	prepare  func(t testing.TB, app *tests.TestApp)
 }
 
 var captchaEndpoints = []captchaEndpoint{
