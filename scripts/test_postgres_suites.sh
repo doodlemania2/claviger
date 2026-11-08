@@ -29,7 +29,7 @@ log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
 
 # shellcheck disable=SC2086
-go test -count=1 -v -p 2 -skip "$skip_regex" "$@" $PACKAGES 2>&1 | tee "$log" | grep -E '^(--- FAIL|FAIL|ok|panic:)' || true
+go test -count=1 -v -p 2 -timeout 45m -skip "$skip_regex" "$@" $PACKAGES 2>&1 | tee "$log" | grep -E '^(--- FAIL|FAIL|ok|panic:)' || true
 
 if grep -q -- '^--- FAIL\|^FAIL\|^panic:' "$log"; then
   echo "::error::Postgres suites failed"

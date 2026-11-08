@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/doodlemania2/claviger/core"
@@ -107,12 +108,13 @@ func postgresUnescape(s string, escape byte) string {
 			b.WriteByte(escape)
 			i++
 		case i+8 <= len(s) && s[i+1] == '+':
-			if r, err := strconv.ParseUint(s[i+2:i+8], 16, 32); err == nil {
+			// 6 hex digits fit in 24 bits; anything past the Unicode range is left as is
+			if r, err := strconv.ParseUint(s[i+2:i+8], 16, 24); err == nil && r <= utf8.MaxRune {
 				b.WriteRune(rune(r))
 				i += 7
 			}
 		case i+5 <= len(s):
-			if r, err := strconv.ParseUint(s[i+1:i+5], 16, 32); err == nil {
+			if r, err := strconv.ParseUint(s[i+1:i+5], 16, 16); err == nil && r <= utf8.MaxRune {
 				b.WriteRune(rune(r))
 				i += 4
 			}

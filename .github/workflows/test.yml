@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   test:
-    timeout-minutes: 25
+    timeout-minutes: 45
     # Dependabot PRs are notices and never run CI; label one `run-ci` to test it.
     # docker-build needs this job, so it is skipped too.
     if: >-
@@ -39,7 +39,8 @@ jobs:
           go-version-file: go.mod
 
       - name: Run tests
-        run: go test ./... -v --cover
+        # The apis package alone runs past go test's default 10m on the k3s runners.
+        run: go test -timeout 30m ./... -v --cover
 
       - name: Run linter
         # golangci.yml is schema `version: "2"`, which requires golangci-lint v2
@@ -58,7 +59,7 @@ jobs:
   # PostgreSQL storage (experimental, #106): the tagged integration tests against a
   # real server. Runs after `test` so a broken SQLite suite stops here first.
   postgres:
-    timeout-minutes: 30
+    timeout-minutes: 75
     runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || (vars.RUNNER_LIGHT || 'tdp-k3s-claviger') }}
     needs: test
     services:
