@@ -207,5 +207,7 @@ func recordWebAuthnLoginFinishDiscoverable(e *core.RequestEvent) error {
 		return e.BadRequestError("Failed to authenticate.", nil)
 	}
 
+	e.Set(requestEventKeySessionMethod, core.SessionAuthMethodDiscover) // session label (#93)
+
 	return finishWebAuthnLogin(e, collection, record, cred)
 }

@@ -50,7 +50,10 @@ func NewRouter(app core.App) (*router.Router[*core.RequestEvent], error) {
 	bindRealtimeApi(app, apiGroup)
 	bindHealthApi(app, apiGroup)
 	bindSQLApi(app, apiGroup)
-	bindMetricsApi(app, apiGroup) // fork-local
+	bindMetricsApi(app, apiGroup)  // fork-local
+	bindAPIKeysApi(app, apiGroup)  // fork-local
+	bindSessionsApi(app, apiGroup) // fork-local (#93)
+	bindWebhooksApi(app, apiGroup) // fork-local (#77)
 
 	// UI routes
 	bindUIExtensions(app)

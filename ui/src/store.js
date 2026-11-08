@@ -73,6 +73,11 @@ window.app.store = store({
             label: "Audit log",
         },
         {
+            href: "#/webhooks",
+            icon: "ri-webhook-line",
+            label: "Webhooks",
+        },
+        {
             href: "#/settings",
             icon: "ri-settings-3-line",
             label: "Settings",
@@ -93,6 +98,11 @@ window.app.store = store({
                 label: "Mail settings",
             },
             {
+                href: "#/settings/security",
+                icon: "ri-lock-password-line",
+                label: "Security (2FA)",
+            },
+            {
                 href: "#/settings/storage",
                 icon: "ri-archive-drawer-line",
                 label: "Files storage",
@@ -106,6 +116,11 @@ window.app.store = store({
                 href: "#/settings/crons",
                 icon: "ri-time-line",
                 label: "Crons",
+            },
+            {
+                href: "#/settings/api-keys",
+                icon: "ri-key-2-line",
+                label: "API keys",
             },
         ],
         Sync: [

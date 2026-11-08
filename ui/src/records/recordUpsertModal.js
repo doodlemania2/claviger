@@ -754,6 +754,7 @@ function recordUpsertModal(collection, rawRecord, modalSettings) {
                                     }
 
                                     options.push(impersonateDropdownItem(collection, data, modalSettings));
+                                    options.push(sessionsDropdownItem(collection, data, modalSettings)); // fork-local (#93)
                                     options.push(resetTokenKeyDropdownItem(collection, data, modalSettings));
                                     options.push(t.hr());
 
@@ -1046,6 +1047,22 @@ function sendVerificationDropdownItem(collection, data, modalSettings) {
         },
         t.i({ className: "ri-mail-check-line", ariaHidden: true }),
         t.span({ className: "txt" }, "Send verification email"),
+    );
+}
+
+// fork-local (#93)
+function sessionsDropdownItem(collection, data, modalSettings) {
+    return t.button(
+        {
+            type: "button",
+            className: "dropdown-item",
+            onclick: (e) => {
+                e.target.closest(".dropdown").hidePopover();
+                app.modals.openRecordSessions(data.originalRecord);
+            },
+        },
+        t.i({ className: "ri-shield-user-line", ariaHidden: true }),
+        t.span({ className: "txt" }, "Sessions and ban"),
     );
 }
 

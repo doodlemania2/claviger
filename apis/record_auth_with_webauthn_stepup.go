@@ -311,6 +311,12 @@ func recordWebAuthnStepUpFinish(e *core.RequestEvent) error {
 		return e.InternalServerError("Failed to create auth token.", err)
 	}
 
+	// the step-up keeps the session of the token it replaces (#93)
+	token, err = carrySession(e, record, getAuthTokenFromRequest(e), token, refreshable)
+	if err != nil {
+		return err
+	}
+
 	e.App.Logger().Info("webauthn_step_up",
 		"recordId", record.Id,
 		"collectionId", collection.Id,

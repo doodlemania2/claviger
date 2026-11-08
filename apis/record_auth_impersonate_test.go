@@ -49,6 +49,7 @@ func TestRecordAuthImpersonate(t *testing.T) {
 			Headers: map[string]string{
 				"Authorization": "eyJhbGciOiJIUzI1NiJ9.eyJpZCI6InN5d2JoZWNuaDQ2cmhtMCIsInR5cGUiOiJhdXRoIiwiY29sbGVjdGlvbklkIjoicGJjXzMxNDI2MzU4MjMiLCJleHAiOjI1MjQ2MDQ0NjEsInJlZnJlc2hhYmxlIjp0cnVlfQ.UXgO3j-0BumcugrFjbd7j0M4MQvbrLggLlcu_YNGjoY",
 			},
+			Body:           strings.NewReader(`{"reason":"support"}`),
 			ExpectedStatus: 200,
 			ExpectedContent: []string{
 				`"token":"`,
@@ -73,7 +74,7 @@ func TestRecordAuthImpersonate(t *testing.T) {
 			Headers: map[string]string{
 				"Authorization": "eyJhbGciOiJIUzI1NiJ9.eyJpZCI6InN5d2JoZWNuaDQ2cmhtMCIsInR5cGUiOiJhdXRoIiwiY29sbGVjdGlvbklkIjoicGJjXzMxNDI2MzU4MjMiLCJleHAiOjI1MjQ2MDQ0NjEsInJlZnJlc2hhYmxlIjp0cnVlfQ.UXgO3j-0BumcugrFjbd7j0M4MQvbrLggLlcu_YNGjoY",
 			},
-			Body:           strings.NewReader(`{"duration":-1}`),
+			Body:           strings.NewReader(`{"duration":-1,"reason":"support"}`),
 			ExpectedStatus: 400,
 			ExpectedContent: []string{
 				`"data":{`,
@@ -88,7 +89,7 @@ func TestRecordAuthImpersonate(t *testing.T) {
 			Headers: map[string]string{
 				"Authorization": "eyJhbGciOiJIUzI1NiJ9.eyJpZCI6InN5d2JoZWNuaDQ2cmhtMCIsInR5cGUiOiJhdXRoIiwiY29sbGVjdGlvbklkIjoicGJjXzMxNDI2MzU4MjMiLCJleHAiOjI1MjQ2MDQ0NjEsInJlZnJlc2hhYmxlIjp0cnVlfQ.UXgO3j-0BumcugrFjbd7j0M4MQvbrLggLlcu_YNGjoY",
 			},
-			Body:           strings.NewReader(`{"duration":100}`),
+			Body:           strings.NewReader(`{"duration":100,"reason":"support"}`),
 			ExpectedStatus: 200,
 			ExpectedContent: []string{
 				`"token":"`,

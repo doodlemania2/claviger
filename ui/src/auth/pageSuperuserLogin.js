@@ -13,6 +13,11 @@ export function pageSuperuserLogin(route) {
         otpEmail: "",
         otpPassword: "",
 
+        // fork (#90): the account enrolled an authenticator app
+        totpRequired: false,
+        totpCode: "",
+        isTOTPAuthSubmitting: false,
+
         mfaId: "",
         totalSteps: 1,
         get currentStep() {
@@ -34,6 +39,7 @@ export function pageSuperuserLogin(route) {
             data.totalSteps = 1;
             data.mfaId = "";
             data.otpId = "";
+            data.totpRequired = false;
 
             if (data.authMethods.mfa?.enabled && data.authMethods.otp?.enabled) {
                 data.totalSteps += 2; // otp request + auth
@@ -70,6 +76,10 @@ export function pageSuperuserLogin(route) {
                 return t.div({ className: "block txt-center" }, t.span({ className: "loader lg" }));
             }
 
+            if (data.totpRequired) {
+                return authWithTOTPForm(data);
+            }
+
             if (data.authMethods.password?.enabled && !data.mfaId) {
                 return authWithPasswordForm(data);
             }
@@ -101,7 +111,13 @@ async function authWithPassword(data) {
         app.store.errors = null;
         window.location.hash = "#/";
     } catch (err) {
-        if (err.status == 401) {
+        if (err.status == 401 && err.response?.totp) {
+            // the account's second factor is an authenticator app or a backup code
+            data.mfaId = err.response.mfaId;
+            data.totpRequired = true;
+            data.totalSteps = 2;
+            data.totpCode = "";
+        } else if (err.status == 401) {
             data.mfaId = err.response.mfaId;
 
             // show the otp forms
@@ -215,6 +231,100 @@ function authWithPasswordForm(data) {
                 },
                 t.span({ className: "txt" }, () => (data.totalSteps > 1 ? "Next" : "Login")),
                 t.i({ className: "ri-arrow-right-line", ariaHidden: true }),
+            ),
+        ),
+    );
+}
+
+// Auth with TOTP (fork, #90)
+// -------------------------------------------------------------------
+
+async function authWithTOTP(data) {
+    if (data.isTOTPAuthSubmitting) {
+        return;
+    }
+
+    data.isTOTPAuthSubmitting = true;
+
+    try {
+        const result = await app.pb.send("/api/collections/_superusers/auth-with-totp", {
+            method: "POST",
+            body: { mfaId: data.mfaId, code: data.totpCode },
+        });
+        app.pb.authStore.save(result.token, result.record);
+        app.toasts.removeAll();
+        app.store.errors = null;
+        window.location.hash = "#/";
+    } catch (err) {
+        if (err.status == 400) {
+            app.toasts.error("Invalid code.");
+        } else {
+            app.checkApiError(err);
+        }
+    }
+
+    data.isTOTPAuthSubmitting = false;
+}
+
+function authWithTOTPForm(data) {
+    return t.form(
+        {
+            pbEvent: "authWithTOTPForm",
+            className: "grid auth-with-totp-form",
+            onsubmit: (e) => {
+                e.preventDefault();
+                authWithTOTP(data);
+            },
+        },
+        t.div(
+            { className: "col-12" },
+            t.div(
+                { className: "content txt-center" },
+                "Enter the 6 digit code from your authenticator app, or one of your backup codes.",
+            ),
+        ),
+        t.div(
+            { className: "col-12" },
+            t.div(
+                { className: "field" },
+                t.label({ htmlFor: "totp_code" }, "Authenticator or backup code"),
+                t.input({
+                    id: "totp_code",
+                    name: "code",
+                    type: "text",
+                    required: true,
+                    autofocus: true,
+                    autocomplete: "one-time-code",
+                    value: () => data.totpCode,
+                    oninput: (e) => (data.totpCode = e.target.value),
+                }),
+            ),
+        ),
+        t.div(
+            { className: "col-12" },
+            t.button(
+                {
+                    className: () => `btn lg block next ${data.isTOTPAuthSubmitting ? "loading" : ""}`,
+                    disabled: () => data.isTOTPAuthSubmitting,
+                },
+                t.span({ className: "txt" }, "Login"),
+                t.i({ className: "ri-arrow-right-line", ariaHidden: true }),
+            ),
+            t.div(
+                { className: "block m-t-sm txt-center" },
+                t.button(
+                    {
+                        type: "button",
+                        className: "link-hint txt-sm",
+                        onclick: () => {
+                            data.totpRequired = false;
+                            data.mfaId = "";
+                            data.totalSteps = 1;
+                            data.totpCode = "";
+                        },
+                    },
+                    "Start over",
+                ),
             ),
         ),
     );

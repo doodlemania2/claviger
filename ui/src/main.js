@@ -44,6 +44,7 @@ import "./records/recordFilePickerModal";
 import "./records/recordsPickerModal";
 import "./records/recordPreviewModal";
 import "./records/recordImpersonateModal";
+import "./records/recordSessionsModal"; // fork-local (#93)
 import "./records/recordUpsertModal";
 import "./records/recordsList";
 import "./base/fieldSettings";
@@ -77,6 +78,7 @@ import "./collections/oauth2/appleOptions";
 import "./logs/logsSettingsModal";
 import "./logs/logPreviewModal";
 import "./audit/auditEntryPreviewModal";
+import "./webhooks/webhookModal";
 import { appHeader } from "./base/appHeader";
 import { initRouter } from "./router";
 

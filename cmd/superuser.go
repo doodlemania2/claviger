@@ -25,6 +25,7 @@ func NewSuperuserCommand(app core.App) *cobra.Command {
 	command.AddCommand(superuserDeleteCommand(app))
 	command.AddCommand(superuserOTPCommand(app))
 	command.AddCommand(superuserIPsCommand(app))
+	command.AddCommand(superuserTOTPDisableCommand(app))
 
 	return command
 }

@@ -119,6 +119,9 @@ Files the fork modifies that upstream also owns (expect conflicts here):
 - [ ] **modernc SQLite.** `apis/TestSQLRun/single_write_query` expects `affectedRows: 1` for DDL. modernc reports 1, upstream's mattn reports 0. Keep the fork's value.
 - [ ] **`modernc_versions_check.go`** pins the expected sqlite/libc versions. Keep it in step with `go.mod` when they change.
 - [ ] **Audit log guards.** `core/audit_model.go` must stay intact after a merge: the `__pbAuditGuard__` model hooks (create only with the unexported writer context, never update/delete), the `_auditLog` collection update/delete guards, and the `OnRecord{Create,Update,Delete}Execute` capture hooks at priority 100 (they must stay *inside* upstream's priority-99 execute handlers). Run `go test -run 'Audit' ./core/... ./apis/...`. If upstream adds another write path for records that bypasses `Save`/`Delete`, it bypasses the audit too.
+- [ ] **API keys.** `loadAuthToken` in `apis/middlewares.go` must keep the `core.IsAPIKeyToken` branch ahead of `FindAuthRecordByToken`, and `enforceAPIKeyScopes` (`apis/apikey_auth.go`) denies unknown routes unless the key has `*`: if upstream adds an auth flow or account-changing route, add it to the deny list there. Run `go test -run 'APIKey' ./apis/...`.
+- [ ] **Sessions and bans (#93).** Four small hunks in upstream-owned code call into `apis/sessions_auth.go`: `loadAuthToken` (`checkSessionClaim`), `recordAuthResponse` in `apis/record_helpers.go` (`checkNotBanned` before the MFA step, `attachSession` after it), `recordAuthRefresh` (`carrySession`, `skipSessionAttach`) and the password reset request (`silentlyRefuseBanned`). Keep `attachSession` *after* `checkMFA`: a session must exist only once the sign-in is complete. `core/base.go` calls `registerSessionHooks`. Run `go test -run 'Session|Ban|Legacy|Impersonate' ./apis/...`. Tokens without a `sid` are deliberately not checked (they are the pre-deploy tokens); do not "fix" that.
+- [ ] **API key lifetime.** Changing the owner's password does not revoke their API keys, by design (like personal access tokens); revoking is always explicit (`DELETE /api/apikeys/{id}`).
 - [ ] **`plugins/jsvm/binds_test.go`** asserts exact hook counts. If the merge adds or removes a hook on `core.App`, update the count (`TestHooksBindsCount`).
 - [ ] **`ui/dist` rebuild.** Use Node 24. `rm -rf ui/dist && cd ui && npm ci && ./node_modules/.bin/vite build`. Always `npm ci`, never `npm install` (npm 10 strips the `libc` fields from the lockfile and breaks the Linux CI install). Run vite directly, not `npm run build`. Then `git diff --quiet ui/package-lock.json`. Commit the regenerated `ui/dist`.
 - [ ] **Module path ldflag.** `Dockerfile` and `.goreleaser.yaml` use `-X github.com/doodlemania2/claviger.Version=`. A stale `-X` package is silently ignored by the linker, so the binary would report the default version. Verify with a built binary: `claviger --version`.
@@ -169,9 +172,49 @@ Upstream-owned files the fork edits. Re-check these on every sync merge (conflic
 | `core/backup_test.go` | `verifyBackupContent` expects the manifest entry (#78). |
 | `apis/backup.go` | `POST /api/backups/{key}/verify`; list adds `verification`/`verifying`; delete clears the stored result (#78). |
 | `ui/src/settings/backups/backupsList.js`, `backupsForm.js` | Verification badge and button; auto-verify switch (#78). |
+| `core/base.go` | One call, `app.registerWebhookHooks()`, right after `app.registerAuditHooks()` in `registerBaseHooks` (#77). |
+| `core/audit_model.go` | `_webhookDeliveries` added to `auditExcludedCollections` (#77). |
+| `apis/base.go` | `bindWebhooksApi(app, apiGroup)` after `bindMetricsApi` (#77). |
+| `tools/telemetry/telemetry.go` | `webhookDeliveries` counter field and instrument (`claviger.webhook.deliveries`) (#77). |
+| `apis/collection_test.go`, `apis/collection_import_test.go`, `core/collection_query_test.go` | System collection count is two higher (`_webhooks`, `_webhookDeliveries`: 18 to 20); the paging scenario's page 2 now starts at `_auditLog` (#77). |
+| `ui/src/main.js`, `ui/src/router.js`, `ui/src/store.js`, `ui/src/css/_main.css` | Webhooks page import, route, header link, stylesheet (#77). |
 | `plugins/jsvm/internal/types/generated/types.d.ts` | `BackupsConfig.disableVerify` (regenerates with `make jstypes`) (#78). |
+| `apis/middlewares.go` | `loadAuthToken` hands tokens starting with `clv_` to `loadAPIKeyAuth`; the JWT path below is untouched (#95). |
+| `apis/base.go` | `bindAPIKeysApi(app, apiGroup)` (#95). |
+| `apis/collection_test.go`, `apis/collection_import_test.go`, `core/collection_query_test.go` | System collection count 18 -> 19 for `_apiKeys` (#95). The conductor reconciles the count across agents. |
+| `ui/src/router.js`, `ui/src/store.js` | `#/settings/api-keys` route and nav entry (#95). |
+| `core/base.go` | `app.registerSessionHooks()` (#93). |
+| `apis/middlewares.go` | `loadAuthToken`: `checkSessionClaim` after `FindAuthRecordByToken` (#93). |
+| `apis/record_helpers.go` | `recordAuthResponse`: `checkNotBanned` before the MFA step, `attachSession` after it (#93). |
+| `apis/record_auth_refresh.go` | `carrySession` keeps the sid and extends the session; `skipSessionAttach` for non-refreshable tokens (#93). |
+| `apis/record_auth_password_reset_request.go` | `silentlyRefuseBanned` (#93). |
+| `apis/record_auth_impersonate.go` | Required `reason`, superusers cannot be impersonated, `impersonatedBy` claim, session method `impersonate`, audit entry (#93). |
+| `apis/record_auth_impersonate_test.go` | Success scenarios send a `reason` (#93). |
+| `apis/collection_test.go`, `apis/collection_import_test.go`, `core/collection_query_test.go` | System collection count 19 -> 21 for `_sessions` and `_bans` (#93); the paging/sorting scenario now expects `_apiKeys` on page 2. The conductor reconciles the count across agents. |
+| `ui/src/main.js`, `ui/src/records/recordUpsertModal.js`, `ui/src/records/recordImpersonateModal.js` | "Sessions and ban" menu entry and modal import; impersonation asks for a reason (#93). |
+
+Fork-only files for #95: `core/apikey.go`, `migrations/1780000400_add_api_keys.go`, `apis/apikey_auth.go`, `apis/apikeys.go`, `ui/src/settings/apikeys/`. `core/audit_model.go` (fork-owned) gained `AuditActor.APIKeyId` and the `_apiKeys` lastUsed noise rule.
+
+Fork-only files for #93: `core/session.go`, `core/ban.go`, `migrations/1780000600_add_sessions_bans.go`, `apis/sessions_auth.go`, `apis/sessions.go`, `ui/src/records/recordSessionsModal.js`. Fork-owned files touched: `core/apikey.go` (a banned owner's keys fail), `apis/apikey_auth.go` (`sessions` and `bans` routes are denied to keys), `apis/record_auth_with_webauthn_stepup.go` (the step-up keeps the sid) and `apis/record_auth_with_webauthn_discoverable.go` (session label).
+| `apis/record_helpers.go` | `checkMFA` rewritten for per-account TOTP enforcement (`core.HasActiveTOTP`, passkey exemption, TOTP required as the second factor for enrolled accounts, zero-duration guard `mfaSessionDuration`); the 401 MFA body is built by `mfaRequiredBody` (adds `"totp": true`) (#90). |
+| `apis/record_auth.go` | One line: `bindTOTPApi(sub)` (#90). |
+| `core/base.go` | One line: `app.registerTOTPHooks()` (#90). |
+| `cmd/superuser.go` | One line: `superuserTOTPDisableCommand` registered (#90). |
+| `core/collection_query_test.go`, `apis/collection_import_test.go`, `apis/collection_test.go` | System collection counts 18 to 19 and `_totps` in the list (#90). Other batch-3 collections add to these counts too. |
 
 Fork-only files for #78: `core/backup_verify*.go`, `core/diskfree_*.go`.
+
+Fork-only files for #90 (TOTP): `tools/security/totp.go`, `core/totp_model.go`, `migrations/1780000300_add_totps.go`, `apis/record_auth_totp.go`, `cmd/superuser_totp.go`, `ui/src/settings/security/`. `core/audit_model.go` (fork file) skips the `lastStep` replay counter as noise.
+
+### TOTP (authenticator app, #90)
+
+Opt-in per account; deploying changes nobody's sign-in. Data lives in the `_totps` system collection (one row per auth record, every field hidden, no API rules). An enrolled account needs a TOTP code or an unused backup code after its first factor (password, OAuth2, email OTP), even when the collection's MFA is off; passkey sign-in is exempt. TOTP completes the upstream MFA session through `POST /api/collections/{c}/auth-with-totp {mfaId, code}`.
+
+- **Secret storage.** If the settings encryption key env (`PB_ENCRYPTION_KEY`, i.e. `App.EncryptionEnv()`) is set when the secret is stored, it is AES-256-GCM encrypted (`security.Encrypt`) and stored as `enc:<base64>`; otherwise it is stored plain. Plain secrets stay readable after a key is configured. **An `enc:` secret cannot be read without that key**: if the key is removed or rotated, TOTP codes stop working for those accounts (backup codes still work, they are bcrypt hashes) until `superuser totp-disable` is run and the account re-enrolls. Do not rotate the key without planning that.
+- **Hidden from the API.** The records API unhides every field for superusers, so `registerTOTPHooks` re-hides all `_totps` fields in an `OnRecordEnrich` handler. Keep that handler on sync: without it any superuser session can read every TOTP secret.
+- **Recovery (lost authenticator and backup codes).** Anyone with shell access to the data directory runs `claviger superuser totp-disable <email>` (removes the enrollment and any pending MFA sessions), then signs in with the password and enrolls again. A superuser can also delete the row via the admin UI/API (`_totps`), audited. On Azure Container Apps, run it in the single replica with `/pb_data` mounted.
+- **Pitfalls to re-check on sync:** the `checkMFA` hunk above, `grep -n registerTOTPHooks core/base.go`, `go test -run 'TOTP' ./apis/ ./cmd/ ./tools/security/`.
+Fork-only files for #77 (webhooks): `core/webhooks*.go`, `migrations/1780000500_add_webhooks.go`, `apis/webhooks*.go`, `tools/telemetry/webhooks.go`, `ui/src/webhooks/`, `ui/src/css/webhooks.css`, `docs/webhooks.md`. Sync checks: `grep -n registerWebhookHooks core/base.go` and `go test -run Webhook ./core/... ./apis/...`. The enqueue handler is on `OnAuditEntry`, so it depends on the audit guards above staying intact; `OnRecordEnrich` on `_webhooks` re-hides the secrets after the records API un-hides every field for superusers.
 
 ## CI
 
