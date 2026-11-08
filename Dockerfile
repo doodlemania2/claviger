@@ -1,4 +1,4 @@
-# Stage 1: Build PocketBase from source (fork with WebAuthn support)
+# Stage 1: Build Claviger from source (fork with WebAuthn support)
 FROM golang:1.27-alpine AS builder
 
 ARG VERSION=dev
@@ -12,7 +12,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w -X github.com/doodlemania2/claviger.Version=${VERSION}" \
-    -o /pocketbase \
+    -o /claviger \
     ./examples/base
 
 # Stage 2: Download Litestream
@@ -35,7 +35,9 @@ FROM alpine:3
 # source of `-w SECS` on a file descriptor.
 RUN apk update && apk add --no-cache ca-certificates tzdata wget flock && rm -rf /var/cache/apk/*
 
-COPY --from=builder /pocketbase /usr/local/bin/pocketbase
+COPY --from=builder /claviger /usr/local/bin/claviger
+# Compatibility: older entrypoints and ops tooling still exec /usr/local/bin/pocketbase.
+RUN ln -s claviger /usr/local/bin/pocketbase
 COPY --from=litestream /usr/local/bin/litestream /usr/local/bin/litestream
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh

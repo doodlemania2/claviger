@@ -8,7 +8,7 @@ PORT=${PB_PORT:-8090}
 # The data dir and binary are overridable only so scripts/test_entrypoint_handover.sh
 # can drive this file outside a container. Production uses the defaults.
 DATA_DIR=${PB_DATA_DIR:-/pb_data}
-PB_BIN=${PB_BIN:-/usr/local/bin/pocketbase}
+PB_BIN=${PB_BIN:-/usr/local/bin/claviger}
 
 # Default serve command arguments
 DEFAULT_SERVE_ARGS="serve --http=${HOST}:${PORT} --dir=${DATA_DIR} --publicDir=/pb_public --hooksDir=/pb_hooks"
@@ -127,7 +127,7 @@ otlp_event() {
 # terminationGracePeriodSeconds high enough (>= 60s) for this to run to
 # completion.
 shutdown() {
-    echo "[entrypoint] received shutdown signal — stopping pocketbase + litestream..."
+    echo "[entrypoint] received shutdown signal — stopping claviger + litestream..."
     if [ -n "$WATCHER_PID" ]; then
         kill -TERM "$WATCHER_PID" 2>/dev/null || true
     fi
@@ -162,7 +162,7 @@ park_forever() {
 # Hand /pb_data to an incoming replica WITHOUT exiting.
 handover_release() {
     requester=$(cat "$REQUESTER_NOTE" 2>/dev/null || true)
-    echo "[entrypoint] handover: stopping pocketbase and releasing /pb_data..."
+    echo "[entrypoint] handover: stopping claviger and releasing /pb_data..."
     if [ -n "$PB_PID" ]; then
         kill -TERM "$PB_PID" 2>/dev/null || true
         wait "$PB_PID" 2>/dev/null || true
@@ -339,7 +339,7 @@ acquire_single_writer() {
     fi
 
     # fd 9 stays open for the life of the shell, which is what holds the lock.
-    # It is inherited by pocketbase and litestream, so the lock outlives even a
+    # It is inherited by claviger and litestream, so the lock outlives even a
     # SIGKILL that skips the shutdown trap, and the kernel releases it once the
     # whole process tree is gone.
     exec 9>>"$SINGLE_WRITER_LOCK"
@@ -482,7 +482,7 @@ if [ $# -eq 0 ]; then
     run_serve
 fi
 
-# Global flags pass through directly to pocketbase.
+# Global flags pass through directly to claviger.
 case "$1" in
     --help|-h|--version|-v)
         exec "$PB_BIN" "$@"
