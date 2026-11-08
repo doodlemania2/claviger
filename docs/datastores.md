@@ -61,7 +61,7 @@ Until M6 the Postgres CI job runs the integration tests in `tests/pgtests` only.
 
 ### Differences from SQLite
 
-The same data and the same request give the same records on both databases. `tests/pgtests` proves that for about 300 filters, sorts and requests by running them against SQLite and Postgres and comparing the results. These differences remain, and each is a visible skipped case in that suite (the `known_gap` tests, with the reason):
+The same data and the same request give the same records on both databases. `tests/pgtests` proves that for about 400 filters, sorts, requests and strftime formats by running them against SQLite and Postgres and comparing the results. These differences remain, and each is a visible skipped case in that suite (the `known_gap` tests, with the reason):
 
 | Case | SQLite | PostgreSQL |
 | --- | --- | --- |
@@ -116,6 +116,8 @@ CLAVIGER_TEST_PG_URL='postgres://user:pass@localhost:5432/postgres?sslmode=disab
 ```
 
 Each test creates and drops its own database, so the URL can point at any database on the server (the role needs `CREATEDB`).
+
+The suite runs the same data and requests on a SQLite app and a Postgres app and compares the answers (`filters_test.go`, `records_api_test.go`, `views_test.go`, `strftime_test.go`). To add a filter, add a row to the table in `TestRecordFilters`; give it the number of records it must match so that a filter which matches nothing anywhere cannot pass. A difference that cannot be fixed goes in the table with a `gap:` reason: it runs on SQLite only, shows up in the log as `known_gap/...` with both answers, and fails as soon as the two databases start to agree (so the list can only shrink). Any other skip fails CI. The SQL text of both dialects is also pinned without a database in `tools/search/dialect_sqlite_golden_test.go` (must never change) and `dialect_postgres_test.go`.
 
 ### For developers
 
