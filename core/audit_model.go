@@ -65,7 +65,7 @@ var auditExcludedCollections = []string{
 // auditNoiseFields are fields whose changes alone do not warrant an entry
 // (they change on every login).
 var auditNoiseFields = map[string][]string{
-	CollectionNameWebAuthnCredentials: {"signCount"},
+	CollectionNameWebAuthnCredentials: {"signCount", "lastUsed"},
 }
 
 var auditSensitiveNameRegex = regexp.MustCompile(`(?i)(password|passwd|passphrase|secret|token|api[_-]?key|private[_-]?key|credential)`)
@@ -350,7 +350,35 @@ func auditRecordChange(e *RecordEvent, action string) error {
 		return e.Next()
 	}
 
-	entry, ok := buildRecordAuditEntry(e.Record, action)
+	// make the change and its entry atomic
+	if e.App.IsTransactional() {
+		return auditNextAndWrite(e, action)
+	}
+
+	originalApp := e.App
+	txErr := e.App.RunInTransaction(func(txApp App) error {
+		e.App = txApp
+		return auditNextAndWrite(e, action)
+	})
+	e.App = originalApp
+
+	return txErr
+}
+
+func auditNextAndWrite(e *RecordEvent, action string) error {
+	// For updates the "before" state is read from the db right before the
+	// write: Record.Original() only reflects the state at load time, which is
+	// stale for a record instance that is saved more than once.
+	var original *Record
+	if action == AuditActionUpdate {
+		if stored, err := e.App.FindRecordById(e.Record.Collection(), e.Record.Id); err == nil {
+			original = stored
+		} else {
+			original = e.Record.Original()
+		}
+	}
+
+	entry, ok := buildRecordAuditEntry(e.Record, original, action)
 	if !ok {
 		return e.Next()
 	}
@@ -362,22 +390,6 @@ func auditRecordChange(e *RecordEvent, action string) error {
 		entry.Actor = AuditActor{Type: AuditActorTypeSystem}
 	}
 
-	// make the change and its entry atomic
-	if e.App.IsTransactional() {
-		return auditNextAndWrite(e, entry)
-	}
-
-	originalApp := e.App
-	txErr := e.App.RunInTransaction(func(txApp App) error {
-		e.App = txApp
-		return auditNextAndWrite(e, entry)
-	})
-	e.App = originalApp
-
-	return txErr
-}
-
-func auditNextAndWrite(e *RecordEvent, entry *AuditEntry) error {
 	if err := e.Next(); err != nil {
 		return err
 	}
@@ -387,16 +399,11 @@ func auditNextAndWrite(e *RecordEvent, entry *AuditEntry) error {
 
 // buildRecordAuditEntry computes the entry for the record change (without actor).
 //
-// It must be called before the record is persisted because it relies on
-// record.Original(). It returns false if there is nothing to record.
-func buildRecordAuditEntry(record *Record, action string) (*AuditEntry, bool) {
+// It must be called before the record is persisted; original is the stored
+// state (updates only). It returns false if there is nothing to record.
+func buildRecordAuditEntry(record, original *Record, action string) (*AuditEntry, bool) {
 	collection := record.Collection()
 	noise := auditNoiseFields[collection.Name]
-
-	var original *Record
-	if action == AuditActionUpdate {
-		original = record.Original()
-	}
 
 	entry := &AuditEntry{
 		Action:         action,

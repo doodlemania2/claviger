@@ -427,3 +427,59 @@ func BenchmarkAuditOverhead(b *testing.B) {
 		}
 	}
 }
+
+func TestAuditIgnoresPasskeyLoginNoise(t *testing.T) {
+	t.Parallel()
+
+	app, _ := tests.NewTestApp()
+	defer app.Cleanup()
+
+	col, err := app.FindCollectionByNameOrId(core.CollectionNameWebAuthnCredentials)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// temporary stand-in for the lastUsed field added by #73
+	col.Fields.Add(&core.DateField{Name: "lastUsed"})
+	if err := app.Save(col); err != nil {
+		t.Fatal(err)
+	}
+
+	users, _ := app.FindCollectionByNameOrId("users")
+	user, _ := app.FindAuthRecordByEmail(users, "test@example.com")
+
+	cred := core.NewRecord(col)
+	cred.Set("collectionRef", users.Id)
+	cred.Set("recordRef", user.Id)
+	cred.Set("credentialId", "cred-1")
+	cred.Set("publicKey", "pk")
+	cred.Set("name", "first")
+	cred.Set("signCount", 1)
+	if err := app.Save(cred); err != nil {
+		t.Fatal(err)
+	}
+	count := func() int { return auditCount(t, app, "targetCollection='_webauthnCredentials'") }
+	if count() != 1 {
+		t.Fatalf("Expected the creation to be audited, got %d", count())
+	}
+
+	// login noise only: no entry
+	cred.Set("signCount", 2)
+	cred.Set("lastUsed", "2026-01-01 00:00:00.000Z")
+	if err := app.Save(cred); err != nil {
+		t.Fatal(err)
+	}
+	if count() != 1 {
+		t.Fatalf("Expected no entry for signCount/lastUsed-only update, got %d", count())
+	}
+
+	// a real change alongside the noise is audited, without the noise fields
+	cred.Set("signCount", 3)
+	cred.Set("name", "renamed")
+	if err := app.Save(cred); err != nil {
+		t.Fatal(err)
+	}
+	entries, _ := app.FindAllRecords(core.CollectionNameAuditLog, dbx.HashExp{"action": "update", "targetCollection": core.CollectionNameWebAuthnCredentials})
+	if len(entries) != 1 || entries[0].GetString("changedFields") != `["name"]` {
+		t.Fatalf("Expected one entry changing only name, got %v", entries)
+	}
+}
