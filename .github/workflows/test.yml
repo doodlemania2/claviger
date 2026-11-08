@@ -123,8 +123,10 @@ jobs:
           test "$(docker inspect -f '{{.State.Running}}' pb-new)" = "true" \
             || (echo "incoming replica is not running"; docker logs pb-new; exit 1)
 
+          # The runtime image is alpine with busybox pgrep (no procps); its -f takes an ERE.
+          # Match the binary and its compat symlink so these checks cannot pass vacuously.
           # Parked means it really let go: no claviger process left in it.
-          if docker exec pb-old pgrep -f '/usr/local/bin/claviger' >/dev/null 2>&1; then
+          if docker exec pb-old pgrep -f '/usr/local/bin/(claviger|pocketbase)' >/dev/null 2>&1; then
             echo "outgoing replica parked but still runs claviger — the volume was never released"
             docker logs pb-old; exit 1
           fi
@@ -139,13 +141,13 @@ jobs:
           done
           docker logs pb-old 2>&1 | grep -q "already handed /pb_data over" \
             || (echo "restarted outgoing replica did not park"; docker logs pb-old; exit 1)
-          if docker exec pb-old pgrep -f '/usr/local/bin/claviger' >/dev/null 2>&1; then
+          if docker exec pb-old pgrep -f '/usr/local/bin/(claviger|pocketbase)' >/dev/null 2>&1; then
             echo "restarted outgoing replica is running claviger again — two writers"
             docker logs pb-old; exit 1
           fi
           docker logs pb-new 2>&1 | grep -q "handover requested" \
             && (echo "serving replica answered the zombie's request"; docker logs pb-new; exit 1)
-          docker exec pb-new pgrep -f '/usr/local/bin/claviger' >/dev/null \
+          docker exec pb-new pgrep -f '/usr/local/bin/(claviger|pocketbase)' >/dev/null \
             || (echo "serving replica stopped after the zombie restart"; docker logs pb-new; exit 1)
 
           # And it still answers SIGTERM once ACA finally drains it.
