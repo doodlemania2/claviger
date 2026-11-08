@@ -2,6 +2,7 @@ package core
 
 import (
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,12 +27,21 @@ func TestInitTelemetryDisabledByDefault(t *testing.T) {
 			app.OnRecordAuthWithWebAuthnRequest().Length()
 	}
 
-	before, hooksBefore := runtime.NumGoroutine(), hooks()
+	// Counting all goroutines would flake next to other tests (and earlier
+	// tests may leave their own exporters behind), so count only the
+	// OpenTelemetry SDK ones before and after.
+	sdkGoroutines := func() int {
+		buf := make([]byte, 1<<20)
+		buf = buf[:runtime.Stack(buf, true)]
+		return strings.Count(string(buf), "go.opentelemetry.io/otel/sdk/")
+	}
+
+	hooksBefore, sdkBefore := hooks(), sdkGoroutines()
 	app.initTelemetry()
 	time.Sleep(20 * time.Millisecond)
 
-	if got := runtime.NumGoroutine(); got != before {
-		t.Fatalf("goroutines %d -> %d", before, got)
+	if got := sdkGoroutines(); got > sdkBefore {
+		t.Fatalf("initTelemetry started SDK goroutines (%d -> %d)", sdkBefore, got)
 	}
 	if telemetry.Active() != nil {
 		t.Fatal("telemetry active without configuration")

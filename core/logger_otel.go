@@ -45,14 +45,6 @@ const (
 	// and shuts down the OTLP log pipeline.
 	OTelLoggerShutdownHookId = "__pbOTelLoggerShutdown__"
 
-	// defaultOTelServiceName applies only when the deployment sets neither
-	// OTEL_SERVICE_NAME nor a service.name in OTEL_RESOURCE_ATTRIBUTES.
-	defaultOTelServiceName = telemetry.DefaultServiceName
-
-	// defaultOTelServiceNamespace applies only when OTEL_RESOURCE_ATTRIBUTES
-	// carries no service.namespace.
-	defaultOTelServiceNamespace = telemetry.DefaultServiceNamespace
-
 	// otelScopeName identifies the emitting library on every record.
 	otelScopeName = "github.com/doodlemania2/claviger/core"
 

@@ -90,7 +90,7 @@ func TestTelemetryServerAndDBSpans(t *testing.T) {
 				for _, s := range spans {
 					dump.WriteString(s.Name)
 					for _, a := range s.Attributes {
-						fmt.Fprintf(&dump, " %s=%s", a.Key, a.Value.Emit())
+						fmt.Fprintf(&dump, " %s=%s", a.Key, a.Value.String())
 					}
 					for _, ev := range s.Events {
 						dump.WriteString(ev.Name)
@@ -122,7 +122,7 @@ func TestTelemetryServerAndDBSpans(t *testing.T) {
 				for _, s := range exp.GetSpans() {
 					all := s.Name
 					for _, a := range s.Attributes {
-						all += " " + string(a.Key) + "=" + a.Value.Emit()
+						all += " " + string(a.Key) + "=" + a.Value.String()
 					}
 					if strings.Contains(all, secretPassword) || strings.Contains(all, "test@example.com") {
 						t.Fatalf("span leaks credentials: %s", all)
@@ -268,5 +268,4 @@ func TestTelemetryDisabledByDefault(t *testing.T) {
 		ExpectedStatus: 404, ExpectedContent: []string{`"data":{}`},
 		ExpectedEvents: map[string]int{"*": 0},
 	}).Test(t)
-
 }

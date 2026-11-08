@@ -64,7 +64,7 @@ func (c *tconn) PrepareContext(ctx context.Context, q string) (driver.Stmt, erro
 	if p, ok := c.Conn.(driver.ConnPrepareContext); ok {
 		return p.PrepareContext(ctx, q)
 	}
-	return c.Conn.Prepare(q)
+	return c.Prepare(q)
 }
 
 func (c *tconn) BeginTx(ctx context.Context, o driver.TxOptions) (driver.Tx, error) {

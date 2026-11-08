@@ -377,6 +377,9 @@ func TestSinkReporterConcurrentReports(t *testing.T) {
 func TestSettingsReloadUpdatesLocalLevelWithOTLP(t *testing.T) {
 	// nothing listens here; the exporter only dials when a batch is flushed
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
+	// this test is about the log pipeline only
+	t.Setenv("OTEL_TRACES_EXPORTER", "none")
+	t.Setenv("OTEL_METRICS_EXPORTER", "none")
 
 	app := NewBaseApp(BaseAppConfig{DataDir: t.TempDir()})
 	defer app.ClearBootstrap()
