@@ -15,12 +15,12 @@ import (
 
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
 	"ganigeorgiev.com/pocketbase/ozzo-validation/v4/is"
-	"ganigeorgiev.com/pocketbase/pocketbase/core/validators"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/cron"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/hook"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/mailer"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/security"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
+	"github.com/doodlemania2/claviger/core/validators"
+	"github.com/doodlemania2/claviger/tools/cron"
+	"github.com/doodlemania2/claviger/tools/hook"
+	"github.com/doodlemania2/claviger/tools/mailer"
+	"github.com/doodlemania2/claviger/tools/security"
+	"github.com/doodlemania2/claviger/tools/types"
 )
 
 const (

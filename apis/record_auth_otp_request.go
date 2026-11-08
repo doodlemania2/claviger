@@ -8,10 +8,10 @@ import (
 
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
 	"ganigeorgiev.com/pocketbase/ozzo-validation/v4/is"
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/mails"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/routine"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/security"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/mails"
+	"github.com/doodlemania2/claviger/tools/routine"
+	"github.com/doodlemania2/claviger/tools/security"
 )
 
 func recordRequestOTP(e *core.RequestEvent) error {

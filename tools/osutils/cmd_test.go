@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/osutils"
+	"github.com/doodlemania2/claviger/tools/osutils"
 )
 
 func TestYesNoPrompt(t *testing.T) {

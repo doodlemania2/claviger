@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/search"
+	"github.com/doodlemania2/claviger/tools/search"
 )
 
 func TestFilterDataBuildExpr(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/dbutils"
+	"github.com/doodlemania2/claviger/tools/dbutils"
 )
 
 func TestParseIndex(t *testing.T) {

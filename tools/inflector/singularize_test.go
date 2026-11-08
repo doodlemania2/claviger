@@ -3,7 +3,7 @@ package inflector_test
 import (
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/inflector"
+	"github.com/doodlemania2/claviger/tools/inflector"
 )
 
 func TestSingularize(t *testing.T) {

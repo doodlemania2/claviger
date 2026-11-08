@@ -6,7 +6,7 @@ import (
 	"io"
 	"strconv"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
+	"github.com/doodlemania2/claviger/tools/types"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
 )

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"slices"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
+	"github.com/doodlemania2/claviger/tools/types"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/spf13/cast"
 	"golang.org/x/oauth2"

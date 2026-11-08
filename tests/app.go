@@ -9,10 +9,10 @@ import (
 	"runtime"
 	"sync"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/hook"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/hook"
 
-	_ "ganigeorgiev.com/pocketbase/pocketbase/migrations"
+	_ "github.com/doodlemania2/claviger/migrations"
 )
 
 // TestApp is a wrapper app instance used for testing.

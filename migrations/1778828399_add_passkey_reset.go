@@ -1,8 +1,8 @@
 package migrations
 
 import (
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/security"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/security"
 )
 
 // Backfills the new PasskeyResetTemplate and PasskeyResetToken config on

@@ -4,9 +4,9 @@ import (
 	"net/http"
 
 	"ganigeorgiev.com/pocketbase/dbx"
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/router"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/search"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/router"
+	"github.com/doodlemania2/claviger/tools/search"
 )
 
 // bindLogsApi registers the request logs api endpoints.

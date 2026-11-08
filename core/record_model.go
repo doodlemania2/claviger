@@ -16,14 +16,14 @@ import (
 
 	"ganigeorgiev.com/pocketbase/dbx"
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
-	"ganigeorgiev.com/pocketbase/pocketbase/core/validators"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/dbutils"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/filesystem"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/hook"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/inflector"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/list"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/store"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
+	"github.com/doodlemania2/claviger/core/validators"
+	"github.com/doodlemania2/claviger/tools/dbutils"
+	"github.com/doodlemania2/claviger/tools/filesystem"
+	"github.com/doodlemania2/claviger/tools/hook"
+	"github.com/doodlemania2/claviger/tools/inflector"
+	"github.com/doodlemania2/claviger/tools/list"
+	"github.com/doodlemania2/claviger/tools/store"
+	"github.com/doodlemania2/claviger/tools/types"
 	"github.com/spf13/cast"
 )
 

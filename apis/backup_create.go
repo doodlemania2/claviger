@@ -6,7 +6,7 @@ import (
 	"regexp"
 
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	"github.com/doodlemania2/claviger/core"
 )
 
 func backupCreate(e *core.RequestEvent) error {

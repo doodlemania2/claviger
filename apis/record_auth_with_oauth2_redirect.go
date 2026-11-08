@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/subscriptions"
-	"ganigeorgiev.com/pocketbase/pocketbase/ui"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/subscriptions"
+	"github.com/doodlemania2/claviger/ui"
 )
 
 const (

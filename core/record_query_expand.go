@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"ganigeorgiev.com/pocketbase/dbx"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/dbutils"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/list"
+	"github.com/doodlemania2/claviger/tools/dbutils"
+	"github.com/doodlemania2/claviger/tools/list"
 )
 
 // ExpandFetchFunc defines the function that is used to fetch the expanded relation records.

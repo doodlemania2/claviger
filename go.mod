@@ -1,4 +1,4 @@
-module ganigeorgiev.com/pocketbase/pocketbase
+module github.com/doodlemania2/claviger
 
 go 1.27
 

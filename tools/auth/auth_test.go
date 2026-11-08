@@ -3,7 +3,7 @@ package auth_test
 import (
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/auth"
+	"github.com/doodlemania2/claviger/tools/auth"
 )
 
 func TestProvidersCount(t *testing.T) {

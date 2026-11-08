@@ -4,9 +4,9 @@ import (
 	"slices"
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/cmd"
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tests"
+	"github.com/doodlemania2/claviger/cmd"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tests"
 )
 
 func TestSuperuserUpsertCommand(t *testing.T) {

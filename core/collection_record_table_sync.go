@@ -8,8 +8,8 @@ import (
 
 	"ganigeorgiev.com/pocketbase/dbx"
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/dbutils"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/security"
+	"github.com/doodlemania2/claviger/tools/dbutils"
+	"github.com/doodlemania2/claviger/tools/security"
 )
 
 // SyncRecordTableSchema compares the two provided collections

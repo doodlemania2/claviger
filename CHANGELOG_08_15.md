@@ -1122,7 +1122,7 @@ Please check the individual SDK package changelog and apply the necessary change
     </tr>
   </table>
 
-- Moved the formatted `ApiError` struct and factories to the `ganigeorgiev.com/pocketbase/pocketbase/apis` subpackage:
+- Moved the formatted `ApiError` struct and factories to the `github.com/doodlemania2/claviger/apis` subpackage:
   <table class="d-table" width="100%">
     <tr>
       <th>Old</th>
@@ -1132,8 +1132,8 @@ Please check the individual SDK package changelog and apply the necessary change
       <td colspan="2"><em>Import path</em></td>
     </tr>
     <tr valign="top">
-      <td>ganigeorgiev.com/pocketbase/pocketbase/<strong>tools/rest</strong></td>
-      <td>ganigeorgiev.com/pocketbase/pocketbase/<strong>apis</strong></td>
+      <td>github.com/doodlemania2/claviger/<strong>tools/rest</strong></td>
+      <td>github.com/doodlemania2/claviger/<strong>apis</strong></td>
     </tr>
     <tr valign="top">
       <td colspan="2"><em>Fields</em></td>

@@ -6,7 +6,7 @@ import (
 
 	"ganigeorgiev.com/pocketbase/dbx"
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	"github.com/doodlemania2/claviger/core"
 )
 
 // recordConfirmPasskeyResetBegin validates the emailed reset token and starts a

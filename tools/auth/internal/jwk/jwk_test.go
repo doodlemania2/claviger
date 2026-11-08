@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/auth/internal/jwk"
+	"github.com/doodlemania2/claviger/tools/auth/internal/jwk"
 	"github.com/golang-jwt/jwt/v5"
 )
 

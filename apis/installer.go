@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/osutils"
-	"ganigeorgiev.com/pocketbase/pocketbase/ui"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/osutils"
+	"github.com/doodlemania2/claviger/ui"
 	"github.com/fatih/color"
 )
 

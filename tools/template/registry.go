@@ -28,7 +28,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/store"
+	"github.com/doodlemania2/claviger/tools/store"
 )
 
 // NewRegistry creates and initializes a new templates registry with

@@ -3,7 +3,7 @@ package dbutils_test
 import (
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/dbutils"
+	"github.com/doodlemania2/claviger/tools/dbutils"
 )
 
 func TestJSONEach(t *testing.T) {

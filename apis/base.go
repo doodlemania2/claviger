@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/router"
+	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/router"
 )
 
 // StaticWildcardParam is the name of Static handler wildcard parameter.

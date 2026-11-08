@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/archive"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/osutils"
-	"ganigeorgiev.com/pocketbase/pocketbase/tools/security"
+	"github.com/doodlemania2/claviger/tools/archive"
+	"github.com/doodlemania2/claviger/tools/osutils"
+	"github.com/doodlemania2/claviger/tools/security"
 )
 
 // RestoreBackup restores the backup with the specified name and restarts
