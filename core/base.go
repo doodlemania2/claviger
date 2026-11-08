@@ -428,6 +428,9 @@ func (app *BaseApp) Bootstrap() error {
 			return err
 		}
 
+		// fork-local: must precede the DB connections (see core/telemetry.go)
+		app.initTelemetry()
+
 		if err := app.initDataDB(); err != nil {
 			return err
 		}
