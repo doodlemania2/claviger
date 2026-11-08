@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"ganigeorgiev.com/pocketbase/dbx"
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
 	"github.com/doodlemania2/claviger/core/validators"
 	"github.com/doodlemania2/claviger/tools/dbutils"
@@ -561,15 +560,7 @@ func (cv *collectionValidator) checkIndexes(value any) error {
 		duplicatedNames[strings.ToLower(parsed.IndexName)] = struct{}{}
 
 		// ensure that the index name is not used in another collection
-		var usedTblName string
-		_ = cv.app.ConcurrentDB().Select("tbl_name").
-			From("sqlite_master").
-			AndWhere(dbx.HashExp{"type": "index"}).
-			AndWhere(dbx.NewExp("LOWER([[tbl_name]])!=LOWER({:oldName})", dbx.Params{"oldName": cv.original.Name})).
-			AndWhere(dbx.NewExp("LOWER([[tbl_name]])!=LOWER({:newName})", dbx.Params{"newName": cv.new.Name})).
-			AndWhere(dbx.NewExp("LOWER([[name]])=LOWER({:indexName})", dbx.Params{"indexName": parsed.IndexName})).
-			Limit(1).
-			Row(&usedTblName)
+		usedTblName := dialectOf(cv.app).IndexOwner(cv.app.ConcurrentDB(), parsed.IndexName, cv.original.Name, cv.new.Name)
 		if usedTblName != "" {
 			return validation.Errors{
 				strconv.Itoa(i): validation.NewError(

@@ -17,6 +17,7 @@ import (
 
 	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/doodlemania2/claviger/tools/cron"
+	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/filesystem"
 	"github.com/doodlemania2/claviger/tools/hook"
 	"github.com/doodlemania2/claviger/tools/logger"
@@ -70,6 +71,10 @@ type BaseAppConfig struct {
 	AuxMaxOpenConns  int
 	AuxMaxIdleConns  int
 	IsDev            bool
+
+	// AuxDBConnect (fork-only) optionally overrides DBConnect for the
+	// auxiliary.db (logs). When unset DBConnect is used for both databases.
+	AuxDBConnect DBConnectFunc
 }
 
 // ensures that the BaseApp implements the App interface.
@@ -225,6 +230,9 @@ func NewBaseApp(config BaseAppConfig) *BaseApp {
 	}
 
 	// apply config defaults
+	if app.config.DBConnect == nil {
+		applyEnvDBConfig(app.config) // fork: CLAVIGER_DB_URL (PostgreSQL)
+	}
 	if app.config.DBConnect == nil {
 		app.config.DBConnect = DefaultDBConnect
 	}
@@ -1286,13 +1294,16 @@ func (app *BaseApp) initDataDB() error {
 	concurrentDB.DB().SetMaxIdleConns(app.config.DataMaxIdleConns)
 	concurrentDB.DB().SetConnMaxIdleTime(3 * time.Minute)
 
-	nonconcurrentDB, err := app.config.DBConnect(dbPath)
-	if err != nil {
-		return err
+	nonconcurrentDB := concurrentDB
+	if dialect.Of(concurrentDB).SeparateWritePool() {
+		nonconcurrentDB, err = app.config.DBConnect(dbPath)
+		if err != nil {
+			return err
+		}
+		nonconcurrentDB.DB().SetMaxOpenConns(1)
+		nonconcurrentDB.DB().SetMaxIdleConns(1)
+		nonconcurrentDB.DB().SetConnMaxIdleTime(3 * time.Minute)
 	}
-	nonconcurrentDB.DB().SetMaxOpenConns(1)
-	nonconcurrentDB.DB().SetMaxIdleConns(1)
-	nonconcurrentDB.DB().SetConnMaxIdleTime(3 * time.Minute)
 
 	if app.IsDev() {
 		nonconcurrentDB.QueryLogFunc = func(ctx context.Context, t time.Duration, sql string, rows *sql.Rows, err error) {
@@ -1340,7 +1351,7 @@ func (app *BaseApp) initAuxDB() error {
 	// (see https://ganigeorgiev.com/pocketbase/discussions/5607)
 	dbPath := filepath.Join(app.DataDir(), auxDBFilename)
 
-	concurrentDB, err := app.config.DBConnect(dbPath)
+	concurrentDB, err := app.auxDBConnect()(dbPath)
 	if err != nil {
 		return err
 	}
@@ -1348,7 +1359,7 @@ func (app *BaseApp) initAuxDB() error {
 	concurrentDB.DB().SetMaxIdleConns(app.config.AuxMaxIdleConns)
 	concurrentDB.DB().SetConnMaxIdleTime(3 * time.Minute)
 
-	nonconcurrentDB, err := app.config.DBConnect(dbPath)
+	nonconcurrentDB, err := app.auxDBConnect()(dbPath)
 	if err != nil {
 		return err
 	}
@@ -1469,17 +1480,17 @@ func (app *BaseApp) registerBaseHooks() {
 	})
 
 	app.Cron().Add("__pbDBOptimize__", "0 0 * * *", func() {
-		_, execErr := app.NonconcurrentDB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute()
+		execErr := dialectOf(app).Checkpoint(app.NonconcurrentDB())
 		if execErr != nil {
 			app.Logger().Warn("Failed to run periodic PRAGMA wal_checkpoint for the main DB", slog.String("error", execErr.Error()))
 		}
 
-		_, execErr = app.AuxNonconcurrentDB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute()
+		execErr = AuxDialectOf(app).Checkpoint(app.AuxNonconcurrentDB())
 		if execErr != nil {
 			app.Logger().Warn("Failed to run periodic PRAGMA wal_checkpoint for the auxiliary DB", slog.String("error", execErr.Error()))
 		}
 
-		_, execErr = app.NonconcurrentDB().NewQuery("PRAGMA optimize").Execute()
+		execErr = dialectOf(app).Optimize(app.NonconcurrentDB())
 		if execErr != nil {
 			app.Logger().Warn("Failed to run periodic PRAGMA optimize", slog.String("error", execErr.Error()))
 		}
@@ -1498,8 +1509,9 @@ func (app *BaseApp) registerBaseHooks() {
 	app.registerWebAuthnCredentialHooks()
 	app.registerTOTPHooks()
 	app.registerAuditHooks()
-	app.registerSessionHooks() // fork-local (#93)
-	app.registerWebhookHooks() // fork-local (#77)
+	app.registerSessionHooks()         // fork-local (#93)
+	app.registerWebhookHooks()         // fork-local (#77)
+	app.registerFieldEncryptionHooks() // fork-local (#75)
 }
 
 // getLoggerMinLevel returns the logger min level based on the

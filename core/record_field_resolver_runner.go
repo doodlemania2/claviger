@@ -751,6 +751,11 @@ func (r *runner) finalizeActivePropsProcessing(collection *Collection, prop stri
 		return nil, fmt.Errorf("non-filterable field %q", name)
 	}
 
+	// fork-local (#75): encrypted fields hold random ciphertext
+	if err := checkEncryptedFieldFilterable(field); err != nil {
+		return nil, err
+	}
+
 	multvaluer, isMultivaluer := field.(MultiValuer)
 
 	cleanFieldName := inflector.Columnify(field.GetName())

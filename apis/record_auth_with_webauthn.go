@@ -795,7 +795,7 @@ func recordWebAuthnRegisterFinish(e *core.RequestEvent) error {
 		wcRecord.SetName(form.Name)
 	}
 
-	if err := e.App.Save(wcRecord); err != nil {
+	if err := e.App.SaveWithContext(auditContext(e), wcRecord); err != nil {
 		return e.InternalServerError("Failed to save WebAuthn credential.", err)
 	}
 
@@ -1226,7 +1226,7 @@ func recordWebAuthnPatchCredential(e *core.RequestEvent) error {
 	}
 
 	proxy.SetName(form.Name)
-	if err := e.App.Save(credRecord); err != nil {
+	if err := e.App.SaveWithContext(auditContext(e), credRecord); err != nil {
 		return e.InternalServerError("Failed to update credential.", err)
 	}
 
@@ -1277,7 +1277,7 @@ func recordWebAuthnDeleteCredential(e *core.RequestEvent) error {
 		return e.NotFoundError("Credential not found.", nil)
 	}
 
-	if err := e.App.Delete(credRecord); err != nil {
+	if err := e.App.DeleteWithContext(auditContext(e), credRecord); err != nil {
 		return e.InternalServerError("Failed to delete credential.", err)
 	}
 
@@ -1344,7 +1344,7 @@ func recordWebAuthnAdminClearCredentials(e *core.RequestEvent) error {
 	deletedIds := make([]string, 0, len(records))
 	txErr := e.App.RunInTransaction(func(txApp core.App) error {
 		for _, r := range records {
-			if derr := txApp.Delete(r); derr != nil {
+			if derr := txApp.DeleteWithContext(auditContext(e), r); derr != nil {
 				return derr
 			}
 			deletedIds = append(deletedIds, r.Id)

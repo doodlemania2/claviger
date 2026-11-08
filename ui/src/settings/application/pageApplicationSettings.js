@@ -1,4 +1,5 @@
 import { settingsSidebar } from "../settingsSidebar";
+import { auditAccordion } from "./auditAccordion";
 import { batchAccordion } from "./batchAccordion";
 import { rateLimitAccordion, sortRules } from "./rateLimitAccordion";
 import { superuserAccordion } from "./superuserAccordion";
@@ -143,6 +144,7 @@ export function pageApplicationSettings() {
             superuserIPs: settings.superuserIPs || [],
             meta: settings.meta || {},
             batch: settings.batch || {},
+            audit: settings.audit || { retentionDays: 0 },
             trustedProxy: settings.trustedProxy || { headers: [] },
             rateLimits: settings.rateLimits || { excludedIPs: [], rules: [] },
         };
@@ -231,6 +233,7 @@ export function pageApplicationSettings() {
                         t.div(
                             { className: "col-lg-12" },
                             () => batchAccordion(data),
+                            () => auditAccordion(data),
                             () => trustedProxyAccordion(data),
                             () => rateLimitAccordion(data),
                             () => superuserAccordion(data),

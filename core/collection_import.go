@@ -35,6 +35,18 @@ func (app *BaseApp) ImportCollectionsByMarshaledJSON(rawSliceOfMaps []byte, dele
 // that are not present in the imported configuration, WILL BE DELETED
 // (this includes their related records data).
 func (app *BaseApp) ImportCollections(toImport []map[string]any, deleteMissing bool) error {
+	return ImportCollectionsWithContext(app, context.Background(), toImport, deleteMissing)
+}
+
+// ImportCollectionsWithContext is the same as [App.ImportCollections] but the
+// provided context (e.g. one carrying the audit actor, see [WithAuditContext])
+// is propagated to the collection saves/deletes (Claviger #110).
+func ImportCollectionsWithContext(app App, ctx context.Context, toImport []map[string]any, deleteMissing bool) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx = context.WithValue(ctx, auditImportCtxKey{}, true)
+
 	if len(toImport) == 0 {
 		// prevent accidentally deleting all collections
 		return errors.New("no collections to import")
@@ -159,7 +171,7 @@ func (app *BaseApp) ImportCollections(toImport []map[string]any, deleteMissing b
 				}
 
 				// delete collection
-				if err := txApp.Delete(existing); err != nil {
+				if err := txApp.DeleteWithContext(ctx, existing); err != nil {
 					return err
 				}
 			}
@@ -167,7 +179,7 @@ func (app *BaseApp) ImportCollections(toImport []map[string]any, deleteMissing b
 
 		// upsert imported collections
 		for _, imported := range importedCollections {
-			if err := txApp.SaveNoValidate(imported); err != nil {
+			if err := txApp.SaveNoValidateWithContext(ctx, imported); err != nil {
 				return fmt.Errorf("failed to save collection %q: %w", imported.Name, err)
 			}
 		}

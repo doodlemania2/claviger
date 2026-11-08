@@ -29,6 +29,15 @@ func auditCount(t testing.TB, app core.App, filter string) int {
 	return total
 }
 
+// clearAudit drops the system entries written by the schema migrations that
+// ran when the fixture app booted (#110).
+func clearAudit(t testing.TB, app core.App) {
+	t.Helper()
+	if _, err := core.DeleteExpiredAuditEntries(app, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func newDemo2(t testing.TB, app core.App, title string) *core.Record {
 	t.Helper()
 	col, err := app.FindCollectionByNameOrId("demo2")
@@ -45,6 +54,7 @@ func TestAuditEntryForGoSavesUsesSystemActor(t *testing.T) {
 
 	app, _ := tests.NewTestApp()
 	defer app.Cleanup()
+	clearAudit(t, app)
 
 	r := newDemo2(t, app, "go-created")
 	if err := app.Save(r); err != nil {
@@ -76,6 +86,7 @@ func TestAuditRollbackLeavesNoEntry(t *testing.T) {
 
 	app, _ := tests.NewTestApp()
 	defer app.Cleanup()
+	clearAudit(t, app)
 
 	rollbackErr := errors.New("rollback")
 	r := newDemo2(t, app, "rolled-back")
@@ -111,6 +122,7 @@ func TestAuditEntryHookEnrichAndSkip(t *testing.T) {
 
 	app, _ := tests.NewTestApp()
 	defer app.Cleanup()
+	clearAudit(t, app)
 
 	app.OnAuditEntry().Bind(&hook.Handler[*core.AuditEntryEvent]{
 		Func: func(e *core.AuditEntryEvent) error {
@@ -316,6 +328,7 @@ func TestDeleteExpiredAuditEntries(t *testing.T) {
 
 	app, _ := tests.NewTestApp()
 	defer app.Cleanup()
+	clearAudit(t, app)
 
 	for _, title := range []string{"aa", "bb", "cc"} {
 		if err := app.Save(newDemo2(t, app, title)); err != nil {
@@ -481,5 +494,200 @@ func TestAuditIgnoresPasskeyLoginNoise(t *testing.T) {
 	entries, _ := app.FindAllRecords(core.CollectionNameAuditLog, dbx.HashExp{"action": "update", "targetCollection": core.CollectionNameWebAuthnCredentials})
 	if len(entries) != 1 || entries[0].GetString("changedFields") != `["name"]` {
 		t.Fatalf("Expected one entry changing only name, got %v", entries)
+	}
+}
+
+// Fork-local (Claviger #110).
+
+func TestAuditSettingsNoOpAndSystemSave(t *testing.T) {
+	t.Parallel()
+
+	app, _ := tests.NewTestApp()
+	defer app.Cleanup()
+
+	// align the stored settings with the in-memory ones
+	if err := app.Save(app.Settings()); err != nil {
+		t.Fatal(err)
+	}
+	before := auditCount(t, app, "action='settings.update'")
+
+	// no-op: no entry
+	if err := app.Save(app.Settings()); err != nil {
+		t.Fatal(err)
+	}
+	if n := auditCount(t, app, "action='settings.update'"); n != before {
+		t.Fatalf("Expected no new entry for a no-op save, got %d", n-before)
+	}
+
+	// a Go-side change is attributed to system, secrets redacted
+	app.Settings().SMTP.Password = "go-side-secret"
+	app.Settings().Meta.AppName = "renamed"
+	if err := app.Save(app.Settings()); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := app.FindRecordsByFilter(core.CollectionNameAuditLog, "action='settings.update'", "-created", 1, 0)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("Expected the new entry: %v", err)
+	}
+	e := entries[0]
+	if e.GetString("actorType") != core.AuditActorTypeSystem || strings.Contains(e.GetString("after"), "go-side-secret") ||
+		!strings.Contains(e.GetString("after"), `"smtp.password":"[redacted]"`) {
+		t.Fatalf("Unexpected entry %s", e.PublicExport())
+	}
+}
+
+func runAuditCleanup(t testing.TB, app core.App) {
+	t.Helper()
+	for _, j := range app.Cron().Jobs() {
+		if j.Id() == "__pbAuditCleanup__" {
+			j.Run()
+			return
+		}
+	}
+	t.Fatal("audit cleanup job not registered")
+}
+
+// not parallel: uses t.Setenv
+func TestAuditRetentionFromSettingsAndEnvOverride(t *testing.T) {
+	t.Setenv(core.AuditRetentionDaysEnv, "")
+
+	setup := func(t *testing.T) (*tests.TestApp, string, string) {
+		app, _ := tests.NewTestApp()
+		t.Cleanup(app.Cleanup)
+		clearAudit(t, app)
+
+		for _, title := range []string{"old", "new"} {
+			if err := app.Save(newDemo2(t, app, title)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		entries := mustAll(t, app)
+		old := time.Now().AddDate(0, 0, -40).UTC().Format("2006-01-02 15:04:05.000Z")
+		if _, err := app.NonconcurrentDB().NewQuery("UPDATE `" + core.CollectionNameAuditLog + "` SET created={:d} WHERE id={:a}").
+			Bind(dbx.Params{"d": old, "a": entries[0].Id}).Execute(); err != nil {
+			t.Fatal(err)
+		}
+		return app, entries[0].Id, entries[1].Id
+	}
+
+	// default (0): keep forever
+	app, _, _ := setup(t)
+	runAuditCleanup(t, app)
+	if n := len(mustAll(t, app)); n != 2 {
+		t.Fatalf("Expected both entries to be kept by default, got %d", n)
+	}
+
+	// from Settings
+	app, oldId, newId := setup(t)
+	app.Settings().Audit.RetentionDays = 30
+	runAuditCleanup(t, app)
+	left := mustAll(t, app)
+	if len(left) != 1 || left[0].Id != newId {
+		t.Fatalf("Expected only the recent entry (not %s) with retention=30, got %v", oldId, left)
+	}
+
+	// env wins over the setting (0 = forever)
+	t.Setenv(core.AuditRetentionDaysEnv, "0")
+	app, _, _ = setup(t)
+	app.Settings().Audit.RetentionDays = 30
+	runAuditCleanup(t, app)
+	if n := len(mustAll(t, app)); n != 2 {
+		t.Fatalf("Expected the env override 0 to keep everything, got %d", n)
+	}
+
+	// env wins over the setting (shorter)
+	t.Setenv(core.AuditRetentionDaysEnv, "1")
+	app, _, newId = setup(t)
+	app.Settings().Audit.RetentionDays = 0
+	runAuditCleanup(t, app)
+	if left := mustAll(t, app); len(left) != 1 || left[0].Id != newId {
+		t.Fatalf("Expected env retention=1 to apply, got %v", left)
+	}
+
+	// an invalid env value is ignored in favor of the setting
+	t.Setenv(core.AuditRetentionDaysEnv, "abc")
+	app, _, newId = setup(t)
+	app.Settings().Audit.RetentionDays = 30
+	runAuditCleanup(t, app)
+	if left := mustAll(t, app); len(left) != 1 || left[0].Id != newId {
+		t.Fatalf("Expected the setting to apply with an invalid env, got %v", left)
+	}
+}
+
+func TestAuditConfigValidation(t *testing.T) {
+	t.Parallel()
+
+	app, _ := tests.NewTestApp()
+	defer app.Cleanup()
+
+	app.Settings().Audit.RetentionDays = -1
+	if err := app.Save(app.Settings()); err == nil {
+		t.Fatal("Expected a negative retention to be rejected")
+	}
+	app.Settings().Audit.RetentionDays = 90
+	if err := app.Save(app.Settings()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAuditSchemaChangeBypass(t *testing.T) {
+	t.Parallel()
+
+	app, _ := tests.NewTestApp()
+	defer app.Cleanup()
+
+	col, err := app.FindCollectionByNameOrId(core.CollectionNameAuditLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	col.Fields.Add(&core.TextField{Name: "extraNote"})
+
+	// the guard blocks a definition change by default, with a plain context too
+	if err := app.Save(col); err == nil {
+		t.Fatal("Expected the definition change to be rejected")
+	}
+	if err := app.SaveWithContext(context.Background(), col); err == nil {
+		t.Fatal("Expected the definition change to be rejected with a plain context")
+	}
+	// ... and with the writer context of the entries (a different key)
+	if err := app.SaveWithContext(core.WithAuditContext(context.Background(), core.AuditActor{Type: core.AuditActorTypeSystem}, ""), col); err == nil {
+		t.Fatal("Expected the definition change to be rejected with an audit actor context")
+	}
+
+	// the explicit bypass lets it through
+	col, _ = app.FindCollectionByNameOrId(core.CollectionNameAuditLog)
+	col.Fields.Add(&core.TextField{Name: "extraNote"})
+	if err := app.SaveWithContext(core.WithAuditSchemaChange(context.Background()), col); err != nil {
+		t.Fatalf("Expected the bypass to allow the schema change: %v", err)
+	}
+	stored, _ := app.FindCollectionByNameOrId(core.CollectionNameAuditLog)
+	if stored.Fields.GetByName("extraNote") == nil {
+		t.Fatal("Expected the new field to be stored")
+	}
+
+	// the bypass is not a way to delete the collection ...
+	if err := app.DeleteWithContext(core.WithAuditSchemaChange(context.Background()), stored); err == nil {
+		t.Fatal("Expected the collection delete to stay blocked")
+	}
+
+	// ... nor to touch entries
+	clearAudit(t, app)
+	if err := core.WriteAuditEntry(app, nil, &core.AuditEntry{Action: "x", Actor: core.AuditActor{Type: core.AuditActorTypeSystem}, CollectionName: "demo2", RecordId: "r1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	entries := mustAll(t, app)
+	if len(entries) != 1 {
+		t.Fatalf("Expected 1 entry, got %d", len(entries))
+	}
+	bypass := core.WithAuditSchemaChange(context.Background())
+	if err := app.SaveWithContext(bypass, core.NewRecord(stored)); err == nil {
+		t.Fatal("Expected creating an entry with the bypass context to be rejected")
+	}
+	entries[0].Set("action", "forged")
+	if err := app.SaveWithContext(bypass, entries[0]); err == nil {
+		t.Fatal("Expected updating an entry with the bypass context to be rejected")
+	}
+	if err := app.DeleteWithContext(bypass, entries[0]); err == nil {
+		t.Fatal("Expected deleting an entry with the bypass context to be rejected")
 	}
 }

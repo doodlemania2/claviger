@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/doodlemania2/claviger/core"
 	"github.com/doodlemania2/claviger/tests"
@@ -25,6 +26,10 @@ func auditEntries(t testing.TB, app core.App, filter string) []*core.Record {
 }
 
 func seedAuditEntry(t testing.TB, app core.App) *core.Record {
+	// drop the system entries written by the migrations that ran on the fixture (#110)
+	if _, err := core.DeleteExpiredAuditEntries(app, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
 	err := core.WriteAuditEntry(app, nil, &core.AuditEntry{
 		Action:         core.AuditActionCreate,
 		Actor:          core.AuditActor{Type: core.AuditActorTypeSystem},
@@ -138,7 +143,7 @@ func TestAuditLogRecordChanges(t *testing.T) {
 			},
 		},
 		{
-			Name:   "anonymous create is attributed to system and redacts password and tokenKey",
+			Name:   "anonymous sign-up is attributed to the new record itself and redacts password and tokenKey",
 			Method: http.MethodPost,
 			URL:    "/api/collections/users/records",
 			Body: strings.NewReader(`{
@@ -155,8 +160,9 @@ func TestAuditLogRecordChanges(t *testing.T) {
 					t.Fatalf("Expected 1 entry, got %d", len(entries))
 				}
 				e := entries[0]
-				if e.GetString("actorType") != "system" {
-					t.Fatalf("Expected system actor, got %s", e.GetString("actorType"))
+				if e.GetString("actorType") != "record" || e.GetString("actorId") != "auditpwuser0001" ||
+					e.GetString("actorCollection") != "users" || !strings.Contains(e.GetString("meta"), `"self":true`) || e.GetString("ip") == "" {
+					t.Fatalf("Expected the new record as (self) actor, got %s", e.PublicExport())
 				}
 				after := e.GetString("after")
 				record, _ := app.FindRecordById("users", "auditpwuser0001")

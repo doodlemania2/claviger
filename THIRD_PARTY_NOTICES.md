@@ -24,6 +24,15 @@ Generated on: 2026-06-07
 
 | Dependency | License | License URL |
 |---|---|---|
+| github.com/bmatcuk/doublestar/v4 | MIT | https://github.com/bmatcuk/doublestar/blob/v4.10.4/LICENSE |
+| github.com/go-chi/chi/v5 | MIT | https://github.com/go-chi/chi/blob/v5.5.0/LICENSE |
+| github.com/go-jose/go-jose/v4 | Apache-2.0 | https://github.com/go-jose/go-jose/blob/v4.1.6/LICENSE |
+| github.com/gorilla/securecookie | BSD-3-Clause | https://github.com/gorilla/securecookie/blob/v1.1.2/LICENSE |
+| github.com/muhlemmer/gu | Unlicense | https://github.com/muhlemmer/gu/blob/v0.3.1/LICENSE |
+| github.com/muhlemmer/httpforwarded | BSD-3-Clause | https://github.com/muhlemmer/httpforwarded/blob/v0.1.0/LICENSE |
+| github.com/rs/cors | MIT | https://github.com/rs/cors/blob/v1.11.1/LICENSE |
+| github.com/zitadel/oidc/v3 | Apache-2.0 | https://github.com/zitadel/oidc/blob/v3.51.17/LICENSE |
+| github.com/zitadel/schema | BSD-3-Clause | https://github.com/zitadel/schema/blob/v1.3.2/LICENSE |
 | github.com/asaskevich/govalidator | MIT | https://github.com/asaskevich/govalidator/blob/a9d515a09cc2/LICENSE |
 | github.com/disintegration/imaging | MIT | https://github.com/disintegration/imaging/blob/v1.6.2/LICENSE |
 | github.com/dlclark/regexp2 | MIT | https://github.com/dlclark/regexp2/blob/v1.11.5/LICENSE |

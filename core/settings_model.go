@@ -133,6 +133,7 @@ type settings struct {
 	Batch        BatchConfig        `form:"batch" json:"batch"`
 	Logs         LogsConfig         `form:"logs" json:"logs"`
 	Captcha      CaptchaConfig      `form:"captcha" json:"captcha"`
+	Audit        AuditConfig        `form:"audit" json:"audit"`
 }
 
 // Settings defines the PocketBase app settings.
@@ -295,6 +296,7 @@ func (s *Settings) PostValidate(ctx context.Context, app App) error {
 		validation.Field(&s.RateLimits),
 		validation.Field(&s.TrustedProxy),
 		validation.Field(&s.Captcha),
+		validation.Field(&s.Audit),
 	)
 }
 
@@ -337,21 +339,45 @@ func (s *Settings) MarshalJSON() ([]byte, error) {
 
 	copy.SMTP.hidePassword = true
 
-	sensitiveFields := []*string{
-		&copy.SMTP.Password,
-		&copy.S3.Secret,
-		&copy.Backups.S3.Secret,
-		&copy.Captcha.SecretKey,
-	}
-
 	// mask all sensitive fields
-	for _, v := range sensitiveFields {
+	for _, v := range copy.secretFields() {
 		if v != nil && *v != "" {
 			*v = ""
 		}
 	}
 
 	return json.Marshal(copy, json.Deterministic(true))
+}
+
+// secretFields returns pointers to every sensitive settings value, keyed by its
+// JSON path. It is the single list used by MarshalJSON (to mask them) and by
+// the audit log (to detect and redact changes, #110).
+func (st *settings) secretFields() map[string]*string {
+	return map[string]*string{
+		"smtp.password":     &st.SMTP.Password,
+		"s3.secret":         &st.S3.Secret,
+		"backups.s3.secret": &st.Backups.S3.Secret,
+		"captcha.secretKey": &st.Captcha.SecretKey,
+	}
+}
+
+// -------------------------------------------------------------------
+
+// AuditConfig defines the audit log settings (Claviger #74, #110).
+type AuditConfig struct {
+	// RetentionDays is how many days audit entries are kept before the daily
+	// cleanup removes them (0 = keep forever).
+	//
+	// The CLAVIGER_AUDIT_RETENTION_DAYS environment variable, when set to a
+	// valid number, overrides this value (see AuditRetentionDaysEnv).
+	RetentionDays int `form:"retentionDays" json:"retentionDays"`
+}
+
+// Validate makes AuditConfig validatable by implementing [validation.Validatable] interface.
+func (c AuditConfig) Validate() error {
+	return validation.ValidateStruct(&c,
+		validation.Field(&c.RetentionDays, validation.Min(0), validation.Max(36500)),
+	)
 }
 
 // -------------------------------------------------------------------

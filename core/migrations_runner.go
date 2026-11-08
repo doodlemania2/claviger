@@ -128,6 +128,11 @@ func (r *MigrationsRunner) Up() ([]string, error) {
 
 	err := r.app.AuxRunInTransaction(func(txApp App) error {
 		return txApp.RunInTransaction(func(txApp App) error {
+			// fork: serialize concurrent runs (Postgres only)
+			if err := dialectOf(txApp).LockMigrations(txApp.DB()); err != nil {
+				return err
+			}
+
 			for _, m := range r.migrationsList.Items() {
 				// applied migrations check
 				if r.isMigrationApplied(txApp, m.File) {
@@ -249,8 +254,9 @@ func (r *MigrationsRunner) initMigrationsTable() error {
 	}
 
 	rawQuery := fmt.Sprintf(
-		"CREATE TABLE IF NOT EXISTS {{%s}} (file VARCHAR(255) PRIMARY KEY NOT NULL, applied INTEGER NOT NULL)",
+		"CREATE TABLE IF NOT EXISTS {{%s}} (file VARCHAR(255) PRIMARY KEY NOT NULL, applied %s NOT NULL)",
 		r.tableName,
+		dialectOf(r.app).Int64Type(),
 	)
 
 	_, err := r.app.DB().NewQuery(rawQuery).Execute()

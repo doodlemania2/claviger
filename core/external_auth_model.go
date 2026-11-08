@@ -162,8 +162,11 @@ func (app *BaseApp) registerExternalAuthHooks() {
 				}
 				if len(externalAuths) > 0 {
 					// delete all pre-existing external auths
-					if err := txApp.DeleteAllExternalAuthsByRecord(e.Record); err != nil {
-						return err
+					// (fork #110: with the event context, so the unlinks keep the audit actor)
+					for _, ea := range externalAuths {
+						if err := txApp.DeleteWithContext(e.Context, ea); err != nil {
+							return err
+						}
 					}
 
 					// force refresh tokens reset (if not already)

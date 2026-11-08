@@ -87,7 +87,7 @@ func recordsList(e *core.RequestEvent) error {
 	records := []*core.Record{}
 	result, err := searchProvider.ParseAndExec(e.Request.URL.Query().Encode(), &records)
 	if err != nil {
-		return firstApiError(err, e.BadRequestError("", err))
+		return firstApiError(err, encryptedFieldFilterError(err, collection), e.BadRequestError("", err))
 	}
 
 	event := new(core.RecordsListRequestEvent)
@@ -261,7 +261,7 @@ func recordCreate(responseWriteAfterTx bool, optFinalizer func(data any) error) 
 		requestInfo.Body = data
 
 		form := forms.NewRecordUpsert(e.App, record)
-		form.SetContext(auditContext(e))
+		form.SetContext(auditContextForCreate(e, collection))
 		if hasSuperuserAuth {
 			form.GrantSuperuserAccess()
 		}

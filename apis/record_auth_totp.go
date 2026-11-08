@@ -1,6 +1,7 @@
 package apis
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -167,7 +168,7 @@ func recordTOTPBegin(e *core.RequestEvent) error {
 	t.SetLastStep(0)
 	t.SetBackupCodeHashes(nil)
 
-	if err := e.App.Save(t); err != nil {
+	if err := e.App.SaveWithContext(auditContext(e), t); err != nil {
 		return firstApiError(err, e.InternalServerError("Failed to store the TOTP secret.", err))
 	}
 
@@ -231,7 +232,7 @@ func recordTOTPConfirm(e *core.RequestEvent) error {
 	}
 	t.SetEnabled(true)
 	t.SetBackupCodeHashes(hashes)
-	if err := e.App.Save(t); err != nil {
+	if err := e.App.SaveWithContext(auditContext(e), t); err != nil {
 		return firstApiError(err, e.InternalServerError("Failed to activate TOTP.", err))
 	}
 
@@ -265,7 +266,7 @@ func recordTOTPDisable(e *core.RequestEvent) error {
 
 	if !t.Enabled() {
 		// a pending enrollment protects nothing yet, cancel it freely
-		if err := e.App.Delete(t); err != nil {
+		if err := e.App.DeleteWithContext(auditContext(e), t); err != nil {
 			return e.InternalServerError("Failed to cancel the enrollment.", err)
 		}
 		return e.NoContent(http.StatusNoContent)
@@ -276,7 +277,7 @@ func recordTOTPDisable(e *core.RequestEvent) error {
 			return firstApiError(err, e.BadRequestError("An error occurred while validating the submitted data.", err))
 		}
 
-		ok, err := verifySecondFactor(e.App, t, form.Code, true)
+		ok, err := verifySecondFactor(auditContext(e), e.App, t, form.Code, true)
 		if err != nil {
 			return e.InternalServerError("Failed to verify the code.", err)
 		}
@@ -287,7 +288,7 @@ func recordTOTPDisable(e *core.RequestEvent) error {
 		}
 	}
 
-	if err := e.App.Delete(t); err != nil {
+	if err := e.App.DeleteWithContext(auditContext(e), t); err != nil {
 		return e.InternalServerError("Failed to disable TOTP.", err)
 	}
 
@@ -319,7 +320,7 @@ func recordTOTPRegenerateBackupCodes(e *core.RequestEvent) error {
 		return e.BadRequestError("TOTP is not enabled.", nil)
 	}
 
-	ok, err := verifySecondFactor(e.App, t, form.Code, false)
+	ok, err := verifySecondFactor(auditContext(e), e.App, t, form.Code, false)
 	if err != nil {
 		return e.InternalServerError("Failed to verify the code.", err)
 	}
@@ -338,7 +339,7 @@ func recordTOTPRegenerateBackupCodes(e *core.RequestEvent) error {
 		return e.InternalServerError("Failed to load the TOTP state.", err)
 	}
 	t.SetBackupCodeHashes(hashes)
-	if err := e.App.Save(t); err != nil {
+	if err := e.App.SaveWithContext(auditContext(e), t); err != nil {
 		return firstApiError(err, e.InternalServerError("Failed to store the backup codes.", err))
 	}
 
@@ -407,7 +408,7 @@ func recordAuthWithTOTP(e *core.RequestEvent) error {
 		return e.TooManyRequestsError("Too many attempts, please try again later.", nil)
 	}
 
-	ok, err := verifySecondFactor(e.App, t, form.Code, true)
+	ok, err := verifySecondFactor(auditContextAs(e, record), e.App, t, form.Code, true)
 	if err != nil {
 		return e.InternalServerError("Failed to verify the code.", err)
 	}
@@ -447,7 +448,7 @@ func mfaSessionDuration(collection *core.Collection) time.Duration {
 // verifySecondFactor checks a TOTP code or (allowBackup) a backup code for the
 // enrollment and consumes it. A 6 digit code is a TOTP code, anything else is
 // treated as a backup code.
-func verifySecondFactor(app core.App, t *core.TOTP, code string, allowBackup bool) (bool, error) {
+func verifySecondFactor(ctx context.Context, app core.App, t *core.TOTP, code string, allowBackup bool) (bool, error) {
 	trimmed := strings.ReplaceAll(strings.TrimSpace(code), " ", "")
 
 	if len(trimmed) == security.TOTPDigits && isAllDigits(trimmed) {
@@ -458,7 +459,7 @@ func verifySecondFactor(app core.App, t *core.TOTP, code string, allowBackup boo
 		return false, nil
 	}
 
-	return consumeBackupCode(app, t, code)
+	return consumeBackupCode(ctx, app, t, code)
 }
 
 func isAllDigits(s string) bool {
@@ -524,7 +525,7 @@ func generateBackupCodes(n int) (plain []string, hashes []string, err error) {
 
 // consumeBackupCode checks the code against the unused backup code hashes and
 // removes the match, in one transaction so a code cannot be used twice.
-func consumeBackupCode(app core.App, t *core.TOTP, code string) (bool, error) {
+func consumeBackupCode(ctx context.Context, app core.App, t *core.TOTP, code string) (bool, error) {
 	normalized := normalizeBackupCode(code)
 	if len(normalized) != totpBackupCodeLength {
 		return false, nil
@@ -548,7 +549,7 @@ func consumeBackupCode(app core.App, t *core.TOTP, code string) (bool, error) {
 
 			remaining := append(append([]string{}, hashes[:i]...), hashes[i+1:]...)
 			fresh.SetBackupCodeHashes(remaining)
-			if err := txApp.Save(fresh); err != nil {
+			if err := txApp.SaveWithContext(ctx, fresh); err != nil {
 				return err
 			}
 

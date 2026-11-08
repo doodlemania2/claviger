@@ -98,7 +98,7 @@ func collectionCreate(e *core.RequestEvent) error {
 	event.Collection = collection
 
 	return e.App.OnCollectionCreateRequest().Trigger(event, func(e *core.CollectionRequestEvent) error {
-		if err := e.App.Save(e.Collection); err != nil {
+		if err := e.App.SaveWithContext(auditContext(e.RequestEvent), e.Collection); err != nil {
 			// validation failure
 			var validationErrors validation.Errors
 			if errors.As(err, &validationErrors) {
@@ -130,7 +130,7 @@ func collectionUpdate(e *core.RequestEvent) error {
 	event.Collection = collection
 
 	return event.App.OnCollectionUpdateRequest().Trigger(event, func(e *core.CollectionRequestEvent) error {
-		if err := e.App.Save(e.Collection); err != nil {
+		if err := e.App.SaveWithContext(auditContext(e.RequestEvent), e.Collection); err != nil {
 			// validation failure
 			var validationErrors validation.Errors
 			if errors.As(err, &validationErrors) {
@@ -158,7 +158,7 @@ func collectionDelete(e *core.RequestEvent) error {
 	event.Collection = collection
 
 	return e.App.OnCollectionDeleteRequest().Trigger(event, func(e *core.CollectionRequestEvent) error {
-		if err := e.App.Delete(e.Collection); err != nil {
+		if err := e.App.DeleteWithContext(auditContext(e.RequestEvent), e.Collection); err != nil {
 			msg := "Failed to delete collection"
 
 			// check fo references

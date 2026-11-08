@@ -1,0 +1,12 @@
+/* Fork-local (Claviger #71): OpenID Connect page */
+.page-oidc {
+    .oidc-clients-table,
+    .oidc-keys-table {
+        width: 100%;
+    }
+}
+
+.oidc-modal .field-addon {
+    display: flex;
+    align-items: center;
+}
