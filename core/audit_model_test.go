@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -367,4 +368,60 @@ func mustAll(t testing.TB, app core.App) []*core.Record {
 		t.Fatal(err)
 	}
 	return entries
+}
+
+// BenchmarkAuditOverhead compares record creation with and without the audit
+// hooks, both as individual saves and as one bulk transaction.
+//
+//	go test ./core -run xxx -bench AuditOverhead -benchtime 2000x
+func BenchmarkAuditOverhead(b *testing.B) {
+	for _, audited := range []bool{false, true} {
+		for _, bulk := range []bool{false, true} {
+			name := "unaudited"
+			if audited {
+				name = "audited"
+			}
+			if bulk {
+				name += "/one-tx"
+			} else {
+				name += "/single-saves"
+			}
+
+			b.Run(name, func(b *testing.B) {
+				app, _ := tests.NewTestApp()
+				defer app.Cleanup()
+
+				if !audited {
+					app.OnRecordCreateExecute().Unbind("__pbAuditCreate__")
+				}
+
+				col, _ := app.FindCollectionByNameOrId("demo2")
+				var n int
+				save := func(a core.App) {
+					n++
+					r := core.NewRecord(col)
+					r.Set("title", "benchmark-"+strconv.Itoa(n))
+					if err := a.SaveNoValidate(r); err != nil {
+						b.Fatal(err)
+					}
+				}
+
+				b.ResetTimer()
+				if bulk {
+					if err := app.RunInTransaction(func(txApp core.App) error {
+						for i := 0; i < b.N; i++ {
+							save(txApp)
+						}
+						return nil
+					}); err != nil {
+						b.Fatal(err)
+					}
+				} else {
+					for i := 0; i < b.N; i++ {
+						save(app)
+					}
+				}
+			})
+		}
+	}
 }
