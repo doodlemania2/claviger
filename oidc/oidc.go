@@ -139,7 +139,7 @@ func (m *module) ready() (http.Handler, string) {
 		AuthMethodPost:           true,
 		GrantTypeRefreshToken:    true,
 		SupportedClaims:          SupportedClaims,
-		SupportedScopes:          []string{oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail, oidc.ScopeOfflineAccess},
+		SupportedScopes:          []string{oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail, oidc.ScopeOfflineAccess, ScopeOrgs},
 	}, m.store, func(bool) (op.IssuerFromRequest, error) {
 		return func(*http.Request) string { return m.issuer() }, nil
 	}, opts...)

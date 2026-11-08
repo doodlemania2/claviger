@@ -75,6 +75,7 @@ type Client struct {
 	Scopes         []string
 	Opaque         bool
 	Alg            string
+	OrgID          string // optional org binding (#79a)
 	devMode        bool
 }
 
@@ -92,6 +93,7 @@ func (s *Store) clientFromRecord(rec *core.Record) *Client {
 		AuthCollection: rec.GetString("authCollection"),
 		Opaque:         rec.GetString("accessTokenType") == "opaque",
 		Alg:            rec.GetString("signingAlg"),
+		OrgID:          rec.GetString("org"),
 		devMode:        s.app.IsDev(),
 	}
 

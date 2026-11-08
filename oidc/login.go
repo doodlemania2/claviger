@@ -265,6 +265,10 @@ func (m *module) loginFinish(e *core.RequestEvent) error {
 		return jsonError(e, http.StatusForbidden, "This account cannot sign in.")
 	}
 
+	if err := m.store.orgBoundOK(client, e.Auth); err != nil {
+		return jsonError(e, http.StatusForbidden, "Your account is not a member of the organization this application belongs to.")
+	}
+
 	var sess struct {
 		Created    types.DateTime `db:"created"`
 		AuthMethod string         `db:"authMethod"`
@@ -410,6 +414,7 @@ var scopeDescriptions = map[string]scopeInfo{
 	oidc.ScopeProfile:       {"Your profile", "Your name and username."},
 	oidc.ScopeEmail:         {"Your email address", "Your email address and whether it is verified."},
 	oidc.ScopeOfflineAccess: {"Stay signed in", "Keep access when you are not using the application."},
+	ScopeOrgs:               {"Your organizations", "The organizations you belong to and your role in each."},
 }
 
 func (m *module) consentPage(e *core.RequestEvent) error {
