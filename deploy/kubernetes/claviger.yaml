@@ -1,0 +1,144 @@
+# Claviger on Kubernetes. Apply with: kubectl apply -f claviger.yaml
+# Edit the Secret first (or create it with kubectl, see README.md).
+# replicas MUST stay 1. See README.md.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: claviger
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: claviger
+  namespace: claviger
+type: Opaque
+stringData:
+  # Exactly 32 characters. Generate with: openssl rand -hex 16
+  PB_ENCRYPTION_KEY: "REPLACE_WITH_32_CHARACTERS_HEX_KEY"
+  PB_ADMIN_EMAIL: "admin@example.com"
+  PB_ADMIN_PASSWORD: "REPLACE_WITH_A_LONG_RANDOM_PASSWORD"
+  # Optional:
+  # CLAVIGER_METRICS_TOKEN: ""
+  # OTEL_EXPORTER_OTLP_HEADERS: ""
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: claviger
+  namespace: claviger
+data:
+  PB_HOST: "0.0.0.0"
+  PB_PORT: "8090"
+  # CLAVIGER_AUDIT_RETENTION_DAYS: "365"
+  # OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.observability:4318"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: claviger
+  namespace: claviger
+spec:
+  selector:
+    app.kubernetes.io/name: claviger
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: claviger
+  namespace: claviger
+spec:
+  # One writer. Never raise this. The ReadWriteOnce volume would not stop
+  # a second pod on the same node from opening the same database.
+  replicas: 1
+  serviceName: claviger
+  # A StatefulSet already replaces pods one at a time, old pod first.
+  # OrderedReady is the default; it is written out to make the intent clear.
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: claviger
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: claviger
+    spec:
+      # Time for Claviger and Litestream to shut down cleanly.
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: claviger
+          # Pin a release tag. Do not use latest.
+          image: ghcr.io/doodlemania2/claviger:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8090
+          envFrom:
+            - configMapRef:
+                name: claviger
+            - secretRef:
+                name: claviger
+          env:
+            # The pod name is the replica id for the entrypoint's handover check.
+            - name: PB_INSTANCE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: data
+              mountPath: /pb_data
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          # The image runs as root (it has no USER line), so runAsNonRoot is
+          # NOT set. What can be tightened without breaking it is set here.
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # storageClassName: your-fast-block-storage-class
+        resources:
+          requests:
+            storage: 5Gi
