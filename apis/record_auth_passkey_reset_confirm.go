@@ -122,48 +122,49 @@ func recordConfirmPasskeyResetFinish(e *core.RequestEvent) error {
 		return e.BadRequestError("Failed to verify WebAuthn registration.", err)
 	}
 
-	// Remove any previously registered credentials for the user, since
-	// the user has just proven recovery via the email-link token.
-	existingRecords, err := e.App.FindAllRecords(
-		core.CollectionNameWebAuthnCredentials,
-		dbx.HashExp{
-			"collectionRef": record.Collection().Id,
-			"recordRef":     record.Id,
-		},
-	)
-	if err != nil {
-		return e.InternalServerError("Failed to load existing credentials.", err)
-	}
-	for _, old := range existingRecords {
-		if delErr := e.App.Delete(old); delErr != nil {
-			e.App.Logger().Error("Failed to delete old WebAuthn credential during reset",
-				"error", delErr,
-				"credentialId", old.Id,
-			)
-		}
-	}
-
-	// Store the new credential
-	wcRecord := core.NewWebAuthnCredential(e.App)
-	wcRecord.SetCollectionRef(collection.Id)
-	wcRecord.SetRecordRef(record.Id)
-	wcRecord.FromWebAuthnCredential(*cred)
-	if form.Name != "" {
-		wcRecord.SetName(form.Name)
-	}
-
-	if err := e.App.Save(wcRecord); err != nil {
-		return e.InternalServerError("Failed to save WebAuthn credential.", err)
-	}
-
-	// One-time use: invalidate the token by rotating the user's TokenKey
-	// (matches the behavior of password reset confirm via SetPassword).
-	record.RefreshTokenKey()
-	if saveErr := e.App.Save(record); saveErr != nil {
-		e.App.Logger().Error("Failed to rotate token key after passkey reset",
-			"error", saveErr,
-			"recordId", record.Id,
+	// Replace the credentials and invalidate the token atomically: either the
+	// user ends up with exactly the new passkey and a spent token, or nothing
+	// changes and the request fails (the user can retry with the same link).
+	var wcRecord *core.WebAuthnCredential
+	txErr := e.App.RunInTransaction(func(txApp core.App) error {
+		// Remove any previously registered credentials for the user, since
+		// the user has just proven recovery via the email-link token.
+		existingRecords, err := txApp.FindAllRecords(
+			core.CollectionNameWebAuthnCredentials,
+			dbx.HashExp{
+				"collectionRef": record.Collection().Id,
+				"recordRef":     record.Id,
+			},
 		)
+		if err != nil {
+			return err
+		}
+		for _, old := range existingRecords {
+			if err := txApp.Delete(old); err != nil {
+				return err
+			}
+		}
+
+		// Store the new credential
+		wcRecord = core.NewWebAuthnCredential(txApp)
+		wcRecord.SetCollectionRef(collection.Id)
+		wcRecord.SetRecordRef(record.Id)
+		wcRecord.FromWebAuthnCredential(*cred)
+		if form.Name != "" {
+			wcRecord.SetName(form.Name)
+		}
+		if err := txApp.Save(wcRecord); err != nil {
+			return err
+		}
+
+		// One-time use: invalidate the token by rotating the user's TokenKey
+		// (matches the behavior of password reset confirm via SetPassword).
+		record.RefreshTokenKey()
+
+		return txApp.Save(record)
+	})
+	if txErr != nil {
+		return e.InternalServerError("Failed to reset the passkey.", txErr)
 	}
 
 	e.App.Store().Remove(getPasskeyResetResendKey(record))

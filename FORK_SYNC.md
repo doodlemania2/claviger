@@ -105,6 +105,7 @@ Files the fork modifies that upstream also owns (expect conflicts here):
 ### 3. Pitfall checklist (re-verify after every merge)
 
 - [ ] **Token redaction.** `core/collection_model.go` `MarshalJSON` must blank `Secret` on every `*ResetToken` config, including `PasskeyResetToken` (upstream has none). If upstream adds a new token type, add the matching `alias.X.Secret = ""` line. Check with `grep -n 'ResetToken.Secret' core/collection_model.go`, and keep the `notExpected` list in `TestCollectionSerialize` in step. A missing line leaks the secret through the API.
+- [ ] **Passkey reset token type.** `core/record_query.go` `FindAuthRecordByToken` must keep the fork's `case TokenTypePasskeyReset` (secret `PasskeyResetToken.Secret`); upstream has no such type and a merge can drop the case. Check with `grep -n TokenTypePasskeyReset core/record_query.go`, and run `go test -run 'PasskeyReset' ./core/... ./apis/...`. Without it every emailed reset link is rejected (#39).
 - [ ] **modernc SQLite.** `apis/TestSQLRun/single_write_query` expects `affectedRows: 1` for DDL. modernc reports 1, upstream's mattn reports 0. Keep the fork's value.
 - [ ] **`modernc_versions_check.go`** pins the expected sqlite/libc versions. Keep it in step with `go.mod` when they change.
 - [ ] **`plugins/jsvm/binds_test.go`** asserts exact hook counts. If the merge adds or removes a hook on `core.App`, update the count (`TestHooksBindsCount`).

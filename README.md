@@ -35,7 +35,7 @@ It is built for two kinds of users:
 |---|---|
 | **Everything in PocketBase** | Collections, API rules, realtime, files, email/password, OTP, OAuth2 with ~30 providers, MFA, admin UI, backups, Go and JavaScript hooks |
 | **Passkeys (WebAuthn)** | Register, sign in, manage and revoke passkeys per auth collection; passkeys count as an MFA factor; rate-limited ceremonies with origin and sign-counter checks |
-| **Passkey reset** | Email-based recovery that clears a user's passkeys so they can enroll again. Known bug: tokens are currently rejected ([#39](../../issues/39)) |
+| **Passkey reset** | Email-based recovery that clears a user's passkeys so they can enroll again. |
 | **OpenTelemetry log export** | Tee app logs to any OTLP/HTTP collector beside the built-in log store; off unless configured |
 | **SQLite-safe container rollouts** | `entrypoint.sh` hands the database over between the outgoing and incoming container, so a rolling deploy never runs two writers on one database |
 | **Container packaging** | Multi-stage `Dockerfile`, `docker-compose.yml`, optional Litestream replication |
