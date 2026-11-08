@@ -1,0 +1,26 @@
+# Optional. Needs an ingress controller, and cert-manager for the TLS secret.
+# Edit the host, ingressClassName and issuer name. Apply: kubectl apply -f ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: claviger
+  namespace: claviger
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  # ingressClassName: nginx
+  tls:
+    - hosts:
+        - auth.example.com
+      secretName: claviger-tls
+  rules:
+    - host: auth.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: claviger
+                port:
+                  name: http
