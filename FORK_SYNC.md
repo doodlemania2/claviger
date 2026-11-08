@@ -91,20 +91,21 @@ Files the fork modifies that upstream also owns (expect conflicts here):
 | --- | --- | --- |
 | `go.mod` / `go.sum` | MEDIUM | Take upstream's, then re-add `go-webauthn/webauthn` and the OTLP/grpc pins. Run `go mod tidy`. |
 | `core/collection_model.go` | **HIGH** | `MarshalJSON` redaction. See the checklist. |
-| `core/collection_model_auth_options.go` | MEDIUM | Our addition is the `WebAuthn` field. |
+| `core/collection_model_auth_options.go` | MEDIUM | Our addition is the `WebAuthn` field (`WebAuthnConfig.Discoverable`) and one `o.validateSignInMethods(cv)` call in `validate` (logic lives in the fork-only `core/collection_webauthn_validate.go`). |
 | `core/app.go`, `core/base.go` | LOW/MEDIUM | Our hook methods and fields (incl. `OnAuditEntry`, #74: interface method, `onAuditEntry` field/init/accessor, and `app.registerAuditHooks()` at the end of `registerBaseHooks`). `core/base.go` also has the OTLP `slog` tee and the logger sink-failure tally inside `runLogsWrite`. |
 | `core/base.go` (traces/metrics) | LOW | One call, `app.initTelemetry()`, in `Bootstrap` just before `initDataDB` (#76). Must stay before the DB connections. |
 | `core/db_connect.go` | LOW | Four lines at the top of `DefaultDBConnect`: `openTelemetryDB` returns the instrumented driver only while telemetry is active (#76). |
 | `apis/base.go` | LOW | Two lines in `NewRouter`: `telemetryMiddleware()` bound first, and `bindMetricsApi` after `bindSQLApi` (#76). |
-| `core/events.go`, `core/record_tokens.go`, `pocketbase.go` | LOW | Mostly import-order conflicts. |
+| `core/events.go`, `core/record_tokens.go`, `pocketbase.go` | LOW | Mostly import-order conflicts. `core/record_tokens.go` also carries `TokenClaimPasskeyAt` and `NewPasskeyAuthToken` (passkey step-up, #73). |
 | `tests/app.go`, `tests/api.go` | LOW | Race fix (#49): `EventCallsSnapshot()` in `tests/app.go`, and `tests/api.go` reads events through it instead of `EventCalls`. Kept in the fork, not sent upstream. If upstream rewrites those reads, keep the snapshot call. |
-| `apis/record_auth.go` | LOW | Our route bindings. |
+| `apis/record_auth.go` | LOW | Our route bindings, including the discoverable login and step-up routes and `RequireFreshPasskey` on credential delete (#73). |
 | `core/record_model.go` | LOW | Audit log (#74): `cascadeRecordDelete`/`deleteRefRecords` take a leading `ctx` and use `DeleteWithContext`/`SaveNoValidateWithContext`, so cascade deletes keep the audit actor. Re-apply if upstream touches those two functions. |
 | `apis/record_crud.go` | LOW | Audit log (#74): `form.SetContext(auditContext(e))` after both `NewRecordUpsert` calls and `DeleteWithContext(auditContext(...))` in `recordDelete`. Without them every API change is attributed to `system`. |
 | `apis/sql.go` | LOW | Audit log (#74): write queries mentioning `_auditLog` are rejected in `executeQuery`. |
 | `tests/api.go` | LOW | Audit log (#74): `OnAuditEntry` is dropped from the "no other events" check unless the scenario lists it. |
 | `apis/collection_test.go`, `apis/collection_import_test.go`, `core/collection_query_test.go` | LOW | System collection count is one higher again (`_auditLog`); the paging scenario in `collection_test.go` expects `_authOrigins` on page 2. |
-| `core/collection_model_test.go` | LOW | JSON snapshot: keep the `webauthn` field and any new upstream `*ResetToken`/`*Template` fixture keys. |
+| `core/collection_model_test.go`, `plugins/migratecmd/migratecmd_test.go` | LOW | JSON snapshots: keep the `webauthn` field (incl. `discoverable`) and any new upstream `*ResetToken`/`*Template` fixture keys. |
+| `apis/record_auth_methods.go` | LOW | `webauthn` response gained `discoverable` and `passkeyOnly` (#73). |
 | `core/collection_query_test.go` | LOW | System collection count is upstream's plus one. |
 | `plugins/jsvm/binds_test.go` | LOW | Hook count. See the checklist. |
 | `.gitignore` | LOW | Keep both sides. |

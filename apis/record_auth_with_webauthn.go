@@ -54,7 +54,24 @@ type webauthnSessionEntry struct {
 	ExpiresAt time.Time
 	RecordId  string
 	Decoy     bool
+
+	// Purpose binds the session to the ceremony that created it so a session
+	// from one flow cannot be finished by another (for example a step-up
+	// challenge used as a sign-in). Empty is the classic identity-bound
+	// login/registration flow.
+	Purpose string
 }
+
+const (
+	webauthnPurposeDefault      = ""
+	webauthnPurposeDiscoverable = "discoverable"
+	webauthnPurposeStepUp       = "stepup"
+
+	// webauthnDiscoverableMaxEntries caps unauthenticated discoverable-login
+	// sessions separately from the shared cap, so a flood of anonymous
+	// begin calls can only evict its own kind, never a real ceremony.
+	webauthnDiscoverableMaxEntries = 256
+)
 
 // webauthnRPCacheEntry stores a precomputed *webauthn.WebAuthn keyed by the
 // settings inputs that affect it; on settings change the cacheKey mismatches
@@ -421,6 +438,11 @@ func evictOldestWebAuthnSession(app core.App) {
 // webauthnSessionMaxEntries; on overflow the oldest entry is evicted to make
 // room (audit H1 mitigation against memory-exhaustion DoS).
 func storeWebAuthnSession(app core.App, session *webauthn.SessionData, recordId string, decoy bool) string {
+	return storeWebAuthnSessionFor(app, session, recordId, decoy, webauthnPurposeDefault)
+}
+
+// storeWebAuthnSessionFor is storeWebAuthnSession for a specific ceremony purpose.
+func storeWebAuthnSessionFor(app core.App, session *webauthn.SessionData, recordId string, decoy bool, purpose string) string {
 	ensureWebAuthnGC(app)
 
 	entry := &webauthnSessionEntry{
@@ -428,6 +450,7 @@ func storeWebAuthnSession(app core.App, session *webauthn.SessionData, recordId 
 		ExpiresAt: time.Now().Add(webauthnSessionTTL),
 		RecordId:  recordId,
 		Decoy:     decoy,
+		Purpose:   purpose,
 	}
 
 	// opportunistic prune so we don't immediately evict a non-expired entry
@@ -656,7 +679,7 @@ func recordWebAuthnRegisterBegin(e *core.RequestEvent) error {
 		credentials: existingCreds,
 	}
 
-	options, session, err := wa.BeginRegistration(user)
+	options, session, err := wa.BeginRegistration(user, webauthnRegistrationOptions(collection)...)
 	if err != nil {
 		return e.InternalServerError("Failed to begin WebAuthn registration.", err)
 	}
@@ -722,7 +745,7 @@ func recordWebAuthnRegisterFinish(e *core.RequestEvent) error {
 	}
 	defer deleteWebAuthnSession(e.App, form.SessionToken)
 
-	if entry.Decoy || entry.RecordId != record.Id {
+	if entry.Decoy || entry.Purpose != webauthnPurposeDefault || entry.RecordId != record.Id {
 		return e.BadRequestError("Session does not match the authenticated user.", nil)
 	}
 
@@ -942,8 +965,10 @@ func recordWebAuthnLoginFinish(e *core.RequestEvent) error {
 	}
 	defer deleteWebAuthnSession(e.App, form.SessionToken)
 
-	// defensive: nothing stores decoy sessions any more
-	if entry.Decoy {
+	// defensive: nothing stores decoy sessions any more; and only the
+	// identity-bound login flow may finish here (not a step-up or a
+	// discoverable-login session)
+	if entry.Decoy || entry.Purpose != webauthnPurposeDefault {
 		addAuthTimingJitter()
 		return e.BadRequestError("Failed to authenticate.", nil)
 	}
@@ -988,10 +1013,18 @@ func recordWebAuthnLoginFinish(e *core.RequestEvent) error {
 		return e.BadRequestError("Failed to authenticate.", nil)
 	}
 
-	// sign-count regression / cloned-authenticator detection (audit M3): if
-	// the library raised CloneWarning the authenticator's sign count went
-	// backwards relative to the stored value. Reject and log; do NOT update
-	// the stored sign count.
+	return finishWebAuthnLogin(e, collection, record, cred)
+}
+
+// finishWebAuthnLogin is the shared tail of every successful assertion that
+// ends in an auth response (identity-bound and discoverable login).
+//
+// Sign-count regression / cloned-authenticator detection (audit M3): if the
+// library raised CloneWarning the authenticator's sign count went backwards
+// relative to the stored value. Reject and log; do NOT update the stored sign
+// count. Otherwise the counter, flags and lastUsed are persisted in one
+// transaction and the auth event fires.
+func finishWebAuthnLogin(e *core.RequestEvent, collection *core.Collection, record *core.Record, cred *webauthn.Credential) error {
 	if cred != nil && cred.Authenticator.CloneWarning {
 		e.App.Logger().Warn("webauthn_clone_warning",
 			"recordId", record.Id,
@@ -1002,27 +1035,9 @@ func recordWebAuthnLoginFinish(e *core.RequestEvent) error {
 		return e.BadRequestError("Failed to authenticate.", nil)
 	}
 
-	// Update sign count on the stored credential (single query, reused for event)
-	var storedProxy *core.WebAuthnCredential
-	if cred != nil {
-		credIdEncoded := base64.RawURLEncoding.EncodeToString(cred.ID)
-		storedRecord, findErr := e.App.FindFirstRecordByFilter(
-			core.CollectionNameWebAuthnCredentials,
-			"credentialId = {:credId} && recordRef = {:recordRef} && collectionRef = {:colId}",
-			dbx.Params{"credId": credIdEncoded, "recordRef": record.Id, "colId": collection.Id},
-		)
-		if findErr == nil {
-			storedProxy = &core.WebAuthnCredential{Record: storedRecord}
-			storedProxy.SetSignCount(cred.Authenticator.SignCount)
-			storedProxy.SetFlags(cred.Flags)
-			if saveErr := e.App.Save(storedProxy); saveErr != nil {
-				e.App.Logger().Error("Failed to update WebAuthn credential sign count",
-					"error", saveErr,
-					"credentialId", credIdEncoded,
-				)
-			}
-		}
-	}
+	// Update sign count, flags and lastUsed on the stored credential in one
+	// transaction (reused for the event).
+	storedProxy := recordWebAuthnCredentialUse(e.App, collection, record, cred)
 
 	// Trigger WebAuthn auth event
 	event := new(core.RecordAuthWithWebAuthnRequestEvent)
@@ -1032,7 +1047,14 @@ func recordWebAuthnLoginFinish(e *core.RequestEvent) error {
 	event.Credential = storedProxy
 
 	return e.App.OnRecordAuthWithWebAuthnRequest().Trigger(event, func(e *core.RecordAuthWithWebAuthnRequestEvent) error {
-		return RecordAuthResponse(e.RequestEvent, e.Record, core.MFAMethodWebAuthn, nil)
+		// the token records when the passkey assertion happened so routes can
+		// require a fresh one (see RequireFreshPasskey)
+		token, err := e.Record.NewPasskeyAuthToken(time.Now(), true)
+		if err != nil {
+			return e.InternalServerError("Failed to create auth token.", err)
+		}
+
+		return recordAuthResponse(e.RequestEvent, e.Record, token, core.MFAMethodWebAuthn, nil)
 	})
 }
 
@@ -1098,8 +1120,11 @@ func (form *webauthnPatchCredentialForm) validate() error {
 
 // recordWebAuthnListCredentials lists the authenticated user's WebAuthn credentials.
 //
-// Returns a summary of each credential (id, name, created, signCount)
-// without exposing sensitive fields like public keys.
+// Returns a summary of each credential (id, name, created, lastUsed,
+// signCount, transports) without exposing sensitive fields like public keys.
+// lastUsed is null for a credential with no recorded use. The endpoint is
+// owner-scoped and selects its output explicitly, so the collection's hidden
+// fields stay hidden from the generic records API.
 func recordWebAuthnListCredentials(e *core.RequestEvent) error {
 	collection, err := findAuthCollection(e)
 	if err != nil {
@@ -1129,11 +1154,25 @@ func recordWebAuthnListCredentials(e *core.RequestEvent) error {
 	result := make([]map[string]any, 0, len(records))
 	for _, r := range records {
 		proxy := &core.WebAuthnCredential{Record: r}
+
+		// null (not a zero date) when the credential has no recorded use
+		var lastUsed any
+		if lu := proxy.LastUsed(); !lu.IsZero() {
+			lastUsed = lu
+		}
+
+		transports := proxy.Transport()
+		if transports == nil {
+			transports = []string{}
+		}
+
 		result = append(result, map[string]any{
-			"id":        r.Id,
-			"name":      proxy.Name(),
-			"created":   r.GetDateTime("created"),
-			"signCount": proxy.SignCount(),
+			"id":         r.Id,
+			"name":       proxy.Name(),
+			"created":    r.GetDateTime("created"),
+			"lastUsed":   lastUsed,
+			"signCount":  proxy.SignCount(),
+			"transports": transports,
 		})
 	}
 
