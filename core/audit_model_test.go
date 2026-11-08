@@ -159,6 +159,8 @@ func TestAuditEntryHookErrorFailsTheChange(t *testing.T) {
 	}
 }
 
+type forgedKey struct{}
+
 func TestAuditLogIsAppendOnlyForGoCallers(t *testing.T) {
 	t.Parallel()
 
@@ -180,7 +182,7 @@ func TestAuditLogIsAppendOnlyForGoCallers(t *testing.T) {
 	if err := app.SaveNoValidate(forged); err == nil {
 		t.Fatal("Expected create (no validate) to be rejected")
 	}
-	if err := app.SaveWithContext(context.WithValue(context.Background(), "auditWriter", true), forged); err == nil {
+	if err := app.SaveWithContext(context.WithValue(context.Background(), forgedKey{}, true), forged); err == nil {
 		t.Fatal("Expected create with a forged context to be rejected")
 	}
 
