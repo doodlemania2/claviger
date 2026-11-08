@@ -421,6 +421,8 @@ func auditNextAndWrite(e *RecordEvent, action string) error {
 		return e.Next()
 	}
 
+	auditOrgMeta(entry, e.Record) // #79a: meta.orgId / meta.orgIds
+
 	if v, _ := e.Context.Value(auditCtxKey{}).(auditCtxValue); v.actor.Type != "" {
 		entry.Actor = v.actor
 		entry.IP = v.ip
@@ -469,7 +471,7 @@ func buildRecordAuditEntry(record, original *Record, action string) (*AuditEntry
 		}
 
 		redact := f.GetHidden() || auditSensitiveNameRegex.MatchString(name)
-		if _, isPassword := f.(*PasswordField); isPassword || f.Type() == FieldTypeEncryptedText {
+		if _, isPassword := f.(*PasswordField); isPassword || IsEncryptedFieldType(f.Type()) {
 			redact = true // encrypted fields are redacted by type (#75), whatever their name
 		}
 

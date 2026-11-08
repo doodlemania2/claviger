@@ -102,6 +102,8 @@ func (s *Store) SetUserinfoFromRequest(_ context.Context, ui *oidc.UserInfo, r o
 		ui.AppendClaims(claimACR, g.acr)
 	}
 
+	s.appendOrgClaims(ui, g.client, rec, scopes)
+
 	return nil
 }
 
@@ -125,6 +127,12 @@ func (s *Store) GetPrivateClaimsFromRequest(_ context.Context, r op.TokenRequest
 		claims[claimSid] = g.sid
 	}
 
+	if acct, err := s.accountOf(g.collection, g.subject); err == nil {
+		for k, v := range s.orgClaims(g.client, acct, g.scopes) {
+			claims[k] = v
+		}
+	}
+
 	return claims, nil
 }
 
@@ -137,6 +145,10 @@ func (s *Store) liveToken(tokenID string) (*tokenRow, error) {
 	}
 
 	if err := s.accountAlive(row.Sid, row.CollectionRef, row.Subject); err != nil {
+		return nil, errors.New("token is invalid or has expired")
+	}
+
+	if err := s.clientOrgStillOK(row.ClientId, row.CollectionRef, row.Subject); err != nil {
 		return nil, errors.New("token is invalid or has expired")
 	}
 
@@ -156,6 +168,7 @@ func (s *Store) SetUserinfoFromToken(_ context.Context, ui *oidc.UserInfo, token
 	}
 
 	s.fillUserInfo(ui, rec, parseList(row.Scopes))
+	s.appendOrgClaims(ui, row.ClientId, rec, parseList(row.Scopes))
 
 	if row.Sid != "" {
 		ui.AppendClaims(claimSid, row.Sid)
@@ -181,6 +194,7 @@ func (s *Store) SetIntrospectionFromToken(ctx context.Context, in *oidc.Introspe
 
 	ui := new(oidc.UserInfo)
 	s.fillUserInfo(ui, rec, scopes)
+	s.appendOrgClaims(ui, row.ClientId, rec, scopes)
 	in.SetUserInfo(ui)
 
 	in.Scope = scopes

@@ -2,7 +2,8 @@ package core
 
 // Fork-local (Claviger #71): names of the hidden system collections behind the
 // OpenID Connect provider (package oidc). The collections are created by
-// migrations/1780000700_add_oidc.go. The provider itself lives in the oidc
+// migrations/1780000700_add_oidc.go
+// (and 1780000710_add_oidc_sso.go). The provider itself lives in the oidc
 // package; only the names are shared so the migration does not import it.
 const (
 	// CollectionNameOAuthClients holds the registered relying parties.
@@ -20,6 +21,10 @@ const (
 
 	// CollectionNameOAuthConsents remembers what a user granted a client.
 	CollectionNameOAuthConsents = "_oauthConsents"
+
+	// CollectionNameOAuthSso holds the single sign-on sessions of the hosted
+	// sign-in page: a hashed random cookie value bound to a Claviger session.
+	CollectionNameOAuthSso = "_oauthSso"
 
 	// CollectionNameSigningKeys holds the (encrypted) token signing keys.
 	CollectionNameSigningKeys = "_signingKeys"

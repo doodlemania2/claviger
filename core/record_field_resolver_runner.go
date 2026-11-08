@@ -340,7 +340,7 @@ func (r *runner) processRequestBodyEachModifier(bodyField Field) (*search.Resolv
 
 	placeholder := "dataEach" + security.PseudorandomString(8)
 	cleanFieldName := inflector.Columnify(bodyField.GetName())
-	jeTable := fmt.Sprintf("json_each({:%s})", placeholder)
+	jeTable := r.resolver.Dialect().JSONEachParam(placeholder)
 	jeAlias := "__dataEach_je_" + cleanFieldName + r.resolver.joinAliasSuffix
 
 	err = r.resolver.registerJoin(jeTable, jeAlias, nil)
@@ -359,7 +359,7 @@ func (r *runner) processRequestBodyEachModifier(bodyField Field) (*search.Resolv
 
 	if r.withMultiMatch {
 		placeholder2 := "mm" + placeholder
-		jeTable2 := fmt.Sprintf("json_each({:%s})", placeholder2)
+		jeTable2 := r.resolver.Dialect().JSONEachParam(placeholder2)
 		jeAlias2 := "__mm_" + jeAlias
 
 		r.multiMatch.Joins = append(r.multiMatch.Joins, &search.Join{
@@ -478,11 +478,12 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 
 			result := &search.ResolverResult{
 				NullFallback: search.NullFallbackDisabled,
-				Identifier:   dbutils.JSONExtract(r.activeTableAlias+"."+inflector.Columnify(prop), jsonPathStr),
+				JSONB:        r.resolver.Dialect().NativeJSON(),
+				Identifier:   r.resolver.Dialect().JSONExtract(r.activeTableAlias+"."+inflector.Columnify(prop), jsonPathStr),
 			}
 
 			if r.withMultiMatch {
-				r.multiMatch.ValueIdentifier = dbutils.JSONExtract(r.multiMatchActiveTableAlias+"."+inflector.Columnify(prop), jsonPathStr)
+				r.multiMatch.ValueIdentifier = r.resolver.Dialect().JSONExtract(r.multiMatchActiveTableAlias+"."+inflector.Columnify(prop), jsonPathStr)
 				result.MultiMatchSubQuery = r.multiMatch
 			}
 
@@ -571,7 +572,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 						"[[%s.id]] IN (SELECT [[%s.value]] FROM %s {{%s}})",
 						r.activeTableAlias,
 						jeAlias,
-						dbutils.JSONEach(newTableAlias+"."+cleanBackFieldName),
+						r.resolver.Dialect().JSONEach(newTableAlias+"."+cleanBackFieldName, true),
 						jeAlias,
 					)),
 				)
@@ -617,7 +618,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 							"[[%s.id]] IN (SELECT [[%s.value]] FROM %s {{%s}})",
 							r.multiMatchActiveTableAlias,
 							jeAlias2,
-							dbutils.JSONEach(newTableAlias2+"."+cleanBackFieldName),
+							r.resolver.Dialect().JSONEach(newTableAlias2+"."+cleanBackFieldName, true),
 							jeAlias2,
 						)),
 					},
@@ -673,7 +674,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 		} else {
 			jeAlias := "__je_" + newTableAlias
 
-			err := r.resolver.registerJoin(dbutils.JSONEach(prefixedFieldName), jeAlias, nil)
+			err := r.resolver.registerJoin(r.resolver.Dialect().JSONEach(prefixedFieldName, true), jeAlias, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -715,7 +716,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 			r.multiMatch.Joins = append(
 				r.multiMatch.Joins,
 				&search.Join{
-					TableName:  dbutils.JSONEach(prefixedFieldName2),
+					TableName:  r.resolver.Dialect().JSONEach(prefixedFieldName2, true),
 					TableAlias: jeAlias2,
 				},
 				&search.Join{
@@ -766,12 +767,12 @@ func (r *runner) finalizeActivePropsProcessing(collection *Collection, prop stri
 		jePair := r.activeTableAlias + "." + cleanFieldName
 
 		result := &search.ResolverResult{
-			Identifier: dbutils.JSONArrayLength(jePair),
+			Identifier: r.resolver.Dialect().JSONArrayLength(jePair, multvaluer.IsMultiple()),
 		}
 
 		if r.withMultiMatch {
 			jePair2 := r.multiMatchActiveTableAlias + "." + cleanFieldName
-			r.multiMatch.ValueIdentifier = dbutils.JSONArrayLength(jePair2)
+			r.multiMatch.ValueIdentifier = r.resolver.Dialect().JSONArrayLength(jePair2, multvaluer.IsMultiple())
 			result.MultiMatchSubQuery = r.multiMatch
 		}
 
@@ -784,7 +785,7 @@ func (r *runner) finalizeActivePropsProcessing(collection *Collection, prop stri
 		jePair := r.activeTableAlias + "." + cleanFieldName
 		jeAlias := "__je_" + r.activeTableAlias + "_" + cleanFieldName + r.resolver.joinAliasSuffix
 
-		err := r.resolver.registerJoin(dbutils.JSONEach(jePair), jeAlias, nil)
+		err := r.resolver.registerJoin(r.resolver.Dialect().JSONEach(jePair, multvaluer.IsMultiple()), jeAlias, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -802,7 +803,7 @@ func (r *runner) finalizeActivePropsProcessing(collection *Collection, prop stri
 			jeAlias2 := "__je_" + r.multiMatchActiveTableAlias + "_" + cleanFieldName + r.resolver.joinAliasSuffix
 
 			r.multiMatch.Joins = append(r.multiMatch.Joins, &search.Join{
-				TableName:  dbutils.JSONEach(jePair2),
+				TableName:  r.resolver.Dialect().JSONEach(jePair2, multvaluer.IsMultiple()),
 				TableAlias: jeAlias2,
 			})
 			r.multiMatch.ValueIdentifier = fmt.Sprintf("[[%s.value]]", jeAlias2)
@@ -824,6 +825,15 @@ func (r *runner) finalizeActivePropsProcessing(collection *Collection, prop stri
 		result.MultiMatchSubQuery = r.multiMatch
 	}
 
+	// multiple select, relation and file values are compared as their JSON
+	// text (a no-op on SQLite, where they are stored as text already)
+	if isMultivaluer && multvaluer.IsMultiple() {
+		result.Identifier = r.resolver.Dialect().AsText(result.Identifier)
+		if r.withMultiMatch {
+			r.multiMatch.ValueIdentifier = r.resolver.Dialect().AsText(r.multiMatch.ValueIdentifier)
+		}
+	}
+
 	// allow querying only auth records with emails marked as public
 	if field.GetName() == FieldNameEmail && !r.resolver.allowHiddenFields && collection.IsAuth() {
 		result.AfterBuild = func(expr dbx.Expression) dbx.Expression {
@@ -840,17 +850,27 @@ func (r *runner) finalizeActivePropsProcessing(collection *Collection, prop stri
 	// (https://ganigeorgiev.com/pocketbase/discussions/4068)
 	if field.Type() == FieldTypeJSON {
 		result.NullFallback = search.NullFallbackDisabled
-		result.Identifier = dbutils.JSONExtract(r.activeTableAlias+"."+cleanFieldName, "")
+		result.JSONB = r.resolver.Dialect().NativeJSON()
+		result.Identifier = r.resolver.Dialect().JSONExtract(r.activeTableAlias+"."+cleanFieldName, "")
 		if r.withMultiMatch {
-			r.multiMatch.ValueIdentifier = dbutils.JSONExtract(r.multiMatchActiveTableAlias+"."+cleanFieldName, "")
+			r.multiMatch.ValueIdentifier = r.resolver.Dialect().JSONExtract(r.multiMatchActiveTableAlias+"."+cleanFieldName, "")
 		}
 	}
 
 	// account for the ":lower" modifier
 	if modifier == lowerModifier {
-		result.Identifier = "LOWER(" + result.Identifier + ")"
+		if result.JSONB {
+			// lower() is a text function
+			result.JSONB = false
+			result.Identifier = r.resolver.Dialect().JSONText(result.Identifier)
+			if r.withMultiMatch {
+				r.multiMatch.ValueIdentifier = r.resolver.Dialect().JSONText(r.multiMatch.ValueIdentifier)
+			}
+		}
+
+		result.Identifier = "LOWER(" + r.resolver.Dialect().AsText(result.Identifier) + ")"
 		if r.withMultiMatch {
-			r.multiMatch.ValueIdentifier = "LOWER(" + r.multiMatch.ValueIdentifier + ")"
+			r.multiMatch.ValueIdentifier = "LOWER(" + r.resolver.Dialect().AsText(r.multiMatch.ValueIdentifier) + ")"
 		}
 	}
 

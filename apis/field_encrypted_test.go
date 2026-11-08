@@ -206,3 +206,114 @@ func TestEncryptedFieldAPI(t *testing.T) {
 		s.Test(t)
 	}
 }
+
+func encJSONSetup(t testing.TB, app *tests.TestApp) {
+	open := ""
+	col := core.NewBaseCollection("apiencjson")
+	col.ListRule = &open
+	col.ViewRule = &open
+	col.CreateRule = &open
+	col.Fields.Add(
+		&core.TextField{Name: "name"},
+		&core.EncryptedJSONField{Name: "profile", MaxSize: 100},
+		&core.EncryptedJSONField{Name: "secretdoc", Hidden: true},
+	)
+	if err := app.Save(col); err != nil {
+		t.Fatal(err)
+	}
+
+	r := core.NewRecord(col)
+	r.Id = "encjson0000001x"
+	r.Set("name", "Ann")
+	r.Set("profile", map[string]any{"phone": "+1 555 0100"})
+	r.Set("secretdoc", map[string]any{"ssn": "123-45-6789"})
+	if err := app.Save(r); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEncryptedJSONFieldAPI(t *testing.T) {
+	setEncKEK(t)
+
+	su := map[string]string{"Authorization": auditSuperuserToken}
+	setup := func(t testing.TB, app *tests.TestApp, e *core.ServeEvent) { encJSONSetup(t, app) }
+
+	scenarios := []tests.ApiScenario{
+		{
+			Name:               "list returns the JSON and hides the hidden field",
+			Method:             http.MethodGet,
+			URL:                "/api/collections/apiencjson/records",
+			BeforeTestFunc:     setup,
+			ExpectedStatus:     200,
+			ExpectedContent:    []string{`"profile":{"phone":"+1 555 0100"}`},
+			NotExpectedContent: []string{`secretdoc`, `123-45-6789`, `enc:v1:`},
+		},
+		{
+			Name:           "filter on it is a clear 400",
+			Method:         http.MethodGet,
+			URL:            "/api/collections/apiencjson/records?filter=profile%3D%22x%22",
+			BeforeTestFunc: setup,
+			ExpectedStatus: 400,
+			ExpectedContent: []string{
+				`Encrypted fields cannot be used in filters, sorts or API rules`,
+			},
+		},
+		{
+			Name:           "sort by it is a clear 400",
+			Method:         http.MethodGet,
+			URL:            "/api/collections/apiencjson/records?sort=profile",
+			BeforeTestFunc: setup,
+			ExpectedStatus: 400,
+			ExpectedContent: []string{
+				`Encrypted fields cannot be used`,
+			},
+		},
+		{
+			Name:           "create stores ciphertext and keeps the audit log clean",
+			Method:         http.MethodPost,
+			URL:            "/api/collections/apiencjson/records",
+			Body:           strings.NewReader(`{"id":"encjson0000002x","name":"Bob","profile":{"phone":"+1 555 0111"},"secretdoc":["a","b"]}`),
+			Headers:        su,
+			BeforeTestFunc: setup,
+			ExpectedStatus: 200,
+			ExpectedContent: []string{
+				`"profile":{"phone":"+1 555 0111"}`, `"secretdoc":["a","b"]`,
+			},
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, res *http.Response) {
+				var p, s string
+				if err := app.DB().Select("profile", "secretdoc").From("apiencjson").Where(dbx.HashExp{"id": "encjson0000002x"}).Row(&p, &s); err != nil {
+					t.Fatal(err)
+				}
+				if !strings.HasPrefix(p, "enc:v1:") || !strings.HasPrefix(s, "enc:v1:") || strings.Contains(p, "555") {
+					t.Fatalf("expected ciphertext in the database, got %q / %q", p, s)
+				}
+				entries, _ := app.FindAllRecords(core.CollectionNameAuditLog, dbx.HashExp{"targetId": "encjson0000002x"})
+				if len(entries) != 1 || strings.Contains(entries[0].GetString("after"), "555") {
+					t.Fatalf("audit entry missing or leaking: %v", entries)
+				}
+			},
+		},
+		{
+			Name:            "a string that looks like ciphertext is just a JSON string",
+			Method:          http.MethodPost,
+			URL:             "/api/collections/apiencjson/records",
+			Body:            strings.NewReader(`{"id":"encjson0000003x","profile":"enc:v1:abcd:AAAA"}`),
+			BeforeTestFunc:  setup,
+			ExpectedStatus:  200,
+			ExpectedContent: []string{`"profile":"enc:v1:abcd:AAAA"`},
+		},
+		{
+			Name:            "too large is a validation error",
+			Method:          http.MethodPost,
+			URL:             "/api/collections/apiencjson/records",
+			Body:            strings.NewReader(`{"profile":"` + strings.Repeat("9", 120) + `"}`),
+			BeforeTestFunc:  setup,
+			ExpectedStatus:  400,
+			ExpectedContent: []string{`"profile":{"code":"validation_json_size_limit"`},
+		},
+	}
+
+	for _, s := range scenarios {
+		s.Test(t)
+	}
+}

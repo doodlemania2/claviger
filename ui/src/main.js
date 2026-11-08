@@ -63,6 +63,7 @@ import "./fields/json/init";
 import "./fields/geoPoint/init";
 import "./fields/password/init";
 import "./fields/encryptedText/init"; // fork-local (#75)
+import "./fields/encryptedJSON/init"; // fork-local (#75)
 import "./collections/indexUpsertModal";
 import "./collections/collectionUpsertModal";
 import "./collections/addCollectionFieldButton";
@@ -80,6 +81,7 @@ import "./logs/logsSettingsModal";
 import "./logs/logPreviewModal";
 import "./audit/auditEntryPreviewModal";
 import "./webhooks/webhookModal";
+import "./orgs/orgFormModal";
 import "./oidc/oidcClientModal";
 import { appHeader } from "./base/appHeader";
 import { initRouter } from "./router";

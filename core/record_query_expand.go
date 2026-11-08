@@ -110,7 +110,7 @@ func (app *BaseApp) expandRecords(records []*Record, expandPath string, fetchFun
 			if indirectRelField.IsMultiple() {
 				q.AndWhere(dbx.Exists(dbx.NewExp(fmt.Sprintf(
 					"SELECT 1 FROM %s je WHERE je.value = {:id}",
-					dbutils.JSONEach(indirectRelField.Name),
+					dialectOf(app).JSONEach(indirectRelField.Name, true),
 				))))
 			} else {
 				q.AndWhere(dbx.NewExp("[[" + indirectRelField.Name + "]] = {:id}"))

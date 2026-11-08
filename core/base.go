@@ -1512,6 +1512,7 @@ func (app *BaseApp) registerBaseHooks() {
 	app.registerSessionHooks()         // fork-local (#93)
 	app.registerWebhookHooks()         // fork-local (#77)
 	app.registerFieldEncryptionHooks() // fork-local (#75)
+	app.registerOrgHooks()             // fork-local (#79a)
 }
 
 // getLoggerMinLevel returns the logger min level based on the

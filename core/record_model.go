@@ -17,7 +17,6 @@ import (
 	"ganigeorgiev.com/pocketbase/dbx"
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
 	"github.com/doodlemania2/claviger/core/validators"
-	"github.com/doodlemania2/claviger/tools/dbutils"
 	"github.com/doodlemania2/claviger/tools/filesystem"
 	"github.com/doodlemania2/claviger/tools/hook"
 	"github.com/doodlemania2/claviger/tools/inflector"
@@ -1549,7 +1548,7 @@ func cascadeRecordDelete(ctx context.Context, app App, mainRecord *Record, refs 
 			} else {
 				query.AndWhere(dbx.Exists(dbx.NewExp(fmt.Sprintf(
 					`SELECT 1 FROM %s {{__je__}} WHERE [[__je__.value]]={:jevalue}`,
-					dbutils.JSONEach(prefixedFieldName),
+					dialectOf(app).JSONEach(prefixedFieldName, true),
 				), dbx.Params{
 					"jevalue": mainRecord.Id,
 				})))

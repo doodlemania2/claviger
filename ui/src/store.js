@@ -78,6 +78,11 @@ window.app.store = store({
             label: "Webhooks",
         },
         {
+            href: "#/orgs",
+            icon: "ri-community-line",
+            label: "Organizations",
+        },
+        {
             href: "#/oidc",
             icon: "ri-id-card-line",
             label: "OpenID Connect",
@@ -126,6 +131,12 @@ window.app.store = store({
                 href: "#/settings/api-keys",
                 icon: "ri-key-2-line",
                 label: "API keys",
+            },
+            {
+                // fork-local (#75)
+                href: "#/settings/encryption-keys",
+                icon: "ri-lock-2-line",
+                label: "Encryption keys",
             },
             {
                 href: "#/settings/captcha",

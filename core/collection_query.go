@@ -283,7 +283,7 @@ func normalizeViewQueryId(app App, query string) (string, error) {
 		}
 	}
 
-	query = fmt.Sprintf("SELECT %s FROM (%s)", strings.Join(columns, ","), query)
+	query = fmt.Sprintf("SELECT %s FROM (%s)%s", strings.Join(columns, ","), query, dialectOf(app).SubqueryAlias())
 
 	return query, nil
 }

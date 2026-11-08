@@ -44,6 +44,7 @@ const loginJS = `import { PasskeysClient } from "/api/passkeys-client.js";
 const root = document.getElementById("app");
 const requestID = root.dataset.request;
 const collection = root.dataset.collection;
+const captchaBox = root.querySelector("#captchaBox");
 const pw = root.querySelector("#pw");
 const totp = root.querySelector("#totp");
 const passkeyBox = root.querySelector("#passkeyBox");
@@ -72,13 +73,72 @@ async function finish(token) {
   window.location.assign(body.redirect);
 }
 
-async function post(path, payload) {
+async function post(path, payload, extraHeaders) {
   const res = await fetch("/api/collections/" + encodeURIComponent(collection) + path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: Object.assign({ "Content-Type": "application/json" }, extraHeaders || {}),
     body: JSON.stringify(payload),
   });
   return { status: res.status, body: await res.json().catch(() => ({})) };
+}
+
+// ---- optional captcha (auth-methods "captcha") ----------------------------
+// The provider script is loaded only when the collection requires a captcha
+// for the action being performed, and never otherwise. The server extends the
+// page policy with the provider's domains in exactly the same case.
+let captchaCfg = null;
+const captchaScripts = {};
+const CAPTCHA_SRC = {
+  turnstile: () => "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit",
+  hcaptcha: () => "https://js.hcaptcha.com/1/api.js?render=explicit",
+  recaptchaV2: () => "https://www.google.com/recaptcha/api.js?render=explicit",
+  recaptchaV3: (cfg) => "https://www.google.com/recaptcha/api.js?render=" + encodeURIComponent(cfg.siteKey),
+};
+
+function loadCaptchaScript(cfg) {
+  const src = CAPTCHA_SRC[cfg.provider] && CAPTCHA_SRC[cfg.provider](cfg);
+  if (!src) return Promise.reject(new Error("Unsupported captcha provider."));
+  if (!captchaScripts[src]) {
+    captchaScripts[src] = new Promise((resolve, reject) => {
+      const el = document.createElement("script");
+      el.src = src;
+      el.async = true;
+      el.onload = resolve;
+      el.onerror = () => reject(new Error("Could not load the captcha."));
+      document.head.appendChild(el);
+    });
+  }
+  return captchaScripts[src];
+}
+
+async function getCaptchaToken(action) {
+  const cfg = captchaCfg;
+  if (!cfg || !cfg.required || cfg.required.indexOf(action) < 0) return undefined;
+  await loadCaptchaScript(cfg);
+  if (cfg.provider === "recaptchaV3") {
+    await new Promise((r) => window.grecaptcha.ready(r));
+    return window.grecaptcha.execute(cfg.siteKey, { action });
+  }
+  const api = cfg.provider === "turnstile" ? window.turnstile : cfg.provider === "hcaptcha" ? window.hcaptcha : window.grecaptcha;
+  if (cfg.provider === "recaptchaV2") await new Promise((r) => window.grecaptcha.ready(r));
+  captchaBox.hidden = false;
+  captchaBox.textContent = "";
+  const holder = document.createElement("div");
+  captchaBox.appendChild(holder);
+  return new Promise((resolve, reject) => {
+    const done = (fn, v) => { captchaBox.hidden = true; captchaBox.textContent = ""; fn(v); };
+    api.render(holder, {
+      sitekey: cfg.siteKey,
+      action: cfg.provider === "turnstile" ? action : undefined,
+      callback: (token) => done(resolve, token),
+      "error-callback": () => done(reject, new Error("Captcha failed, please try again.")),
+      "expired-callback": () => done(reject, new Error("Captcha expired, please try again.")),
+    });
+  });
+}
+
+function isCaptchaFailure(r) {
+  return r.status === 400 && r.body && r.body.data && r.body.data.captchaToken;
 }
 
 function secondFactor(body) {
@@ -101,12 +161,21 @@ function secondFactor(body) {
 pw.addEventListener("submit", async (ev) => {
   ev.preventDefault();
   fail("");
+  const headers = {};
+  try {
+    const captcha = await getCaptchaToken("login");
+    if (captcha) headers["X-Captcha-Token"] = captcha;
+  } catch (err) {
+    fail(err.message || "The captcha could not be completed.");
+    return;
+  }
   const r = await post("/auth-with-password", {
     identity: pw.elements.identity.value,
     password: pw.elements.password.value,
-  });
+  }, headers);
   if (r.status === 200 && r.body.token) return finish(r.body.token);
   if (r.status === 401 && secondFactor(r.body)) return;
+  if (isCaptchaFailure(r)) return fail("The captcha check failed. Try again.");
   fail(r.status === 429 ? "Too many attempts. Try again later." : "Wrong email or password.");
 });
 
@@ -120,7 +189,7 @@ totp.addEventListener("submit", async (ev) => {
 
 passkeyBtn.addEventListener("click", async () => {
   fail("");
-  const client = new PasskeysClient({ baseUrl: window.location.origin, collection });
+  const client = new PasskeysClient({ baseUrl: window.location.origin, collection, getCaptchaToken });
   try {
     const identity = pw.elements.identity.value.trim();
     if (!identity) {
@@ -132,7 +201,15 @@ passkeyBtn.addEventListener("click", async () => {
     if (!secondFactor(res)) fail("The passkey sign-in did not complete.");
   } catch (err) {
     if (err && err.status === 401 && secondFactor(err.response)) return;
-    fail("The passkey sign-in did not complete.");
+    if (err && err.status === 400 && err.response && err.response.data && err.response.data.captchaToken) {
+      fail("The captcha check failed. Try again.");
+      return;
+    }
+    if (err && err.status === 429) {
+      fail("Too many attempts. Try again later.");
+      return;
+    }
+    fail(err && /captcha/i.test(err.message || "") ? err.message : "The passkey sign-in did not complete.");
   }
 });
 
@@ -140,6 +217,7 @@ passkeyBtn.addEventListener("click", async () => {
   try {
     const client = new PasskeysClient({ baseUrl: window.location.origin, collection });
     const methods = await client.methods();
+    captchaCfg = methods.captcha || null;
     const passwordOn = !methods.password || methods.password.enabled !== false;
     pw.hidden = !passwordOn;
     if (window.PublicKeyCredential && methods.webauthn && methods.webauthn.enabled) {

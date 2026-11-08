@@ -274,6 +274,15 @@ func (s *Provider) Exec(items any) (*Result, error) {
 		}
 	}
 
+	// fork-local (#106): a stable default order on engines without implicit row order
+	if len(s.sort) == 0 {
+		if p, ok := s.fieldResolver.(DefaultOrderProvider); ok {
+			if expr := p.DefaultOrder(); expr != "" {
+				modelsQuery.AndOrderBy(expr)
+			}
+		}
+	}
+
 	// apply field resolver query modifications (if any)
 	if err := s.fieldResolver.UpdateQuery(&modelsQuery); err != nil {
 		return nil, err

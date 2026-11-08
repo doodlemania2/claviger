@@ -170,3 +170,99 @@ func TestFileSource(t *testing.T) {
 		t.Fatal("expected an error for a missing file")
 	}
 }
+
+func TestLoadWithOld(t *testing.T) {
+	ctx := context.Background()
+	oldKek, newKek := b64Key(t), b64Key(t)
+
+	oldSrc, err := keys.LoadFromEnv(env(map[string]string{"CLAVIGER_KEK": oldKek}), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dek := bytes.Repeat([]byte{7}, 32)
+	wrappedOld, err := oldSrc.Wrap(ctx, dek)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// no previous KEK: behaves like the primary alone
+	solo, err := keys.LoadWithOld(env(map[string]string{"CLAVIGER_KEK": newKek}), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := solo.Unwrap(ctx, oldSrc.KeyID(), wrappedOld); !errors.Is(err, keys.ErrKeyIDMismatch) {
+		t.Fatalf("expected a key id mismatch without the previous KEK, got %v", err)
+	}
+
+	// with the previous KEK: unwraps old, wraps under the new one
+	both, err := keys.LoadWithOld(env(map[string]string{"CLAVIGER_KEK": newKek, "CLAVIGER_KEK_OLD": oldKek}), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if both.KeyID() == oldSrc.KeyID() {
+		t.Fatal("the primary must be the new KEK")
+	}
+	got, err := both.Unwrap(ctx, oldSrc.KeyID(), wrappedOld)
+	if err != nil || !bytes.Equal(got, dek) {
+		t.Fatalf("expected the old wrapping to open: %v", err)
+	}
+	rewrapped, err := both.Wrap(ctx, dek)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := solo.Unwrap(ctx, solo.KeyID(), rewrapped); err != nil || !bytes.Equal(got, dek) {
+		t.Fatalf("the new KEK alone must open a new wrapping: %v", err)
+	}
+	if m := both.(*keys.Multi); !m.HasOld() || !m.Has(oldSrc.KeyID()) || m.Has("kdeadbeef") {
+		t.Fatal("unexpected Has/HasOld")
+	}
+
+	// the same key as primary and previous is not a rotation
+	same, err := keys.LoadWithOld(env(map[string]string{"CLAVIGER_KEK": newKek, "CLAVIGER_KEK_OLD": newKek}), "")
+	if err != nil || same.(*keys.Multi).HasOld() {
+		t.Fatalf("expected the duplicate to be ignored: %v", err)
+	}
+}
+
+func TestLoadOldFromEnvErrors(t *testing.T) {
+	for name, tc := range map[string]struct {
+		env map[string]string
+		msg string
+	}{
+		"invalid":       {map[string]string{"CLAVIGER_KEK_OLD": "not base64!"}, "CLAVIGER_KEK_OLD is invalid"},
+		"two set":       {map[string]string{"CLAVIGER_KEK_OLD": "x", "CLAVIGER_KEK_FILE_OLD": "/x"}, "only one"},
+		"missing file":  {map[string]string{"CLAVIGER_KEK_FILE_OLD": "/does/not/exist"}, "CLAVIGER_KEK_FILE_OLD"},
+		"no app key":    {map[string]string{"CLAVIGER_KEK_OLD_FROM_APP_KEY": "1"}, "app encryption key"},
+		"wrong app key": {map[string]string{"CLAVIGER_KEK_OLD_FROM_APP_KEY": "true", "PB_ENCRYPTION_KEY": "short"}, "exactly 32"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			tc.env["CLAVIGER_KEK"] = b64Key(t)
+			_, err := keys.LoadWithOld(env(tc.env), "PB_ENCRYPTION_KEY")
+			if err == nil || !strings.Contains(err.Error(), tc.msg) {
+				t.Fatalf("expected %q, got %v", tc.msg, err)
+			}
+		})
+	}
+
+	if _, err := keys.LoadOldFromEnv(env(nil), ""); !errors.Is(err, keys.ErrNoOldKey) {
+		t.Fatalf("expected ErrNoOldKey, got %v", err)
+	}
+
+	// the previous KEK from a file (mode 600) and from the app key
+	dir := t.TempDir()
+	f := filepath.Join(dir, "old")
+	if err := os.WriteFile(f, []byte(b64Key(t)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := keys.LoadOldFromEnv(env(map[string]string{"CLAVIGER_KEK_FILE_OLD": f}), ""); err != nil {
+		t.Fatal(err)
+	}
+	fromApp, err := keys.LoadOldFromEnv(env(map[string]string{"CLAVIGER_KEK_OLD_FROM_APP_KEY": "yes", "PB_ENCRYPTION_KEY": strings.Repeat("a", 32)}), "PB_ENCRYPTION_KEY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	derived, err := keys.LoadFromEnv(env(map[string]string{"PB_ENCRYPTION_KEY": strings.Repeat("a", 32)}), "PB_ENCRYPTION_KEY")
+	if err != nil || derived.KeyID() != fromApp.KeyID() {
+		t.Fatal("the previous KEK from the app key must be the derived KEK")
+	}
+}

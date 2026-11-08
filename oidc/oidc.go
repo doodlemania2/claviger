@@ -46,6 +46,7 @@ type module struct {
 	app   core.App
 	store *Store
 
+	limMu    sync.Mutex // guards the creation of the rate limiters
 	mu       sync.Mutex
 	provider *op.Provider
 	handler  http.Handler
@@ -139,7 +140,7 @@ func (m *module) ready() (http.Handler, string) {
 		AuthMethodPost:           true,
 		GrantTypeRefreshToken:    true,
 		SupportedClaims:          SupportedClaims,
-		SupportedScopes:          []string{oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail, oidc.ScopeOfflineAccess},
+		SupportedScopes:          []string{oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail, oidc.ScopeOfflineAccess, ScopeOrgs},
 	}, m.store, func(bool) (op.IssuerFromRequest, error) {
 		return func(*http.Request) string { return m.issuer() }, nil
 	}, opts...)
@@ -195,17 +196,24 @@ func (m *module) bindRoutes(se *core.ServeEvent) {
 	se.Router.GET(mountPath+discoveryPath, m.serveDiscovery)
 
 	// the callback only resumes the browser that started the sign-in
-	se.Router.Any(mountPath+"/authorize/callback", func(e *core.RequestEvent) error {
-		// every method, not just GET: the library would answer a POST too
+	callback := func(e *core.RequestEvent) error {
 		req, err := m.store.requestByID(e.Request.FormValue("id"))
 		if err != nil || !m.checkBinding(e, req) {
 			return m.errorPage(e, http.StatusBadRequest, "This sign-in could not be resumed. Return to the app and start again.")
 		}
 
 		return m.serveLibrary(e)
-	})
+	}
 
-	se.Router.Any(mountPath+"/{path...}", m.serveLibrary)
+	// Explicit methods, never Router.Any: a pattern without a method conflicts
+	// with the "GET /{path...}" catch-all that serves the public directory
+	// ("matches more methods ... but has a more specific path") and makes the
+	// mux panic when the server starts.
+	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodOptions} {
+		// the methods the library answers (a GET pattern also serves HEAD)
+		se.Router.Route(method, mountPath+"/authorize/callback", callback)
+		se.Router.Route(method, mountPath+"/{path...}", m.serveLibrary)
+	}
 }
 
 // serveLibrary hands the request to the zitadel provider.
@@ -215,11 +223,39 @@ func (m *module) serveLibrary(e *core.RequestEvent) error {
 		return e.NotFoundError(why, nil)
 	}
 
-	r := m.withClientAlg(e.Request)
+	done, after := m.limited(e)
+	if done {
+		return nil
+	}
 
-	handler.ServeHTTP(e.Response, r)
+	r := m.withSSO(m.withClientAlg(e.Request))
+
+	if strings.TrimSuffix(r.URL.Path, "/") == mountPath+"/end_session" && ssoCookieValue(r) != "" {
+		// logging out of the sign-in page forgets the browser's session
+		m.clearSSOCookie(e)
+	}
+
+	if after == nil {
+		handler.ServeHTTP(e.Response, r)
+
+		return nil
+	}
+
+	rec := &statusRecorder{ResponseWriter: e.Response}
+	handler.ServeHTTP(rec, r)
+	after(rec.status)
 
 	return nil
+}
+
+// withSSO hands the single sign-on cookie of the browser to the storage (the
+// library calls it with the request context only).
+func (m *module) withSSO(r *http.Request) *http.Request {
+	if v := ssoCookieValue(r); v != "" {
+		return r.WithContext(withSSO(r.Context(), v))
+	}
+
+	return r
 }
 
 // withClientAlg tells the token endpoint which signing algorithm the calling
@@ -230,10 +266,7 @@ func (m *module) withClientAlg(r *http.Request) *http.Request {
 		return r
 	}
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
-	_ = r.Body.Close()
-	r.Body = io.NopCloser(bytes.NewReader(body))
-
+	body, err := readAndRestore(r)
 	if err != nil {
 		return r
 	}
@@ -250,6 +283,15 @@ func (m *module) withClientAlg(r *http.Request) *http.Request {
 	}
 
 	return r
+}
+
+// readAndRestore reads (at most 64 KiB of) the request body and puts it back.
+func readAndRestore(r *http.Request) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyForAuth))
+	_ = r.Body.Close()
+	r.Body = io.NopCloser(bytes.NewReader(body))
+
+	return body, err
 }
 
 // bufferedResponse captures a handler's response so the discovery document
