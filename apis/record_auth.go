@@ -58,6 +58,14 @@ func bindRecordAuthApi(app core.App, rg *router.RouterGroup[*core.RequestEvent])
 		collectionPathRateLimit("", "webauthnLoginFinish", "auth"),
 	)
 
+	// usernameless (discoverable credential / conditional UI) sign-in
+	sub.POST("/auth-with-webauthn/login-begin-discoverable", recordWebAuthnLoginBeginDiscoverable).Bind(
+		collectionPathRateLimit("", "webauthnLoginBeginDiscoverable", "auth"),
+	)
+	sub.POST("/auth-with-webauthn/login-finish-discoverable", recordWebAuthnLoginFinishDiscoverable).Bind(
+		collectionPathRateLimit("", "webauthnLoginFinishDiscoverable", "auth"),
+	)
+
 	// WebAuthn credential management (owner can list/delete own credentials)
 	sub.GET("/auth-with-webauthn/credentials", recordWebAuthnListCredentials).Bind(
 		collectionPathRateLimit("", "webauthnListCredentials"),
