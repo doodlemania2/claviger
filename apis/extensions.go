@@ -32,7 +32,7 @@ func bindUIExtensions(app core.App) {
 					}
 
 					if e.Response.Header().Get("Content-Security-Policy") == "" {
-						e.Response.Header().Set("Content-Security-Policy", defaultCSP)
+						e.Response.Header().Set("Content-Security-Policy", adminUICSP(e.App))
 					}
 
 					return e.Next()

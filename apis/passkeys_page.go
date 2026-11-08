@@ -64,37 +64,22 @@ func bindPasskeysPage(app core.App) {
 // it does it open the chosen provider's domains (and only those) for scripts,
 // frames, XHR and styles, so an install without captcha is unchanged.
 func passkeysPageCSP(cfg core.CaptchaConfig) string {
-	var script, frame, connect, style string
-
+	var src captchaCSPSources
 	if len(cfg.Required()) > 0 {
-		switch cfg.Provider {
-		case core.CaptchaProviderTurnstile:
-			script = " https://challenges.cloudflare.com"
-			frame = " https://challenges.cloudflare.com"
-			connect = " https://challenges.cloudflare.com"
-		case core.CaptchaProviderHCaptcha:
-			script = " https://hcaptcha.com https://*.hcaptcha.com"
-			frame = " https://hcaptcha.com https://*.hcaptcha.com"
-			connect = " https://hcaptcha.com https://*.hcaptcha.com"
-			style = " https://hcaptcha.com https://*.hcaptcha.com"
-		case core.CaptchaProviderRecaptchaV2, core.CaptchaProviderRecaptchaV3:
-			script = " https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/"
-			frame = " https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/"
-			connect = " https://www.google.com/recaptcha/"
-		}
+		src = captchaSourcesFor(cfg.Provider)
 	}
 
 	// audit M6: tight CSP. Inline script/style are required because the
 	// helper module is consumed at runtime and the page applies minimal inline
 	// styles. img-src includes data: for the favicon.
 	csp := "default-src 'self'; " +
-		"script-src 'self' 'unsafe-inline'" + script + "; " +
-		"style-src 'self' 'unsafe-inline'" + style + "; " +
+		"script-src 'self' 'unsafe-inline'" + src.script + "; " +
+		"style-src 'self' 'unsafe-inline'" + src.style + "; " +
 		"img-src 'self' data:; " +
-		"connect-src 'self'" + connect + "; "
+		"connect-src 'self'" + src.connect + "; "
 
-	if frame != "" {
-		csp += "frame-src 'self'" + frame + "; "
+	if src.frame != "" {
+		csp += "frame-src 'self'" + src.frame + "; "
 	}
 
 	return csp + "frame-ancestors 'self'; " +

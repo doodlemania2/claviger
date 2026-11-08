@@ -8,6 +8,7 @@ import (
 
 	"github.com/doodlemania2/claviger/apis"
 	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tests"
 )
 
 func TestPasskeysPageAndClientCoverNewFlows(t *testing.T) {
@@ -127,5 +128,38 @@ func TestPasskeysPageServesCaptchaLoaderWithoutProviderScripts(t *testing.T) {
 	}
 	if csp := rec.Header().Get("Content-Security-Policy"); strings.Contains(csp, "cloudflare") || strings.Contains(csp, "hcaptcha") || strings.Contains(csp, "google") {
 		t.Errorf("default CSP must not mention captcha providers: %q", csp)
+	}
+}
+
+func TestAdminUICSPCaptcha(t *testing.T) {
+	t.Parallel()
+
+	app, _ := tests.NewTestApp()
+	defer app.Cleanup()
+
+	if got := apis.AdminUICSPForTest(app); got != apis.DefaultCSPForTest {
+		t.Fatalf("admin UI CSP must be upstream's by default, got %q", got)
+	}
+
+	// required for another action only: the admin login is unaffected
+	app.Settings().Captcha = core.CaptchaConfig{Provider: "turnstile", SiteKey: "a", SecretKey: "b", Actions: core.CaptchaActions{SignUp: true}}
+	if got := apis.AdminUICSPForTest(app); got != apis.DefaultCSPForTest {
+		t.Fatalf("admin UI CSP must not change for sign-up only, got %q", got)
+	}
+
+	app.Settings().Captcha.Actions.Login = true
+	got := apis.AdminUICSPForTest(app)
+	for _, want := range []string{
+		"script-src 'self' http://127.0.0.1:* https://challenges.cloudflare.com;",
+		"frame-src 'self' https://challenges.cloudflare.com;",
+		"connect-src 'self' http://127.0.0.1:* https://nominatim.openstreetmap.org https://challenges.cloudflare.com;",
+		"frame-ancestors 'none'",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("CSP %q is missing %q", got, want)
+		}
+	}
+	if strings.Contains(got, "hcaptcha") || strings.Contains(got, "google") {
+		t.Errorf("only the chosen provider may be allowed: %q", got)
 	}
 }

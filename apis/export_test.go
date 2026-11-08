@@ -43,3 +43,7 @@ func SetCaptchaVerifierForTest(app core.App, v captcha.Verifier) {
 }
 
 func PasskeysPageCSPForTest(cfg core.CaptchaConfig) string { return passkeysPageCSP(cfg) }
+
+func AdminUICSPForTest(app core.App) string { return adminUICSP(app) }
+
+const DefaultCSPForTest = defaultCSP

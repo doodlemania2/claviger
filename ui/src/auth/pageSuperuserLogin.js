@@ -1,3 +1,5 @@
+import { captchaOptions, getCaptchaToken } from "./captcha";
+
 export function pageSuperuserLogin(route) {
     app.store.title = "Superuser login";
 
@@ -106,7 +108,25 @@ async function authWithPassword(data) {
     data.isPasswordAuthSubmitting = true;
 
     try {
-        await app.pb.collection("_superusers").authWithPassword(data.identity, data.password);
+        // fork (#91): optional captcha for the password sign-in
+        let captcha = "";
+        try {
+            captcha = await getCaptchaToken(
+                data.authMethods,
+                "login",
+                document.getElementById("login_captcha_box"),
+            );
+        } catch (captchaErr) {
+            app.toasts.error(captchaErr.message || "Captcha failed.");
+            data.isPasswordAuthSubmitting = false;
+            return;
+        }
+
+        await app.pb.collection("_superusers").authWithPassword(
+            data.identity,
+            data.password,
+            captchaOptions(captcha),
+        );
         app.toasts.removeAll();
         app.store.errors = null;
         window.location.hash = "#/";
@@ -135,6 +155,8 @@ async function authWithPassword(data) {
             }
         } else if (err.status != 400) {
             app.checkApiError(err);
+        } else if (err.response?.data?.captchaToken?.code == "captcha_failed") {
+            app.toasts.error("Captcha verification failed, please try again.");
         } else {
             app.toasts.error("Invalid login credentials.");
         }
@@ -222,6 +244,8 @@ function authWithPasswordForm(data) {
                 t.small(null, "Forgotten password"),
             ),
         ),
+        // fork (#91): the captcha widget renders here when the server requires it
+        t.div({ className: "col-12", id: "login_captcha_box", hidden: true }),
         t.div(
             { className: "col-12" },
             t.button(
@@ -341,7 +365,21 @@ async function requestOTP(data) {
     data.isOTPRequestSubmitting = true;
 
     try {
-        const result = await app.pb.collection("_superusers").requestOTP(data.otpEmail);
+        // fork (#91): optional captcha for the OTP request
+        let captcha = "";
+        try {
+            captcha = await getCaptchaToken(
+                data.authMethods,
+                "otp_request",
+                document.getElementById("login_captcha_box"),
+            );
+        } catch (captchaErr) {
+            app.toasts.error(captchaErr.message || "Captcha failed.");
+            data.isOTPRequestSubmitting = false;
+            return;
+        }
+
+        const result = await app.pb.collection("_superusers").requestOTP(data.otpEmail, captchaOptions(captcha));
         data.otpId = result.otpId;
         data.lastOTPId = data.otpId;
         app.toasts.removeAll();
@@ -384,6 +422,7 @@ function requestOTPForm(data) {
                 }),
             ),
         ),
+        t.div({ className: "col-12", id: "login_captcha_box", hidden: true }),
         t.div(
             { className: "col-12" },
             t.button(

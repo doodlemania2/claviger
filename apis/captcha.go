@@ -188,3 +188,61 @@ func publicCaptchaInfo(app core.App) *captchaInfo {
 
 	return &captchaInfo{Provider: cfg.Provider, SiteKey: cfg.SiteKey, Required: required}
 }
+
+// captchaCSPSources are the extra Content-Security-Policy sources (each value
+// has a leading space, or is empty) a provider widget needs.
+type captchaCSPSources struct {
+	script, frame, connect, style string
+}
+
+// captchaSourcesFor returns the narrow set of provider domains, nothing for an
+// unknown or empty provider.
+func captchaSourcesFor(provider string) captchaCSPSources {
+	switch provider {
+	case core.CaptchaProviderTurnstile:
+		return captchaCSPSources{
+			script:  " https://challenges.cloudflare.com",
+			frame:   " https://challenges.cloudflare.com",
+			connect: " https://challenges.cloudflare.com",
+		}
+	case core.CaptchaProviderHCaptcha:
+		return captchaCSPSources{
+			script:  " https://hcaptcha.com https://*.hcaptcha.com",
+			frame:   " https://hcaptcha.com https://*.hcaptcha.com",
+			connect: " https://hcaptcha.com https://*.hcaptcha.com",
+			style:   " https://hcaptcha.com https://*.hcaptcha.com",
+		}
+	case core.CaptchaProviderRecaptchaV2, core.CaptchaProviderRecaptchaV3:
+		return captchaCSPSources{
+			script:  " https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/",
+			frame:   " https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/",
+			connect: " https://www.google.com/recaptcha/",
+		}
+	}
+
+	return captchaCSPSources{}
+}
+
+// adminUICSP returns the Content-Security-Policy of the embedded admin UI:
+// upstream's defaultCSP, plus the provider domains only when the superuser
+// login requires a captcha.
+func adminUICSP(app core.App) string {
+	cfg := app.Settings().Captcha
+	if !cfg.IsRequired(core.CaptchaActionLogin) {
+		return defaultCSP
+	}
+
+	src := captchaSourcesFor(cfg.Provider)
+	if src.script == "" {
+		return defaultCSP
+	}
+
+	csp := defaultCSP
+	csp = strings.Replace(csp, "style-src 'self' 'unsafe-inline'", "style-src 'self' 'unsafe-inline'"+src.style, 1)
+	csp = strings.Replace(csp, "connect-src 'self' http://127.0.0.1:* https://nominatim.openstreetmap.org",
+		"connect-src 'self' http://127.0.0.1:* https://nominatim.openstreetmap.org"+src.connect, 1)
+	csp = strings.Replace(csp, "script-src 'self' http://127.0.0.1:*", "script-src 'self' http://127.0.0.1:*"+src.script, 1)
+	csp = strings.Replace(csp, "frame-ancestors 'none'", "frame-src 'self'"+src.frame+"; frame-ancestors 'none'", 1)
+
+	return csp
+}

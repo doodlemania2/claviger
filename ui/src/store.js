@@ -122,6 +122,11 @@ window.app.store = store({
                 icon: "ri-key-2-line",
                 label: "API keys",
             },
+            {
+                href: "#/settings/captcha",
+                icon: "ri-shield-check-line",
+                label: "Captcha",
+            },
         ],
         Sync: [
             {
