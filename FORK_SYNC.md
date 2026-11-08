@@ -189,6 +189,10 @@ Upstream-owned files the fork edits. Re-check these on every sync merge (conflic
 | `core/external_auth_model.go` | The verified-upgrade cleanup deletes external auths with the event context (`DeleteWithContext(e.Context, ...)`) instead of `DeleteAllExternalAuthsByRecord`, so the unlinks keep the actor (#110). |
 | `core/audit_model.go` | `AuditActor.Self` and one `resolveSelfAuditActor(entry, e.Record)` call in `auditNextAndWrite` (new file `core/audit_actor.go`) (#110). |
 | `apis/audit_test.go` | The anonymous create scenario expects the self actor instead of `system`; `seedAuditEntry` clears the entries written by the fixture's migrations (#110). |
+| `core/settings_model.go`, `core/settings_model_test.go` | `Settings.Audit` (`AuditConfig.RetentionDays`, `0` = forever), validated in `PostValidate`. The exact-JSON snapshots in `TestSettings_DBExport` (both subtests) and `TestSettingsMarshalJSON` end with `,"audit":{"retentionDays":0}` (#110). |
+| `core/audit_model.go` | `auditRetentionDays(app)`: `CLAVIGER_AUDIT_RETENTION_DAYS` wins when it is a valid non-negative number, otherwise `Settings.Audit.RetentionDays` (#110). |
+| `ui/src/settings/application/pageApplicationSettings.js` | Imports and renders `auditAccordion` (new file), keeps `audit` in the form settings (#110). |
+| `plugins/jsvm/internal/types/generated/types.d.ts` | `Settings.audit` and `AuditConfig` (hand-added, a full `make jstypes` regeneration churns every random type id) (#110). |
 | `apis/base.go` | `bindAPIKeysApi(app, apiGroup)` (#95). |
 | `apis/collection_test.go`, `apis/collection_import_test.go`, `core/collection_query_test.go` | System collection count 18 -> 19 for `_apiKeys` (#95). The conductor reconciles the count across agents. |
 | `ui/src/router.js`, `ui/src/store.js` | `#/settings/api-keys` route and nav entry (#95). |

@@ -38,8 +38,10 @@ const (
 	AuditActorTypeRecord    = "record"
 	AuditActorTypeSystem    = "system"
 
-	// AuditRetentionDaysEnv is the environment variable holding the audit
-	// retention in days. Unset, empty, zero or invalid means "keep forever".
+	// AuditRetentionDaysEnv is the environment variable that overrides the
+	// retention in days from Settings.Audit.RetentionDays. When it is set to a
+	// valid non-negative number it wins (0 = keep forever); unset, empty or
+	// invalid means "use the setting".
 	AuditRetentionDaysEnv = "CLAVIGER_AUDIT_RETENTION_DAYS"
 
 	auditRedactedValue   = "[redacted]"
@@ -231,13 +233,14 @@ func DeleteExpiredAuditEntries(app App, createdBefore time.Time) (int64, error) 
 	return res.RowsAffected()
 }
 
-func auditRetentionDays() int {
-	days, err := strconv.Atoi(strings.TrimSpace(os.Getenv(AuditRetentionDaysEnv)))
-	if err != nil || days <= 0 {
-		return 0
+// auditRetentionDays returns the effective retention: the environment
+// override if valid, otherwise Settings.Audit.RetentionDays. 0 means forever.
+func auditRetentionDays(app App) int {
+	if days, err := strconv.Atoi(strings.TrimSpace(os.Getenv(AuditRetentionDaysEnv))); err == nil && days >= 0 {
+		return days
 	}
 
-	return days
+	return max(app.Settings().Audit.RetentionDays, 0)
 }
 
 // -------------------------------------------------------------------
@@ -323,7 +326,7 @@ func (app *BaseApp) registerAuditHooks() {
 
 	// retention
 	app.Cron().Add(auditCleanupCronId, auditCleanupCronExpr, func() {
-		days := auditRetentionDays()
+		days := auditRetentionDays(app)
 		if days == 0 {
 			return // keep forever
 		}

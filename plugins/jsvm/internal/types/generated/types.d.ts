@@ -14521,6 +14521,7 @@ namespace core {
   batch: BatchConfig
   logs: LogsConfig
   captcha: CaptchaConfig
+  audit: AuditConfig
  }
  /**
   * Settings defines the PocketBase app settings.
@@ -14608,6 +14609,25 @@ namespace core {
    * Note that sensitive fields (S3 secret, SMTP password, etc.) are excluded.
    */
   marshalJSON(): string|Array<number>
+ }
+ /**
+  * AuditConfig defines the audit log settings (Claviger #74, #110).
+  */
+ interface AuditConfig {
+  /**
+   * RetentionDays is how many days audit entries are kept before the daily
+   * cleanup removes them (0 = keep forever).
+   * 
+   * The CLAVIGER_AUDIT_RETENTION_DAYS environment variable, when set to a
+   * valid number, overrides this value (see AuditRetentionDaysEnv).
+   */
+  retentionDays: number
+ }
+ interface AuditConfig {
+  /**
+   * Validate makes AuditConfig validatable by implementing [validation.Validatable] interface.
+   */
+  validate(): void
  }
  interface SMTPConfig {
   enabled: boolean

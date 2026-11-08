@@ -133,6 +133,7 @@ type settings struct {
 	Batch        BatchConfig        `form:"batch" json:"batch"`
 	Logs         LogsConfig         `form:"logs" json:"logs"`
 	Captcha      CaptchaConfig      `form:"captcha" json:"captcha"`
+	Audit        AuditConfig        `form:"audit" json:"audit"`
 }
 
 // Settings defines the PocketBase app settings.
@@ -295,6 +296,7 @@ func (s *Settings) PostValidate(ctx context.Context, app App) error {
 		validation.Field(&s.RateLimits),
 		validation.Field(&s.TrustedProxy),
 		validation.Field(&s.Captcha),
+		validation.Field(&s.Audit),
 	)
 }
 
@@ -357,6 +359,25 @@ func (st *settings) secretFields() map[string]*string {
 		"backups.s3.secret": &st.Backups.S3.Secret,
 		"captcha.secretKey": &st.Captcha.SecretKey,
 	}
+}
+
+// -------------------------------------------------------------------
+
+// AuditConfig defines the audit log settings (Claviger #74, #110).
+type AuditConfig struct {
+	// RetentionDays is how many days audit entries are kept before the daily
+	// cleanup removes them (0 = keep forever).
+	//
+	// The CLAVIGER_AUDIT_RETENTION_DAYS environment variable, when set to a
+	// valid number, overrides this value (see AuditRetentionDaysEnv).
+	RetentionDays int `form:"retentionDays" json:"retentionDays"`
+}
+
+// Validate makes AuditConfig validatable by implementing [validation.Validatable] interface.
+func (c AuditConfig) Validate() error {
+	return validation.ValidateStruct(&c,
+		validation.Field(&c.RetentionDays, validation.Min(0), validation.Max(36500)),
+	)
 }
 
 // -------------------------------------------------------------------

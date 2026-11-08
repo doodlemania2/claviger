@@ -535,3 +535,97 @@ func TestAuditSettingsNoOpAndSystemSave(t *testing.T) {
 		t.Fatalf("Unexpected entry %s", e.PublicExport())
 	}
 }
+
+func runAuditCleanup(t testing.TB, app core.App) {
+	t.Helper()
+	for _, j := range app.Cron().Jobs() {
+		if j.Id() == "__pbAuditCleanup__" {
+			j.Run()
+			return
+		}
+	}
+	t.Fatal("audit cleanup job not registered")
+}
+
+// not parallel: uses t.Setenv
+func TestAuditRetentionFromSettingsAndEnvOverride(t *testing.T) {
+	t.Setenv(core.AuditRetentionDaysEnv, "")
+
+	setup := func(t *testing.T) (*tests.TestApp, string, string) {
+		app, _ := tests.NewTestApp()
+		t.Cleanup(app.Cleanup)
+		clearAudit(t, app)
+
+		for _, title := range []string{"old", "new"} {
+			if err := app.Save(newDemo2(t, app, title)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		entries := mustAll(t, app)
+		old := time.Now().AddDate(0, 0, -40).UTC().Format("2006-01-02 15:04:05.000Z")
+		if _, err := app.NonconcurrentDB().NewQuery("UPDATE `" + core.CollectionNameAuditLog + "` SET created={:d} WHERE id={:a}").
+			Bind(dbx.Params{"d": old, "a": entries[0].Id}).Execute(); err != nil {
+			t.Fatal(err)
+		}
+		return app, entries[0].Id, entries[1].Id
+	}
+
+	// default (0): keep forever
+	app, _, _ := setup(t)
+	runAuditCleanup(t, app)
+	if n := len(mustAll(t, app)); n != 2 {
+		t.Fatalf("Expected both entries to be kept by default, got %d", n)
+	}
+
+	// from Settings
+	app, oldId, newId := setup(t)
+	app.Settings().Audit.RetentionDays = 30
+	runAuditCleanup(t, app)
+	left := mustAll(t, app)
+	if len(left) != 1 || left[0].Id != newId {
+		t.Fatalf("Expected only the recent entry (not %s) with retention=30, got %v", oldId, left)
+	}
+
+	// env wins over the setting (0 = forever)
+	t.Setenv(core.AuditRetentionDaysEnv, "0")
+	app, _, _ = setup(t)
+	app.Settings().Audit.RetentionDays = 30
+	runAuditCleanup(t, app)
+	if n := len(mustAll(t, app)); n != 2 {
+		t.Fatalf("Expected the env override 0 to keep everything, got %d", n)
+	}
+
+	// env wins over the setting (shorter)
+	t.Setenv(core.AuditRetentionDaysEnv, "1")
+	app, _, newId = setup(t)
+	app.Settings().Audit.RetentionDays = 0
+	runAuditCleanup(t, app)
+	if left := mustAll(t, app); len(left) != 1 || left[0].Id != newId {
+		t.Fatalf("Expected env retention=1 to apply, got %v", left)
+	}
+
+	// an invalid env value is ignored in favor of the setting
+	t.Setenv(core.AuditRetentionDaysEnv, "abc")
+	app, _, newId = setup(t)
+	app.Settings().Audit.RetentionDays = 30
+	runAuditCleanup(t, app)
+	if left := mustAll(t, app); len(left) != 1 || left[0].Id != newId {
+		t.Fatalf("Expected the setting to apply with an invalid env, got %v", left)
+	}
+}
+
+func TestAuditConfigValidation(t *testing.T) {
+	t.Parallel()
+
+	app, _ := tests.NewTestApp()
+	defer app.Cleanup()
+
+	app.Settings().Audit.RetentionDays = -1
+	if err := app.Save(app.Settings()); err == nil {
+		t.Fatal("Expected a negative retention to be rejected")
+	}
+	app.Settings().Audit.RetentionDays = 90
+	if err := app.Save(app.Settings()); err != nil {
+		t.Fatal(err)
+	}
+}
