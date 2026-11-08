@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
@@ -25,9 +26,36 @@ const pagesCSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-s
 // finish an authorize request: it has to be the sign-in that just happened.
 const maxSignInAge = 15 * time.Minute
 
-func (m *module) pageHeaders(e *core.RequestEvent) {
+// loginCSP is the policy of the sign-in page. Like /passkeys, it opens the
+// domains of the captcha provider (and only those) when a captcha is required
+// for password or passkey sign-in; otherwise it is exactly pagesCSP.
+func loginCSP(cfg core.CaptchaConfig) string {
+	if !cfg.IsRequired(core.CaptchaActionLogin) && !cfg.IsRequired(core.CaptchaActionPasskeyLogin) {
+		return pagesCSP
+	}
+
+	script, frame, connect, style := apis.CaptchaWidgetSources(cfg.Provider)
+	if script == "" {
+		return pagesCSP
+	}
+
+	csp := pagesCSP
+	csp = strings.Replace(csp, "script-src 'self'", "script-src 'self'"+script, 1)
+	csp = strings.Replace(csp, "style-src 'self'", "style-src 'self'"+style, 1)
+	csp = strings.Replace(csp, "connect-src 'self'", "connect-src 'self'"+connect, 1)
+
+	return strings.Replace(csp, "frame-ancestors 'none'", "frame-src"+frame+"; frame-ancestors 'none'", 1)
+}
+
+func (m *module) pageHeaders(e *core.RequestEvent, page string) {
 	h := e.Response.Header()
-	h.Set("Content-Security-Policy", pagesCSP)
+
+	csp := pagesCSP
+	if page == "login" {
+		csp = loginCSP(m.app.Settings().Captcha)
+	}
+
+	h.Set("Content-Security-Policy", csp)
 	h.Set("Cache-Control", "no-store")
 	h.Set("Referrer-Policy", "no-referrer")
 	h.Set("X-Content-Type-Options", "nosniff")
@@ -58,6 +86,7 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
 <label>Authenticator code or backup code<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
 <button type="submit">Verify</button>
 </form>
+<div id="captchaBox" hidden></div>
 <div id="passkeyBox" hidden>
 <div class="or"><span>or</span></div>
 <button id="passkey" type="button" class="secondary">Sign in with a passkey</button>
@@ -87,7 +116,7 @@ type pageData struct {
 }
 
 func (m *module) render(e *core.RequestEvent, status int, d pageData) error {
-	m.pageHeaders(e)
+	m.pageHeaders(e, d.Page)
 	e.Response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	e.Response.WriteHeader(status)
 

@@ -485,3 +485,5 @@ func jsonDecode(b []byte, v any) error { return json.Unmarshal(b, v) }
 func basic(user, pass string) string {
 	return base64.StdEncoding.EncodeToString([]byte(url.QueryEscape(user) + ":" + url.QueryEscape(pass)))
 }
+
+func jsonMarshal(v any) ([]byte, error) { return json.Marshal(v) }

@@ -101,6 +101,15 @@ browser with a per-request `HttpOnly` cookie. Finish, consent and callback refus
 The hosted pages use external scripts and styles only; the CSP is `default-src 'none'; script-src 'self'; ...`
 with no `unsafe-inline`.
 
+**CAPTCHA.** When Settings, CAPTCHA requires a token for password sign-in (`login`) or passkey sign-in
+(`passkey_login`), the sign-in page reads the widget settings from the collection's `auth-methods` response,
+renders the provider widget, and sends the token in `X-Captcha-Token` with `auth-with-password` and passkey
+`login-begin`, the same way `/passkeys` does. The provider script is loaded only in that case, and the page's
+CSP then gains the provider's domains (script, frame, XHR and, for hCaptcha, style) and nothing else: the same
+narrow table `/passkeys` and the admin UI use, with still no `unsafe-inline`. A deployment without a CAPTCHA
+gets exactly the strict policy above. Other pages (consent, errors) never get the extension. A provider outage
+follows `failClosed` as everywhere else (open by default, so a church is not locked out of sign-in).
+
 ## Tokens and claims
 
 - **Authorization code**: single use, valid for 1 minute, stored hashed. Using a code twice fails and revokes
@@ -174,9 +183,8 @@ redirect happens.
 - No DPoP, PAR, device flow (#96), dynamic client registration, `client_credentials`, back-channel logout or
   token exchange.
 - No account chooser or single sign-on session: every authorize request asks for a sign-in (#94).
-- The hosted pages are English only (#97) and do not render a CAPTCHA widget: if a CAPTCHA is required for
-  sign-in on the collection, the hosted sign-in fails with the API's error. Email OTP and the OAuth2 "sign in
-  with" providers are not offered on the hosted page.
+- The hosted pages are English only (#97). Email OTP and the OAuth2 "sign in with" providers are not offered
+  on the hosted page.
 - No rate limit of its own on the protocol endpoints beyond what the underlying sign-in endpoints enforce.
 - The library logs through the global `slog` default, not the application logger.
 - Formal OpenID conformance (the Basic OP profile) has not been run yet; the plan is to run the suite in CI.
