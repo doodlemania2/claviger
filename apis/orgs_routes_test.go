@@ -11,19 +11,6 @@ import (
 
 // Fork-local (Claviger #79a): /api/orgs routes and their guards.
 
-func q(s string) string { return `"` + s + `"` }
-
-func memberID(t testing.TB, app core.App, org, who string) string {
-	t.Helper()
-
-	m, err := core.FindOrgMember(app, org, orgUserID(who))
-	if err != nil {
-		t.Fatalf("no membership of %s in %s: %v", who, org, err)
-	}
-
-	return m.Id
-}
-
 func TestOrgsList(t *testing.T) {
 	t.Parallel()
 
