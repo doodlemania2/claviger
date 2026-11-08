@@ -407,6 +407,11 @@ func (app *BaseApp) FindRecordsByFilter(
 		}
 	}
 
+	// fork-local (#106): stable default order on Postgres
+	if sort == "" && resolver.DefaultOrder() != "" {
+		q.AndOrderBy(resolver.DefaultOrder())
+	}
+
 	err = resolver.UpdateQuery(q) // attaches any adhoc joins and aliases
 	if err != nil {
 		return nil, err

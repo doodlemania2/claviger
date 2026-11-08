@@ -78,6 +78,8 @@ func (sqliteDialect) LikeOp(not bool) string {
 
 func (sqliteDialect) OrderTerm(expr, direction string) string { return expr + " " + direction }
 
+func (d sqliteDialect) JSONOrderTerm(expr, direction string) string { return d.OrderTerm(expr, direction) }
+
 func (sqliteDialect) NoCaseEqual(column, value string) string {
 	return column + " = " + value + " COLLATE NOCASE"
 }
@@ -109,6 +111,8 @@ func (sqliteDialect) JSONText(expr string) string { return expr }
 func (sqliteDialect) JSONFromScalar(kind ScalarKind, expr string) string { return expr }
 
 func (sqliteDialect) JSONNumber(expr string) string { return expr }
+
+func (sqliteDialect) ColumnCast(expr, columnDef string) string { return expr }
 
 func (sqliteDialect) JoinOn() string { return "" }
 

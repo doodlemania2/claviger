@@ -167,6 +167,10 @@ type Dialect interface {
 	// OrderTerm renders a single ORDER BY term. direction is "ASC" or "DESC".
 	// NULLs sort first on SQLite, which the other engines have to emulate.
 	OrderTerm(expr, direction string) string
+	// JSONOrderTerm renders an ORDER BY term for a [Dialect.JSONExtract]
+	// result, ordered like SQLite orders the extracted SQL values: NULL, then
+	// numbers (booleans are 0 and 1), then text. Only used if NativeJSON.
+	JSONOrderTerm(expr, direction string) string
 	// NoCaseEqual renders a case insensitive equality comparison of a column
 	// and a value expression (usually a {:placeholder}).
 	NoCaseEqual(column, value string) string
@@ -204,6 +208,10 @@ type Dialect interface {
 	// JSONNumber converts a [Dialect.JSONExtract] result to a number
 	// (NULL when the JSON value is not a number).
 	JSONNumber(expr string) string
+	// ColumnCast gives a bound value the SQL type of a column, from the
+	// column definition ([Field.ColumnType]), for values that are selected
+	// without a table to take the type from ("SELECT {:p} AS col").
+	ColumnCast(expr, columnDef string) string
 	// JoinOn is the ON condition for joins that have none (cross joins
 	// written as "LEFT JOIN x"), or an empty string if the engine accepts that.
 	JoinOn() string

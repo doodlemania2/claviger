@@ -302,7 +302,7 @@ func recordCreate(responseWriteAfterTx bool, optFinalizer func(data any) error) 
 				k = inflector.Columnify(k) // columnify is just as extra measure in case of custom fields
 				param = "__pb_create__" + k
 				dummyParams[param] = v
-				selects = append(selects, "{:"+param+"} AS [["+k+"]]")
+				selects = append(selects, dummyRecordSelect(e.App, collection, param, k))
 			}
 
 			// shallow clone the current collection

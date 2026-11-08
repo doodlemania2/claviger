@@ -47,6 +47,19 @@ func (postgresDialect) OrderTerm(expr, direction string) string {
 	return expr + " " + direction + " NULLS FIRST"
 }
 
+// jsonb has its own ordering (strings before numbers, locale collation for
+// strings). A row value of (kind, number, text) reproduces the SQLite order
+// of json_extract: NULL < numbers (booleans as 0 and 1) < text.
+func (d postgresDialect) JSONOrderTerm(expr, direction string) string {
+	key := "ROW(" +
+		"(CASE WHEN " + expr + " IS NULL THEN 0 WHEN jsonb_typeof(" + expr + ") IN ('number', 'boolean') THEN 1 ELSE 2 END), " +
+		"(CASE jsonb_typeof(" + expr + ") WHEN 'number' THEN CAST((" + expr + " #>> '{}') AS DOUBLE PRECISION)" +
+		" WHEN 'boolean' THEN (CASE WHEN " + expr + " = 'true'::jsonb THEN 1.0 ELSE 0.0 END) END), " +
+		"((" + expr + " #>> '{}') COLLATE \"C\"))"
+
+	return d.OrderTerm(key, direction)
+}
+
 func (postgresDialect) NoCaseEqual(column, value string) string {
 	return "lower(" + column + ") = lower(" + value + ")"
 }
@@ -127,6 +140,19 @@ func (postgresDialect) JSONFromScalar(kind ScalarKind, expr string) string {
 
 func (postgresDialect) JSONNumber(expr string) string {
 	return "(CASE WHEN jsonb_typeof(" + expr + ") = 'number' THEN CAST((" + expr + " #>> '{}') AS DOUBLE PRECISION) END)"
+}
+
+var pgColumnType = regexp.MustCompile(`(?i)^\s*(.+?)(?:\s+(?:COLLATE|DEFAULT|NOT|NULL|PRIMARY|GENERATED)\b.*)?$`)
+
+// ColumnCast casts to the type at the start of the column definition
+// ("DOUBLE PRECISION DEFAULT 0 NOT NULL" => DOUBLE PRECISION).
+func (postgresDialect) ColumnCast(expr, columnDef string) string {
+	m := pgColumnType.FindStringSubmatch(columnDef)
+	if m == nil || strings.TrimSpace(m[1]) == "" {
+		return expr
+	}
+
+	return "CAST(" + expr + " AS " + strings.TrimSpace(m[1]) + ")"
 }
 
 // Postgres requires an ON condition for every LEFT JOIN.

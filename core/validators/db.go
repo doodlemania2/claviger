@@ -54,6 +54,11 @@ func NormalizeUniqueIndexError(err error, tableOrAlias string, fieldNames []stri
 		return err
 	}
 
+	// fork-local (#106): PostgreSQL unique violations
+	if pgErrs := normalizePostgresUniqueError(err, fieldNames); pgErrs != nil {
+		return pgErrs
+	}
+
 	msg := strings.ToLower(err.Error())
 
 	// check for unique constraint failure

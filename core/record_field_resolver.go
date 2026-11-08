@@ -203,6 +203,7 @@ func (r *RecordFieldResolver) updateQueryWithCollectionListRule(c *Collection, t
 
 func (r *RecordFieldResolver) updateQueryWithDeduplicateConstraint(query *dbx.SelectQuery) {
 	query.Distinct(true)
+	r.groupJoinedOrderBy(query) // fork-local (#106)
 
 	// @todo Research better options for generic rows deduplication.
 	//

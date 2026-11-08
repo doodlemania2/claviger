@@ -22,6 +22,15 @@ type DialectProvider interface {
 	Dialect() dialect.Dialect
 }
 
+// DefaultOrderProvider is optionally implemented by a FieldResolver to add a
+// stable ORDER BY term to the queries that have no explicit sort (an empty
+// string means none). Without an ORDER BY, Postgres returns the rows in
+// physical order, which changes whenever a row is updated, while SQLite
+// returns them in insertion (rowid) order.
+type DefaultOrderProvider interface {
+	DefaultOrder() string
+}
+
 // dialectOf returns the dialect of the resolver (SQLite by default).
 func dialectOf(r FieldResolver) dialect.Dialect {
 	if p, ok := r.(DialectProvider); ok {

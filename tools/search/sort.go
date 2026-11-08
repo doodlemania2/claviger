@@ -41,7 +41,12 @@ func (s *SortField) BuildExpr(fieldResolver FieldResolver) (string, error) {
 		return "", fmt.Errorf("invalid sort field %q", s.Name)
 	}
 
-	return dialectOf(fieldResolver).OrderTerm(result.Identifier, s.Direction), nil
+	d := dialectOf(fieldResolver)
+	if result.JSONB {
+		return d.JSONOrderTerm(result.Identifier, s.Direction), nil
+	}
+
+	return d.OrderTerm(result.Identifier, s.Direction), nil
 }
 
 // ParseSortFromString parses the provided string expression
