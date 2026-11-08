@@ -443,6 +443,18 @@ func (app *BaseApp) registerWebhookHooks() {
 		},
 	})
 
+	// The records API un-hides every field for superusers; the secrets must
+	// stay hidden from them too. The default enrich step (which does the
+	// un-hiding) runs as the finalizer of the chain, i.e. inside e.Next().
+	app.OnRecordEnrich(CollectionNameWebhooks).Bind(&hook.Handler[*RecordEnrichEvent]{
+		Id: "__pbWebhookHideSecrets__",
+		Func: func(e *RecordEnrichEvent) error {
+			err := e.Next()
+			e.Record.Hide("secret", "prevSecret")
+			return err
+		},
+	})
+
 	// after commit: refresh the endpoint cache and start/stop the worker
 	refresh := func(e *ModelEvent) error {
 		if err := e.Next(); err != nil {
