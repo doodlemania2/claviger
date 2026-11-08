@@ -2,6 +2,7 @@ package apis
 
 import (
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/doodlemania2/claviger/core"
@@ -168,6 +169,18 @@ func enforceKeyRecordsRoute(e *core.RequestEvent, key *core.APIKeyInfo, collecti
 		return apiKeyForbidden(e)
 	}
 
+	// filter and sort can reach other collections (relation paths, back
+	// relations, @collection) and turn a match into a yes/no oracle about
+	// data the key has no scope for
+	if !key.HasAll() {
+		q := e.Request.URL.Query()
+		for _, expr := range append(q["filter"], q["sort"]...) {
+			if !keyCanReference(e.App, key, collection, e.Auth.Collection(), expr) {
+				return apiKeyForbidden(e)
+			}
+		}
+	}
+
 	// a relation expand returns records of other collections: they need
 	// their own read scope, otherwise expand would bypass the scopes
 	if !key.HasAll() {
@@ -220,4 +233,68 @@ func resolveExpandTarget(app core.App, from *core.Collection, name string) *core
 	}
 
 	return nil
+}
+
+var (
+	keyExprQuotedRegex = regexp.MustCompile(`'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"`)
+	keyExprTokenRegex  = regexp.MustCompile(`@?[A-Za-z_][A-Za-z0-9_]*(?::[A-Za-z]+)?(?:\.[A-Za-z0-9_@]+(?::[A-Za-z0-9_]+)?)*`)
+)
+
+// keyCanReference reports whether every collection that a filter or sort
+// expression reaches (through relation paths walked against the real schema,
+// "<collection>_via_<field>" back-relations, @collection.* and
+// @request.auth.* paths) is readable with the key. Identifiers that do not
+// resolve are ignored: the records API rejects them itself.
+func keyCanReference(app core.App, key *core.APIKeyInfo, base, authCollection *core.Collection, expr string) bool {
+	expr = keyExprQuotedRegex.ReplaceAllString(expr, " ")
+
+	for _, tok := range keyExprTokenRegex.FindAllString(expr, -1) {
+		segs := strings.Split(tok, ".")
+		for i := range segs {
+			segs[i], _, _ = strings.Cut(segs[i], ":") // modifiers and aliases
+		}
+
+		current := base
+
+		switch {
+		case segs[0] == "@collection":
+			if len(segs) < 2 {
+				continue
+			}
+			c, err := app.FindCachedCollectionByNameOrId(segs[1])
+			if err != nil {
+				continue // an alias of an earlier @collection reference
+			}
+			if !key.Allows(c.Name, core.APIKeyScopeRead) {
+				return false
+			}
+			current, segs = c, segs[2:]
+		case segs[0] == "@request":
+			if len(segs) < 3 || segs[1] != "auth" || authCollection == nil {
+				continue
+			}
+			current, segs = authCollection, segs[2:]
+		case strings.HasPrefix(segs[0], "@"):
+			continue
+		}
+
+		for i, name := range segs {
+			// a trailing relation field is just the stored ids; only
+			// following it (or a back-relation) reads the other collection
+			if i == len(segs)-1 && current.Fields.GetByName(name) != nil {
+				break
+			}
+
+			next := resolveExpandTarget(app, current, name)
+			if next == nil {
+				break
+			}
+			if !key.Allows(next.Name, core.APIKeyScopeRead) {
+				return false
+			}
+			current = next
+		}
+	}
+
+	return true
 }

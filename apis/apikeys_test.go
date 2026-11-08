@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -530,5 +531,55 @@ func TestJWTPathUnaffectedByAPIKeys(t *testing.T) {
 	}
 	if s, _ := env.do("GET", "/api/collections/users/records/"+akUserId, "", auditUserToken); s != 200 {
 		t.Fatalf("valid JWT, got %d", s)
+	}
+}
+
+func TestAPIKeyFilterSortOracle(t *testing.T) {
+	t.Parallel()
+	env := newAPIKeyEnv(t)
+
+	narrow := suMint(env, "collection:demo1:read")
+	wide := suMint(env, "collection:demo1:read", "collection:users:read")
+	all := suMint(env, "*")
+
+	q := func(param, value string) string {
+		return "/api/collections/demo1/records?" + param + "=" + url.QueryEscape(value)
+	}
+
+	denied := []string{
+		q("filter", "rel_many.email != ''"),
+		q("filter", "rel_many.email ?= 'x'"),
+		q("filter", "@collection.users.email = 'x'"),
+		q("filter", "@collection.users:u.email = 'x'"),
+		q("filter", "users_via_rel_many.id != ''"),
+		q("filter", "(id != '' && rel_many:each.email ~ 'a')"),
+		q("sort", "rel_many.email"),
+		q("sort", "-rel_many.email,id"),
+		q("sort", "+@collection.users.email"),
+		q("filter", "@request.auth.id != '' && @collection.users.id != ''"),
+	}
+	for _, u := range denied {
+		if s, b := env.do("GET", u, "", narrow); s != 403 {
+			t.Errorf("narrow key, %s: expected 403, got %d %s", u, s, b)
+		}
+		if s, b := env.do("GET", u, "", wide); s == 403 {
+			t.Errorf("key with users scope, %s: unexpected 403 %s", u, b)
+		}
+		if s, b := env.do("GET", u, "", all); s == 403 {
+			t.Errorf("* key, %s: unexpected 403 %s", u, b)
+		}
+	}
+
+	allowed := []string{
+		q("filter", "id != ''"),
+		q("filter", "id != '' && rel_many:length > 0"),
+		q("filter", "id = 'rel_many.email'"), // inside a string literal
+		q("sort", "-id"),
+		q("sort", "@random"),
+	}
+	for _, u := range allowed {
+		if s, b := env.do("GET", u, "", narrow); s != 200 {
+			t.Errorf("narrow key, %s: expected 200, got %d %s", u, s, b)
+		}
 	}
 }
