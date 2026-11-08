@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"slices"
 	"testing"
-
 )
 
 // View queries are user SQL: they run as written, in the SQL dialect of the
