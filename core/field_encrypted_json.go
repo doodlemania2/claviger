@@ -119,6 +119,11 @@ func (f *EncryptedJSONField) PrepareValue(record *Record, raw any) (any, error) 
 		if plain == "" {
 			return types.JSONRaw{}, nil
 		}
+		if !strings.HasPrefix(v, fieldCipherPrefix) {
+			// legacy plaintext from a converted column: normalize it like a
+			// json field would, so the response is always valid JSON
+			return (&JSONField{}).PrepareValue(record, plain)
+		}
 		return types.JSONRaw(plain), nil
 	default:
 		return (&JSONField{}).PrepareValue(record, raw)

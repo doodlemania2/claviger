@@ -48,7 +48,10 @@ const (
 	fieldKeySourceStoreKey = "__clavigerFieldKeySource__"
 
 	fieldCipherPrefix = "enc:v1:"
-	fieldDEKLength    = 32
+
+	// value of the strictMode column of the active key row of a strict field
+	fieldKeyStrictOn = "1"
+	fieldDEKLength   = 32
 )
 
 // FieldKeySourceLoader returns the key-encryption key source of the app.
@@ -58,7 +61,7 @@ const (
 // source. It must return an error wrapping [keys.ErrNoKeySource] when
 // nothing is configured.
 var FieldKeySourceLoader = func(app App) (keys.KeySource, error) {
-	return keys.LoadFromEnv(os.Getenv, app.EncryptionEnv())
+	return keys.LoadWithOld(os.Getenv, app.EncryptionEnv())
 }
 
 // ErrFieldKeyNotLoaded is returned when an encrypted value cannot be sealed
@@ -222,11 +225,12 @@ type fieldKeyRow struct {
 	Wrapped      string
 	Retired      string
 	Created      string
+	StrictMode   string
 }
 
 func scanFieldKeyRows(app App, where dbx.Expression) ([]fieldKeyRow, error) {
 	q := app.DB().
-		Select("id", "collectionRef", "fieldRef", "keyId", "kekId", "wrapped", "retired", "created").
+		Select("id", "collectionRef", "fieldRef", "keyId", "kekId", "wrapped", "retired", "created", "strictMode").
 		From(CollectionNameFieldKeys).
 		OrderBy("created ASC", dialectOf(app).RowOrder())
 	if where != nil {
@@ -249,6 +253,7 @@ func scanFieldKeyRows(app App, where dbx.Expression) ([]fieldKeyRow, error) {
 			Wrapped:      m["wrapped"].String,
 			Retired:      m["retired"].String,
 			Created:      m["created"].String,
+			StrictMode:   m["strictMode"].String,
 		}
 	}
 
@@ -338,6 +343,7 @@ func ensureFieldKeys(app App, collection *Collection) error {
 			"wrapped":       base64.StdEncoding.EncodeToString(wrapped),
 			"retired":       "",
 			"created":       types.NowDateTime().String(),
+			"strictMode":    "",
 		}).Execute()
 		if err != nil {
 			return fmt.Errorf("failed to store the data key of %s.%s: %w", collection.Name, f.GetName(), err)
@@ -367,8 +373,13 @@ func registerFieldKeyRows(src keys.KeySource, rows []fieldKeyRow, markCurrent bo
 		}
 
 		// rows are ordered oldest first, so the newest active row wins
-		if err := fieldKeys.add(row.KeyId, row.CollectionId, row.FieldId, dek, markCurrent && row.Retired == ""); err != nil {
+		active := markCurrent && row.Retired == ""
+		if err := fieldKeys.add(row.KeyId, row.CollectionId, row.FieldId, dek, active); err != nil {
 			return err
+		}
+
+		if active {
+			fieldKeys.setStrict(row.CollectionId, row.FieldId, row.StrictMode == fieldKeyStrictOn)
 		}
 	}
 
@@ -482,4 +493,10 @@ func (app *BaseApp) registerFieldEncryptionHooks() {
 	app.OnModelCreate().Bind(handler())
 	app.OnModelUpdate().Bind(handler())
 	app.OnModelDelete().Bind(handler())
+}
+
+func (k *fieldKeyring) remove(keyId string) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	delete(k.byID, keyId)
 }
