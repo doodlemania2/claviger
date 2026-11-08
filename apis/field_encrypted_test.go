@@ -165,6 +165,31 @@ func TestEncryptedFieldAPI(t *testing.T) {
 			ExpectedContent: []string{`"phone":{"code":"validation_max_text_constraint"`},
 		},
 		{
+			Name:           "a regular user reads plaintext but never the hidden field",
+			Method:         http.MethodGet,
+			URL:            "/api/collections/apienc/records/encrecord000001",
+			Headers:        map[string]string{"Authorization": auditUserToken},
+			BeforeTestFunc: func(t testing.TB, app *tests.TestApp, e *core.ServeEvent) { encSetup(t, app) },
+			ExpectedStatus: 200,
+			ExpectedContent: []string{
+				`"phone":"+1 555 0100"`,
+			},
+			NotExpectedContent: []string{`"ssn"`, `123-45-6789`},
+		},
+		{
+			Name:           "a superuser reads the hidden encrypted field as plaintext",
+			Method:         http.MethodGet,
+			URL:            "/api/collections/apienc/records/encrecord000001",
+			Headers:        su,
+			BeforeTestFunc: func(t testing.TB, app *tests.TestApp, e *core.ServeEvent) { encSetup(t, app) },
+			ExpectedStatus: 200,
+			ExpectedContent: []string{
+				`"phone":"+1 555 0100"`,
+				`"ssn":"123-45-6789"`,
+			},
+			NotExpectedContent: []string{`enc:v1:`},
+		},
+		{
 			Name:    "the data keys list is superuser only",
 			Method:  http.MethodGet,
 			URL:     "/api/collections/_fieldKeys/records",

@@ -426,7 +426,16 @@ func (app *BaseApp) registerFieldEncryptionHooks() {
 			if err := e.Next(); err != nil {
 				return err
 			}
-			return loadFieldKeys(e.App)
+
+			if err := loadFieldKeys(e.App); err != nil {
+				// do not leave the database connections of a refused start open
+				if clearErr := e.App.ClearBootstrap(); clearErr != nil {
+					return errors.Join(err, clearErr)
+				}
+				return err
+			}
+
+			return nil
 		},
 	})
 
