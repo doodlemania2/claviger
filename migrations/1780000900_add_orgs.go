@@ -37,7 +37,7 @@ func init() {
 			`org._orgMembers_via_org.user ?= @request.auth.id && org._orgMembers_via_org.status ?= "active"`
 
 		orgs := core.NewBaseCollection(core.CollectionNameOrgs)
-				orgs.Fields.Add(
+		orgs.Fields.Add(
 			&core.TextField{Name: "name", System: true, Required: true, Max: 200},
 			&core.TextField{Name: "slug", System: true, Required: true, Pattern: `^[a-z0-9-]{2,64}$`, Max: 64},
 			&core.BoolField{Name: "archived", System: true},
@@ -57,7 +57,7 @@ func init() {
 		}
 
 		roles := core.NewBaseCollection(core.CollectionNameOrgRoles)
-				roles.Fields.Add(
+		roles.Fields.Add(
 			&core.RelationField{Name: "org", System: true, Required: true, CollectionId: orgs.Id, MaxSelect: 1, CascadeDelete: true},
 			&core.TextField{Name: "name", System: true, Required: true, Max: 64},
 			&core.TextField{Name: "description", System: true, Max: 500},
@@ -70,7 +70,7 @@ func init() {
 		}
 
 		members := core.NewBaseCollection(core.CollectionNameOrgMembers)
-				members.Fields.Add(
+		members.Fields.Add(
 			&core.RelationField{Name: "org", System: true, Required: true, CollectionId: orgs.Id, MaxSelect: 1, CascadeDelete: true},
 			&core.RelationField{Name: "user", System: true, Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true},
 			&core.SelectField{Name: "role", System: true, Required: true, MaxSelect: 1, Values: core.OrgRoles},
