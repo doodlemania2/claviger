@@ -88,15 +88,22 @@ jobs:
 
       # -v and the count check below: a skipped package (CLAVIGER_TEST_PG_URL
       # unset or unreachable) exits 0 and would verify nothing.
+      #
+      # The known SQLite/Postgres differences (docs/datastores.md) are skipped on
+      # purpose, as tests named known_gap/...: they are listed in the log with the
+      # reason. Any other skip fails the job, and so does a run that passes too few
+      # tests (the suite has ~420 passing cases; a green that ran nothing is a failure).
       - name: Run Postgres tests
         run: |
           set -o pipefail
           go test -tags postgres -count=1 -v ./tests/pgtests/... | tee pg-test.log
-          if grep -q -- '--- SKIP' pg-test.log; then
+          echo "known gaps (skipped on purpose):"
+          grep -- '--- SKIP' pg-test.log | grep -- 'known_gap' || true
+          if grep -- '--- SKIP' pg-test.log | grep -qv -- 'known_gap'; then
             echo "::error::a Postgres test was skipped"
             exit 1
           fi
-          test "$(grep -c -- '--- PASS' pg-test.log)" -ge 6
+          test "$(grep -c -- '--- PASS' pg-test.log)" -ge 400
 
   docker-build:
     timeout-minutes: 15

@@ -261,7 +261,7 @@ Fork-only files for #77 (webhooks): `core/webhooks*.go`, `migrations/1780000500_
 
 ### Postgres dialect seam (#106, experimental)
 
-Fork-only files: `tools/dialect/` (the `Dialect` interface and the SQLite and Postgres implementations), `core/dialect.go`, `core/db_connect_postgres.go` (+ `_stub.go` for the `no_default_driver` tag), `core/db_connect_aux.go`, `tests/pgtests/`, `scripts/pgembedded/` (separate Go module), `docs/datastores.md`, the `postgres` job in `test.yml`. Design: `docs/spikes/106-postgres.md`.
+Fork-only files: `tools/dialect/` (the `Dialect` interface and the SQLite and Postgres implementations, `postgres_search.go` for the M2 filter/JSON/strftime SQL), `tools/search/dialect.go` and `tools/search/token_functions_dialect.go` (the filter layer's dialect hooks and the Postgres `strftime()`/`geoDistance()`), `core/record_field_resolver_dialect.go`, `core/view_dialect.go`, `core/validators/db_postgres.go` (+ `_stub.go`), `apis/record_crud_dialect.go`, `core/dialect.go`, `core/db_connect_postgres.go` (+ `_stub.go` for the `no_default_driver` tag), `core/db_connect_aux.go`, `tests/pgtests/`, `scripts/pgembedded/` (separate Go module), `docs/datastores.md`, the `postgres` job in `test.yml`. Design: `docs/spikes/106-postgres.md`.
 
 The rule: SQLite behavior and SQL text are unchanged, and every engine-specific piece asks the dialect (`core.DialectOf(app)`, `dialect.Of(db)`). The hunks in upstream-owned files are one-line dialect calls except where noted. After a sync, re-check each file below, and `grep -rn 'sqlite_master\|sqlite_schema\|PRAGMA\|randomblob\|strftime\|rowid' --include='*.go' core apis migrations tools | grep -v _test` for raw SQL upstream added (it needs a dialect call or a Postgres equivalent). Then run `go test -tags postgres ./tests/pgtests/...` (see `docs/datastores.md`).
 
@@ -278,7 +278,22 @@ The rule: SQLite behavior and SQL text are unchanged, and every engine-specific 
 | `migrations/1778828400_normalize_indexes.go` | Returns early unless SQLite. The v0.23 migrations already return early on a fresh database. | |
 | `go.mod`, `go.sum` | `github.com/jackc/pgx/v5` (pinned) and its dependencies. | |
 
-Not yet routed through the dialect (M2 to M4 in `docs/datastores.md`): `tools/dbutils/json.go`, `tools/search/` (`sort.go`, `filter.go`, `token_functions.go`), `core/record_field_resolver*.go`, `core/view.go`, `core/backup_*.go`, `core/log_query.go` (auxiliary db, stays SQLite), `apis/sql.go`.
+**M2 (records, filters, sorting, views).** `tools/dbutils/json.go` and `tools/search/token_functions.go` are untouched: the SQLite dialect calls the former and the SQLite filter functions stay the reference. The Postgres filter SQL comes from the dialect; the resolver's app selects it (`RecordFieldResolver.Dialect()`, `search.DialectProvider`). Upstream-owned hunks:
+
+| File | Fork change | Re-check on sync |
+| --- | --- | --- |
+| `tools/search/filter.go` (+39 -21) | `buildResolversExpr` and `resolveEqualExpr` take the dialect (first argument); `IS`/`IS NOT`, `LIKE`, the text cast of the operands and `COALESCE` go through it (byte for byte the old SQL on SQLite, pinned by `dialect_sqlite_golden_test.go`); `adaptJSONOperands` runs first; the `true`/`false` identifiers and filter functions are looked up through the dialect; the multi-match structs carry the dialect and the `JSONB` flag. | **A new operator, modifier or `TokenFunctions` entry upstream needs a Postgres decision** (a function that is not in `builderTokenFunctions` runs its SQLite SQL on Postgres). Any new raw SQL in `resolveEqualExpr`/`buildResolversExpr`. |
+| `tools/search/sort.go` (+6 -1), `provider.go` (+9), `multi_match_subquery.go` (+3), `simple_field_resolver.go` (+4) | `OrderTerm` / `JSONOrderTerm` for the sort terms; the default order hook (`DefaultOrderProvider`); `ON TRUE` for joins without a condition; `ResolverResult.JSONB`. | New fields on `ResolverResult`, new sort keywords, changes to how `Exec` builds the count query (it must still reset `Distinct`, `GroupBy` and `OrderBy`, which the Postgres `GROUP BY` rewrite relies on). |
+| `core/record_field_resolver_runner.go` (+36 -16) | Every `dbutils.JSONEach/JSONExtract/JSONArrayLength` and `json_each(...)` goes through `r.resolver.Dialect()`; the `JSONB` flag on JSON results; multiple values compared as text (`AsText`); the `:lower` modifier. | **Any new `dbutils.*` or `json_*` call in the runner.** New modifiers. |
+| `core/record_field_resolver.go` (+3 -8) | The join loops call `r.leftJoin`; `updateQueryWithDeduplicateConstraint` calls `r.groupJoinedOrderBy` (Postgres: `DISTINCT` plus a joined `ORDER BY` becomes `GROUP BY id` with `ARRAY_AGG` sort terms). | The dedupe logic, `UpdateQuery`. |
+| `core/record_query.go` (+6 -1) | `NoCaseEqual` for the email lookup; the default order in `FindRecordsByFilter`. | |
+| `core/view.go` (+8 -5), `core/collection_query.go` (+1 -1) | `SubqueryAlias()` after the derived tables of `SaveView`, `DryRunView` and `normalizeViewQueryId`; field type inference for unknown view columns (`defaultViewFieldForColumn`). | The view query wrapping, `CreateViewFields`. |
+| `core/record_model.go`, `core/record_query_expand.go`, `core/field_text.go` | `dialectOf(app).JSONEach(...)`, `NoCaseEqual(...)`. One line each. | |
+| `core/validators/db.go` (+5) | `NormalizeUniqueIndexError` first asks `normalizePostgresUniqueError` (the pgx unique violation detail names the columns). | |
+| `apis/record_crud.go` (+1 -1), `apis/record_auth_with_password.go`, `apis/record_auth_with_oauth2.go` | `dummyRecordSelect` (typed dummy record of the create rule); `NoCaseEqual`. | New `COLLATE NOCASE` or `SELECT {:p} AS col` constructs. |
+| `tools/dialect/postgres.go` | The `C` collation of text columns. | |
+
+After a sync, also run `go test ./tools/search -run 'Golden|PostgresFilterSQL'` (SQL text of both dialects), `go test -tags postgres ./tests/pgtests/...` (the differential suite) and grep for the constructs above. Not yet routed through the dialect (M3/M4 in `docs/datastores.md`): `core/backup_*.go`, `core/log_query.go` (auxiliary db, stays SQLite), `apis/sql.go`.
 
 ## CI
 
