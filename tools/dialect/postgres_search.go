@@ -207,6 +207,9 @@ var (
 // StrFTime translates the strftime() filter function. It supports the
 // formats and modifiers that are listed in docs/datastores.md; everything
 // else is an error at filter build time (SQLite returns NULL for them).
+//
+// The time value appears once in the generated SQL: it is parsed into a
+// timestamp (UTC, no zone) in a derived table, which the format reads.
 func (d postgresDialect) StrFTime(format string, timeValue string, timeValueIsNumber bool, modifiers []string) (string, error) {
 	var unixEpoch bool
 	rest := make([]string, 0, len(modifiers))
@@ -221,23 +224,25 @@ func (d postgresDialect) StrFTime(format string, timeValue string, timeValueIsNu
 		}
 	}
 
-	var ts string
+	// ts is the timestamp expression, over the column t of the innermost select
+	var ts, source string
 	switch {
 	case timeValue == "":
-		ts = "(NOW() AT TIME ZONE 'UTC')"
+		ts, source = "NOW() AT TIME ZONE 'UTC'", "SELECT 1 AS t"
 	case timeValueIsNumber && unixEpoch:
-		ts = "(to_timestamp(CAST(" + timeValue + " AS DOUBLE PRECISION)) AT TIME ZONE 'UTC')"
+		ts, source = "to_timestamp(pb_in.t) AT TIME ZONE 'UTC'", "SELECT CAST("+timeValue+" AS DOUBLE PRECISION) AS t"
 	case timeValueIsNumber:
 		// julian day number
-		ts = "(to_timestamp((CAST(" + timeValue + " AS DOUBLE PRECISION) - 2440587.5) * 86400.0) AT TIME ZONE 'UTC')"
+		ts, source = "to_timestamp((pb_in.t - 2440587.5) * 86400.0) AT TIME ZONE 'UTC'", "SELECT CAST("+timeValue+" AS DOUBLE PRECISION) AS t"
 	default:
-		t := "CAST(" + timeValue + " AS TEXT)"
-		ts = "(CASE" +
+		t := "pb_in.t"
+		ts = "CASE" +
 			" WHEN lower(" + t + ") = 'now' THEN NOW() AT TIME ZONE 'UTC'" +
 			" WHEN " + t + " ~ '" + pgZonedTimestamp + "' AND pg_input_is_valid(" + t + ", 'timestamptz')" +
 			" THEN CAST(" + t + " AS TIMESTAMPTZ) AT TIME ZONE 'UTC'" +
 			" WHEN pg_input_is_valid(" + t + ", 'timestamp') THEN CAST(" + t + " AS TIMESTAMP)" +
-			" END)"
+			" END"
+		source = "SELECT CAST(" + timeValue + " AS TEXT) AS t"
 	}
 
 	for _, m := range rest {
@@ -256,19 +261,24 @@ func (d postgresDialect) StrFTime(format string, timeValue string, timeValueIsNu
 		}
 
 		if match := pgIntervalModifier.FindStringSubmatch(m); match != nil {
-			ts = "(" + ts + " + INTERVAL '" + match[1] + " " + strings.ToLower(match[2]) + "')"
+			ts = "(" + ts + ") + INTERVAL '" + match[1] + " " + strings.ToLower(match[2]) + "'"
 			continue
 		}
 
 		if match := pgWeekdayModifier.FindStringSubmatch(m); match != nil {
-			ts = "(" + ts + " + (CAST(((" + match[1] + " - CAST(EXTRACT(DOW FROM " + ts + ") AS INTEGER) + 7) % 7) AS INTEGER) * INTERVAL '1 day'))"
+			ts = "(" + ts + ") + (CAST(((" + match[1] + " - CAST(EXTRACT(DOW FROM (" + ts + ")) AS INTEGER) + 7) % 7) AS INTEGER) * INTERVAL '1 day')"
 			continue
 		}
 
 		return "", fmt.Errorf("the strftime modifier %q is not supported on PostgreSQL", m)
 	}
 
-	return pgStrftimeFormat(format, ts)
+	out, err := pgStrftimeFormat(format, "pb_ts.ts")
+	if err != nil {
+		return "", err
+	}
+
+	return "(SELECT " + out + " FROM (SELECT " + ts + " AS ts FROM (" + source + ") AS pb_in) AS pb_ts)", nil
 }
 
 // to_char patterns of the supported strftime format specifiers.
@@ -279,21 +289,24 @@ var pgStrftimePatterns = map[byte]string{
 	'F': "YYYY-MM-DD", 'T': "HH24:MI:SS", 'R': "HH24:MI",
 }
 
+// pgStrftimeFormat translates a strftime format string to a text expression
+// over the timestamp ts. Adjacent specifiers and literals share one to_char.
 func pgStrftimeFormat(format, ts string) (string, error) {
 	var parts []string // SQL text expressions
-	var pattern string // pending to_char pattern
-	var literal []byte // pending literal text
+	var pattern, literal strings.Builder
 
-	flushPattern := func() {
-		if pattern != "" {
-			parts = append(parts, "to_char("+ts+", '"+pattern+"')")
-			pattern = ""
+	// literal text inside a to_char template is double quoted
+	flushLiteral := func() {
+		if literal.Len() > 0 {
+			pattern.WriteString(`"` + literal.String() + `"`)
+			literal.Reset()
 		}
 	}
-	flushLiteral := func() {
-		if len(literal) > 0 {
-			parts = append(parts, "'"+strings.ReplaceAll(string(literal), "'", "''")+"'")
-			literal = nil
+	flush := func() {
+		flushLiteral()
+		if pattern.Len() > 0 {
+			parts = append(parts, "to_char("+ts+", '"+pattern.String()+"')")
+			pattern.Reset()
 		}
 	}
 
@@ -301,8 +314,14 @@ func pgStrftimeFormat(format, ts string) (string, error) {
 		c := format[i]
 
 		if c != '%' {
-			flushPattern()
-			literal = append(literal, c)
+			switch c {
+			case '"', '\\':
+				literal.WriteString(`\` + string(c))
+			case '\'':
+				literal.WriteString(`''`)
+			default:
+				literal.WriteByte(c)
+			}
 			continue
 		}
 
@@ -315,18 +334,16 @@ func pgStrftimeFormat(format, ts string) (string, error) {
 
 		if p, ok := pgStrftimePatterns[spec]; ok {
 			flushLiteral()
-			pattern += p
+			pattern.WriteString(p)
 			continue
 		}
-
-		flushPattern()
 
 		if spec == '%' {
-			literal = append(literal, '%')
+			literal.WriteByte('%')
 			continue
 		}
 
-		flushLiteral()
+		flush()
 
 		dow := "CAST(EXTRACT(DOW FROM " + ts + ") AS INTEGER)"
 		doy := "CAST(EXTRACT(DOY FROM " + ts + ") AS INTEGER)"
@@ -353,15 +370,14 @@ func pgStrftimeFormat(format, ts string) (string, error) {
 		}
 	}
 
-	flushPattern()
-	flushLiteral()
+	flush()
 
 	switch len(parts) {
 	case 0:
-		return "(CASE WHEN " + ts + " IS NULL THEN NULL ELSE '' END)", nil
+		return "CASE WHEN " + ts + " IS NULL THEN NULL ELSE '' END", nil
 	case 1:
-		return "(" + parts[0] + ")", nil
+		return parts[0], nil
 	}
 
-	return "(" + strings.Join(parts, " || ") + ")", nil
+	return strings.Join(parts, " || "), nil
 }
