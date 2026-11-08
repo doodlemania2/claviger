@@ -104,16 +104,20 @@ Claviger keeps PocketBase's HTTP API, so the official
 SDKs work unchanged. Passkey endpoints are plain REST calls on top.
 
 Claviger can also be used as a Go framework, the same way as PocketBase
-([Extend with Go](https://pocketbase.io/docs/go-overview/)). For now the Go module path is
-still upstream's (`ganigeorgiev.com/pocketbase/pocketbase`); see [#89](../../issues/89).
+([Extend with Go](https://pocketbase.io/docs/go-overview/)). The Go module path is
+`github.com/doodlemania2/claviger`:
+
+```sh
+go get github.com/doodlemania2/claviger
+```
 
 ## How this repo tracks upstream
 
-Claviger follows PocketBase releases and carries its changes as layers on top:
+Claviger follows PocketBase releases. There is one trunk:
 
-- `feat/webauthn-passkey-support`: the passkey feature
-- `deploy/azure`: container packaging, telemetry and CI, rebuilt onto each new passkey tip
-- `master`: the default branch, produced by merging `deploy/azure` after each sync
+- `master`: the default branch. All work lands here by pull request, and each upstream release is brought in with a merge.
+- `deploy/azure`: a release pointer, moved only to a `master` commit that has been tested and approved for production.
+- `feat/webauthn-passkey-support`: retired and frozen. The passkey feature is part of `master`.
 
 The procedure and the status of every sync are in [FORK_SYNC.md](FORK_SYNC.md).
 
