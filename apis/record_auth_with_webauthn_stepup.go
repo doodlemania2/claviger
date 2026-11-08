@@ -322,4 +322,3 @@ func recordWebAuthnStepUpFinish(e *core.RequestEvent) error {
 		"maxAge":    int64(webauthnStepUpMaxAge / time.Second),
 	})
 }
-
