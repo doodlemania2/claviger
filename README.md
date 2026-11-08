@@ -67,6 +67,9 @@ docker compose up --build
 Then open the dashboard at `http://127.0.0.1:8090/_/` and check
 `http://127.0.0.1:8090/api/health`.
 
+Docker (available from the first tagged release):
+`docker run -p 8090:8090 -v claviger_data:/pb_data ghcr.io/doodlemania2/claviger`
+
 Or build and run the binary directly (Go 1.27+):
 
 ```sh
