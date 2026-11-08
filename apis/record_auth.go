@@ -30,6 +30,7 @@ func bindRecordAuthApi(app core.App, rg *router.RouterGroup[*core.RequestEvent])
 
 	sub.POST("/auth-with-password", recordAuthWithPassword).Bind(
 		collectionPathRateLimit("", "authWithPassword", "auth"),
+		requireCaptcha(core.CaptchaActionLogin),
 	)
 
 	sub.POST("/auth-with-oauth2", recordAuthWithOAuth2).Bind(
@@ -38,6 +39,7 @@ func bindRecordAuthApi(app core.App, rg *router.RouterGroup[*core.RequestEvent])
 
 	sub.POST("/request-otp", recordRequestOTP).Bind(
 		collectionPathRateLimit("", "requestOTP"),
+		requireCaptcha(core.CaptchaActionOTPRequest),
 	)
 	sub.POST("/auth-with-otp", recordAuthWithOTP).Bind(
 		collectionPathRateLimit("", "authWithOTP", "auth"),
@@ -53,6 +55,7 @@ func bindRecordAuthApi(app core.App, rg *router.RouterGroup[*core.RequestEvent])
 	)
 	sub.POST("/auth-with-webauthn/login-begin", recordWebAuthnLoginBegin).Bind(
 		collectionPathRateLimit("", "webauthnLoginBegin", "auth"),
+		requireCaptcha(core.CaptchaActionPasskeyLogin),
 	)
 	sub.POST("/auth-with-webauthn/login-finish", recordWebAuthnLoginFinish).Bind(
 		collectionPathRateLimit("", "webauthnLoginFinish", "auth"),
@@ -103,6 +106,7 @@ func bindRecordAuthApi(app core.App, rg *router.RouterGroup[*core.RequestEvent])
 	// WebAuthn self-service recovery via emailed reset token
 	sub.POST("/request-passkey-reset", recordRequestPasskeyReset).Bind(
 		collectionPathRateLimit("", "requestPasskeyReset"),
+		requireCaptcha(core.CaptchaActionResetRequest),
 	)
 	sub.POST("/confirm-passkey-reset/begin", recordConfirmPasskeyResetBegin).Bind(
 		collectionPathRateLimit("", "confirmPasskeyResetBegin"),
@@ -113,6 +117,7 @@ func bindRecordAuthApi(app core.App, rg *router.RouterGroup[*core.RequestEvent])
 
 	sub.POST("/request-password-reset", recordRequestPasswordReset).Bind(
 		collectionPathRateLimit("", "requestPasswordReset"),
+		requireCaptcha(core.CaptchaActionResetRequest),
 	)
 	sub.POST("/confirm-password-reset", recordConfirmPasswordReset).Bind(
 		collectionPathRateLimit("", "confirmPasswordReset"),
@@ -120,6 +125,7 @@ func bindRecordAuthApi(app core.App, rg *router.RouterGroup[*core.RequestEvent])
 
 	sub.POST("/request-verification", recordRequestVerification).Bind(
 		collectionPathRateLimit("", "requestVerification"),
+		requireCaptcha(core.CaptchaActionVerificationRequest),
 	)
 	sub.POST("/confirm-verification", recordConfirmVerification).Bind(
 		collectionPathRateLimit("", "confirmVerification"),

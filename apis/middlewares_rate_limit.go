@@ -168,7 +168,7 @@ func checkRateLimit(e *core.RequestEvent, rtId string, rule core.RateLimitRule) 
 	}
 
 	rt := rateLimiters.GetOrSet(rtId, func() *rateLimiter {
-		return newRateLimiter(rule.MaxRequests, rule.Duration, 1800)
+		return newPersistentRateLimiter(rateLimitStoreFor(e.App), rtId, rule.MaxRequests, rule.Duration, 1800)
 	})
 	if rt == nil {
 		e.App.Logger().Warn("Failed to retrieve app rate limiter", "id", rtId)
@@ -212,6 +212,7 @@ func defaultRateLimitLabels(e *core.RequestEvent) []string {
 func destroyRateLimitersStore(app core.App) {
 	app.OnSettingsReload().Unbind(rateLimitersSettingsHookId)
 	app.Cron().Remove(rateLimitersCronKey)
+	forgetRateLimitStoreEntries(app)
 	app.Store().Remove(rateLimitersStoreKey)
 }
 
@@ -254,8 +255,20 @@ func newRateLimiter(maxAllowed int, intervalInSec int64, minDeleteIntervalInSec 
 	}
 }
 
+func newPersistentRateLimiter(persist *rateLimitStore, name string, maxAllowed int, intervalInSec int64, minDeleteIntervalInSec int64) *rateLimiter {
+	rt := newRateLimiter(maxAllowed, intervalInSec, minDeleteIntervalInSec)
+	rt.name = name
+	rt.persist = persist
+
+	return rt
+}
+
 type rateLimiter struct {
 	clients map[string]*rateClient
+
+	// fork (#91): optional persistence of the counters (see rate_limit_store.go)
+	name    string
+	persist *rateLimitStore
 
 	maxAllowed        int
 	interval          int64
@@ -286,6 +299,9 @@ func (rt *rateLimiter) isAllowed(key string) bool {
 		client, ok = rt.clients[key]
 		if !ok {
 			client = newRateClient(rt.maxAllowed, rt.interval)
+			if rt.persist != nil {
+				client.attach(rt.persist, rt.name, key)
+			}
 			rt.clients[key] = client
 		}
 		rt.Unlock()
@@ -339,6 +355,24 @@ type rateClient struct {
 	available  int   // the total available tokens
 	start      int64 // the start time of the current window
 	interval   int64 // in seconds
+
+	// fork (#91): optional persistence of the counter
+	persist *rateLimitStore
+	rule    string
+	id      string
+}
+
+// attach binds the client to the persistent store and seeds it from the
+// stored record (if any), so the fixed window survives a restart.
+func (l *rateClient) attach(store *rateLimitStore, rule, key string) {
+	l.persist = store
+	l.rule = rule
+	l.id = rateLimitRecordId(rule, key)
+
+	if rec := store.lookup(l.id); rec != nil {
+		l.start = rec.start
+		l.available = max(0, l.maxAllowed-rec.used)
+	}
 }
 
 // hasExpired checks whether it has been at least minElapsed seconds after the last active window.
@@ -368,6 +402,9 @@ func (l *rateClient) consume() bool {
 
 	if l.available > 0 {
 		l.available--
+		if l.persist != nil {
+			l.persist.record(l.id, l.rule, l.start, l.maxAllowed-l.available, l.start+l.interval)
+		}
 		return true
 	}
 

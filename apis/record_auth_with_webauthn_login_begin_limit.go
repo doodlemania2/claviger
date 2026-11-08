@@ -49,10 +49,12 @@ type webauthnLoginBeginLimiters struct {
 	lastClean time.Time
 }
 
-func newWebAuthnLoginBeginLimiters() *webauthnLoginBeginLimiters {
+func newWebAuthnLoginBeginLimiters(persist *rateLimitStore) *webauthnLoginBeginLimiters {
 	return &webauthnLoginBeginLimiters{
-		ip:        newRateLimiter(webauthnLoginBeginIPMax, webauthnLoginBeginWindowSec, webauthnLoginBeginWindowSec),
-		identity:  newRateLimiter(webauthnLoginBeginIdentityMax, webauthnLoginBeginWindowSec, webauthnLoginBeginWindowSec),
+		// persisted across restarts (#91); the names keep the fixed prefix so
+		// a Settings reload does not reset them
+		ip:        newPersistentRateLimiter(persist, rateLimitFixedRulePrefix+"loginbegin:ip", webauthnLoginBeginIPMax, webauthnLoginBeginWindowSec, webauthnLoginBeginWindowSec),
+		identity:  newPersistentRateLimiter(persist, rateLimitFixedRulePrefix+"loginbegin:identity", webauthnLoginBeginIdentityMax, webauthnLoginBeginWindowSec, webauthnLoginBeginWindowSec),
 		lastClean: time.Now(),
 	}
 }
@@ -75,8 +77,11 @@ func (l *webauthnLoginBeginLimiters) maybeClean() {
 
 // webauthnLoginBeginLimitersFor returns the process-wide limiters.
 func webauthnLoginBeginLimitersFor(e *core.RequestEvent) *webauthnLoginBeginLimiters {
+	// resolved outside GetOrSet: both use the same app store (not reentrant)
+	persist := rateLimitStoreFor(e.App)
+
 	limiters := e.App.Store().GetOrSet(webauthnLoginBeginLimitersKey, func() any {
-		return newWebAuthnLoginBeginLimiters()
+		return newWebAuthnLoginBeginLimiters(persist)
 	}).(*webauthnLoginBeginLimiters)
 
 	limiters.maybeClean()
