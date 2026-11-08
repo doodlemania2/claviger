@@ -170,6 +170,7 @@ func (pb *PocketBase) Start() error {
 	// register system commands
 	pb.RootCmd.AddCommand(cmd.NewSuperuserCommand(pb))
 	pb.RootCmd.AddCommand(cmd.NewServeCommand(pb, !pb.hideStartBanner))
+	pb.RootCmd.AddCommand(cmd.NewKeysCommand(pb)) // fork-local (#75)
 
 	return pb.Execute()
 }
@@ -273,6 +274,12 @@ func (pb *PocketBase) skipBootstrap() bool {
 	cmd, _, err := pb.RootCmd.Find(os.Args[1:])
 	if err != nil {
 		return true // unknown command
+	}
+
+	// fork-local (#75): `keys check` must not open or migrate the database
+	// (it runs while another replica still owns it)
+	if cmd.Name() == "check" && cmd.Parent() != nil && cmd.Parent().Name() == "keys" {
+		return true
 	}
 
 	for _, arg := range os.Args {
