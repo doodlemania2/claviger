@@ -18,5 +18,10 @@ test-report:
 	go test ./... -v --cover -coverprofile=coverage.out
 	go tool cover -html=coverage.out
 
+# Starts a Claviger instance prepared for the OpenID Foundation conformance suite and
+# prints the suite's test plan config. See docs/oidc-conformance.md.
+oidc-conformance:
+	./scripts/oidc-conformance-instance.sh
+
 third-party-notices:
 	./scripts/generate-third-party-notices.sh

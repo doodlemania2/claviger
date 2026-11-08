@@ -279,4 +279,6 @@ redirect happens.
   other package's `slog` output. Claviger does not do that: the library's lines (protocol errors such as a bad
   `redirect_uri`) go to the process's standard slog destination, while Claviger's own OIDC log lines (rate limits,
   failing client authentication, key and single sign-on problems) use the application logger.
-- Formal OpenID conformance (the Basic OP profile) has not been run yet; the plan is to run the suite in CI.
+- Formal OpenID conformance (the Basic OP profile) has not been run yet. The runbook, a test-instance bootstrap
+  script and a manual CI job are in `docs/oidc-conformance.md`; running the suite needs a public https hostname
+  per run and a browser driver for the sign-in page, neither of which exists yet.
