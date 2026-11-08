@@ -650,6 +650,11 @@ func TestSignInIsBoundToTheBrowser(t *testing.T) {
 		t.Fatal("another browser resumed the flow")
 	}
 
+	// the callback is bound for every method, not just GET
+	if rec := attacker.do("POST", out["redirect"].(string), nil, nil); rec.Code == http.StatusFound && strings.Contains(rec.Header().Get("Location"), "code=") {
+		t.Fatal("another browser resumed the flow with a POST")
+	}
+
 	// a request id replayed after completion does not issue a second code
 	victim.resume(out["redirect"].(string))
 	if rec := victim.do("GET", out["redirect"].(string), nil, nil); strings.Contains(rec.Header().Get("Location"), "code=") {

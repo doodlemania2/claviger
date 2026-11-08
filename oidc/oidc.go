@@ -126,10 +126,9 @@ func (m *module) ready() (http.Handler, string) {
 		return m.handler, ""
 	}
 
-	insecure := m.app.IsDev() || loopbackURL(appURL) || strings.HasPrefix(appURL, "http://")
-
+	// an http issuer got past the check above: loopback or dev mode
 	opts := []op.Option{}
-	if insecure {
+	if strings.HasPrefix(appURL, "http://") {
 		opts = append(opts, op.WithAllowInsecure())
 	}
 
@@ -196,8 +195,9 @@ func (m *module) bindRoutes(se *core.ServeEvent) {
 	se.Router.GET(mountPath+discoveryPath, m.serveDiscovery)
 
 	// the callback only resumes the browser that started the sign-in
-	se.Router.GET(mountPath+"/authorize/callback", func(e *core.RequestEvent) error {
-		req, err := m.store.requestByID(e.Request.URL.Query().Get("id"))
+	se.Router.Any(mountPath+"/authorize/callback", func(e *core.RequestEvent) error {
+		// every method, not just GET: the library would answer a POST too
+		req, err := m.store.requestByID(e.Request.FormValue("id"))
 		if err != nil || !m.checkBinding(e, req) {
 			return m.errorPage(e, http.StatusBadRequest, "This sign-in could not be resumed. Return to the app and start again.")
 		}
