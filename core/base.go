@@ -1497,6 +1497,7 @@ func (app *BaseApp) registerBaseHooks() {
 	app.registerNotifyWatcherHooks()
 	app.registerWebAuthnCredentialHooks()
 	app.registerAuditHooks()
+	app.registerWebhookHooks() // fork-local (#77)
 }
 
 // getLoggerMinLevel returns the logger min level based on the

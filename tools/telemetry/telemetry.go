@@ -62,11 +62,12 @@ type Telemetry struct {
 	prom    http.Handler
 	prop    propagation.TextMapPropagator
 
-	reqCount     metric.Int64Counter
-	reqDuration  metric.Float64Histogram
-	inflight     metric.Int64UpDownCounter
-	dbDuration   metric.Float64Histogram
-	authAttempts metric.Int64Counter
+	reqCount          metric.Int64Counter
+	reqDuration       metric.Float64Histogram
+	inflight          metric.Int64UpDownCounter
+	dbDuration        metric.Float64Histogram
+	authAttempts      metric.Int64Counter
+	webhookDeliveries metric.Int64Counter
 
 	realtime atomic.Pointer[func() int64]
 
@@ -184,6 +185,11 @@ func (t *Telemetry) initInstruments() error {
 	t.authAttempts, err = m.Int64Counter("claviger.auth.attempts",
 		metric.WithUnit("{attempt}"),
 		metric.WithDescription("Record auth attempts, by method and outcome."))
+	keep(err)
+
+	t.webhookDeliveries, err = m.Int64Counter("claviger.webhook.deliveries",
+		metric.WithUnit("{delivery}"),
+		metric.WithDescription("Webhook delivery attempts, by outcome."))
 	keep(err)
 
 	// ---- realtime ----
