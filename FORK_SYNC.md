@@ -224,6 +224,14 @@ Upstream-owned files the fork edits. Re-check these on every sync merge (conflic
 | `plugins/jsvm/internal/types/generated/types.d.ts` | Needs `make jstypes` for `Settings.captcha` (not regenerated on the #91 branch to avoid alias-name churn). |
 | `core/base.go` | One call, `app.registerFieldEncryptionHooks()`, after `app.registerWebhookHooks()` (#75). |
 | `core/record_field_resolver_runner.go` | One hunk in `finalizeActivePropsProcessing`, right after the hidden-field check: `checkEncryptedFieldFilterable(field)` rejects encrypted fields (`encryptedText`, `encryptedJSON`) in every filter, sort and API rule (#75). The only way to cover rules and relation traversal; client filters alone could be pre-validated in the handler, rules could not. |
+| `core/base.go` | One call, `app.registerOrgHooks()` (file `core/org.go`), after `app.registerFieldEncryptionHooks()` (#79a). |
+| `core/audit_model.go` | One call, `auditOrgMeta(entry, e.Record)` in `auditNextAndWrite` (`core/org.go`): `meta.orgId` / `meta.orgIds` (#79a). |
+| `core/apikey.go` | `_orgs`, `_orgMembers`, `_orgRoles` added to `APIKeyForbiddenCollections` (#79a). |
+| `apis/base.go` | `bindOrgsApi(app, apiGroup)` after `bindWebhooksApi` (#79a). |
+| `apis/collection_test.go`, `apis/collection_import_test.go`, `core/collection_query_test.go` | System collection count +3 (`_orgs`, `_orgMembers`, `_orgRoles`, #79a); the paging scenario's page 2 now starts at `_orgs`, then `_fieldKeys`. The conductor reconciles the count across agents. |
+| `ui/src/router.js`, `ui/src/store.js`, `ui/src/main.js`, `ui/src/css/_main.css` | `#/orgs` route and nav entry, form modal import, `orgs.css` import (#79a). |
+| `oidc/` (fork-owned) | `oidc/orgs.go` (new) plus small hunks in `claims.go`, `client.go`, `login.go`, `oidc.go`, `store.go`, `admin.go`: scope `orgs`, org-bound clients (#79a). Migration `1780001000_add_orgs.go` also adds `_oauthClients.org`. |
+| `core/record_field_resolver_runner.go` | One hunk in `finalizeActivePropsProcessing`, right after the hidden-field check: `checkEncryptedFieldFilterable(field)` rejects `encryptedText` fields in every filter, sort and API rule (#75). The only way to cover rules and relation traversal; client filters alone could be pre-validated in the handler, rules could not. |
 | `apis/record_crud.go` | `recordList`: `encryptedFieldFilterError(err, collection)` added to the `firstApiError(...)` call so a filter or sort on an encrypted field is a clear 400 (#75). The search package flattens resolver errors into strings. |
 | `pocketbase.go` | `Start()` registers `cmd.NewKeysCommand(pb)`; `skipBootstrap` returns true for every `keys` subcommand: `keys check` never opens or migrates the database, and the maintenance commands (`rotate`, `rewrap`, `convert`, `strict`, `prune`, `status`) first look for a live server and then call `Bootstrap()` themselves (#75). |
 | `apis/base.go` | One line in `NewRouter`: `bindFieldKeysApi(app, apiGroup)` (#75 M3). |

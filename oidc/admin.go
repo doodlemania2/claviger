@@ -88,6 +88,7 @@ type clientBody struct {
 	Scopes          []string `json:"scopes"`
 	AccessTokenType string   `json:"accessTokenType"`
 	SigningAlg      string   `json:"signingAlg"`
+	Org             string   `json:"org"`
 }
 
 // createClient registers a client and returns its secret, once. The secret is
@@ -121,6 +122,7 @@ func (m *module) createClient(e *core.RequestEvent) error {
 	rec.Set("scopes", body.Scopes)
 	rec.Set("accessTokenType", body.AccessTokenType)
 	rec.Set("signingAlg", body.SigningAlg)
+	rec.Set("org", body.Org)
 
 	secret := ""
 	if !body.Public {

@@ -620,6 +620,13 @@ func (s *Store) TokenRequestByRefreshToken(ctx context.Context, token string) (o
 		return nil, op.ErrInvalidRefreshToken
 	}
 
+	if err := s.clientOrgStillOK(row.ClientId, row.CollectionRef, row.Subject); err != nil {
+		// removed or suspended in the client's organization
+		s.revokeFamily(ctx, row.FamilyId, "", "", "")
+
+		return nil, op.ErrInvalidRefreshToken
+	}
+
 	return &refreshRequest{row: *row, scopes: parseList(row.Scopes)}, nil
 }
 

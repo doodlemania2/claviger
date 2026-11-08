@@ -55,6 +55,7 @@ func NewRouter(app core.App) (*router.Router[*core.RequestEvent], error) {
 	bindSessionsApi(app, apiGroup)  // fork-local (#93)
 	bindWebhooksApi(app, apiGroup)  // fork-local (#77)
 	bindFieldKeysApi(app, apiGroup) // fork-local (#75)
+	bindOrgsApi(app, apiGroup)      // fork-local (#79a)
 
 	// UI routes
 	bindUIExtensions(app)
