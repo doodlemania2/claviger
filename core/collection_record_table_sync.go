@@ -38,6 +38,11 @@ func (app *BaseApp) SyncRecordTableSchema(newCollection *Collection, oldCollecti
 				cols[field.GetName()] = field.ColumnType(app)
 			}
 
+			// fork: dialect specific hidden columns (Postgres insertion order)
+			for name, def := range dialectOf(app).HiddenColumns() {
+				cols[name] = def
+			}
+
 			// create table
 			if _, err := txApp.DB().CreateTable(tableName, cols).Execute(); err != nil {
 				return err
@@ -144,7 +149,7 @@ func (app *BaseApp) SyncRecordTableSchema(newCollection *Collection, oldCollecti
 
 	// run optimize per the SQLite recommendations
 	// (https://www.sqlite.org/pragma.html#pragma_optimize)
-	_, optimizeErr := app.NonconcurrentDB().NewQuery("PRAGMA optimize").Execute()
+	optimizeErr := dialectOf(app).Optimize(app.NonconcurrentDB())
 	if optimizeErr != nil {
 		app.Logger().Warn("Failed to run PRAGMA optimize after record table sync", slog.String("error", optimizeErr.Error()))
 	}
@@ -181,13 +186,22 @@ func normalizeSingleVsMultipleFieldChanges(app App, newCollection *Collection, o
 			// update the field column definition
 			// -------------------------------------------------------
 
+			// fork: dialects that can retype the column in place
+			handled, err := dialectOf(txApp).ConvertMultiplicity(txApp.DB(), newCollection.Name, newField.GetName(), isNewMultiple)
+			if err != nil {
+				return err
+			}
+			if handled {
+				continue
+			}
+
 			// temporary drop all views to prevent reference errors during the columns renaming
 			// (this is used as an "alternative" to the writable_schema PRAGMA)
 			views := []struct {
 				Name string `db:"name"`
 				SQL  string `db:"sql"`
 			}{}
-			err := txApp.DB().Select("name", "sql").
+			err = txApp.DB().Select("name", "sql").
 				From("sqlite_master").
 				AndWhere(dbx.NewExp("sql is not null")).
 				AndWhere(dbx.HashExp{"type": "view"}).
@@ -348,7 +362,11 @@ func createCollectionIndexes(app App, collection *Collection) error {
 				continue
 			}
 
-			if _, err := txApp.DB().NewQuery(parsed.Build()).Execute(); err != nil {
+			d := dialectOf(txApp)
+			if err := d.Try(txApp.DB(), func() error {
+				_, err := txApp.DB().NewQuery(d.BuildIndex(parsed)).Execute()
+				return err
+			}); err != nil {
 				errs[strconv.Itoa(i)] = validation.NewError(
 					"validation_invalid_index_expression",
 					fmt.Sprintf("Failed to create index %s - %v.", parsed.IndexName, err.Error()),
