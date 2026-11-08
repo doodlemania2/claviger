@@ -23,6 +23,7 @@
 @import "./ratelimit.css";
 @import "./export.css";
 @import "./logs.css";
+@import "./audit.css";
 @import "./map.css";
 @import "./recordSummary.css";
 @import "./recordFilePicker.css";
