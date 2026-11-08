@@ -18,10 +18,14 @@
 #     a match preceded by "/" is skipped.
 #   - Idempotent: a second run changes nothing.
 #   - Skips .git, ui/node_modules, ui/dist and binary files.
+#   - Never touches prose: with no arguments only code and build files are
+#     processed (*.go, go.mod, go.sum, Dockerfile, .goreleaser.yaml, and *.ts/*.js
+#     under plugins/); ui/ and all *.md are skipped.
 #   - Works with BSD sed (macOS) and GNU sed (Linux): no -i, no GNU extensions.
 #
-# With no arguments the whole repo is processed; otherwise only tracked files
-# at or under the given paths. Prints each file it changed.
+# With no arguments the code/build files above are processed. With path
+# arguments, every tracked text file at or under the given paths is rewritten
+# exactly as given (no file-type filter). Prints each file it changed.
 
 set -eu
 
@@ -30,8 +34,18 @@ NEW='github.com/doodlemania2/claviger'
 
 cd "$(git rev-parse --show-toplevel)"
 
+# Default scope: code and build files only (see header).
+default_scope() {
+  grep -E -e '\.go$' -e '(^|/)go\.(mod|sum)$' -e '(^|/)Dockerfile$' \
+    -e '(^|/)\.goreleaser\.yaml$' -e '^plugins/.*\.(ts|js)$' |
+    grep -v '^ui/'
+}
+all_files() { cat; }
 if [ "$#" -eq 0 ]; then
+  scope=default_scope
   set -- .
+else
+  scope=all_files
 fi
 
 tmp=$(mktemp)
@@ -39,6 +53,7 @@ trap 'rm -f "$tmp"' EXIT INT TERM
 
 git ls-files -z -- "$@" |
   tr '\0' '\n' |
+  $scope |
   grep -v -e '^ui/node_modules/' -e '^ui/dist/' |
   while IFS= read -r f; do
     [ -f "$f" ] || continue
