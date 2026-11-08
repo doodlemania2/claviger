@@ -41,7 +41,7 @@ func (s *SortField) BuildExpr(fieldResolver FieldResolver) (string, error) {
 		return "", fmt.Errorf("invalid sort field %q", s.Name)
 	}
 
-	return fmt.Sprintf("%s %s", result.Identifier, s.Direction), nil
+	return dialectOf(fieldResolver).OrderTerm(result.Identifier, s.Direction), nil
 }
 
 // ParseSortFromString parses the provided string expression

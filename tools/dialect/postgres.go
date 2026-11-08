@@ -42,11 +42,17 @@ func (postgresDialect) StringDefault(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
+// Text columns use the "C" collation: strings compare and sort byte by byte,
+// like SQLite's default BINARY collation, whatever the locale of the database.
+// Without it the filter operators >, <, ORDER BY and the case folding of ILIKE
+// would depend on the cluster's locale (and give other results than SQLite).
+const textCollation = ` COLLATE "C"`
+
 func (d postgresDialect) IDColumn() string {
-	return "TEXT PRIMARY KEY DEFAULT " + d.RandomIDDefault() + " NOT NULL"
+	return "TEXT" + textCollation + " PRIMARY KEY DEFAULT " + d.RandomIDDefault() + " NOT NULL"
 }
 
-func (postgresDialect) TextColumn() string { return "TEXT DEFAULT '' NOT NULL" }
+func (postgresDialect) TextColumn() string { return "TEXT" + textCollation + " DEFAULT '' NOT NULL" }
 
 // PocketBase numbers are float64 end to end. DOUBLE PRECISION keeps those
 // semantics and is returned by the driver as a float64 (NUMERIC is
@@ -199,7 +205,7 @@ func (postgresDialect) ConvertMultiplicity(db dbx.Builder, table, column string,
 		alter = fmt.Sprintf(
 			`ALTER TABLE %[1]s
 				ALTER COLUMN %[2]s DROP DEFAULT,
-				ALTER COLUMN %[2]s TYPE TEXT USING (
+				ALTER COLUMN %[2]s TYPE TEXT COLLATE "C" USING (
 					CASE
 						WHEN %[2]s IS NULL THEN ''
 						WHEN jsonb_typeof(%[2]s) = 'array' THEN COALESCE(%[2]s ->> -1, '')

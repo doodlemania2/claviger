@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"ganigeorgiev.com/pocketbase/dbx"
-	"github.com/doodlemania2/claviger/tools/dbutils"
 	"github.com/doodlemania2/claviger/tools/inflector"
 	"github.com/doodlemania2/claviger/tools/security"
 	"github.com/doodlemania2/claviger/tools/tokenizer"
@@ -257,7 +256,7 @@ func (app *BaseApp) FindRecordByViewFile(viewCollectionModelOrIdentifier any, fi
 		query.AndWhere(dbx.HashExp{cleanFieldName: filename})
 	} else {
 		query.InnerJoin(
-			fmt.Sprintf(`%s as {{_je_file}}`, dbutils.JSONEach(cleanFieldName)),
+			fmt.Sprintf(`%s as {{_je_file}}`, dialectOf(app).JSONEach(cleanFieldName, true)),
 			dbx.HashExp{"_je_file.value": filename},
 		)
 	}

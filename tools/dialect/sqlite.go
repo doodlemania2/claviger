@@ -53,6 +53,71 @@ func (sqliteDialect) HiddenColumns() map[string]string { return nil }
 
 func (sqliteDialect) RowOrder() string { return "rowid ASC" }
 
+func (sqliteDialect) BoolLiteral(v bool) string {
+	if v {
+		return "1"
+	}
+	return "0"
+}
+
+func (sqliteDialect) IsOp(not bool) string {
+	if not {
+		return "IS NOT"
+	}
+	return "IS"
+}
+
+func (sqliteDialect) AsText(expr string) string { return expr }
+
+func (sqliteDialect) LikeOp(not bool) string {
+	if not {
+		return "NOT LIKE"
+	}
+	return "LIKE"
+}
+
+func (sqliteDialect) OrderTerm(expr, direction string) string { return expr + " " + direction }
+
+func (sqliteDialect) NoCaseEqual(column, value string) string {
+	return column + " = " + value + " COLLATE NOCASE"
+}
+
+func (sqliteDialect) StrictTypes() bool { return false }
+
+func (sqliteDialect) ScalarCast(kind ScalarKind, expr string) string { return expr }
+
+func (sqliteDialect) NativeJSON() bool { return false }
+
+func (sqliteDialect) JSONEach(column string, multiple bool) string {
+	return dbutils.JSONEach(column)
+}
+
+func (sqliteDialect) JSONEachParam(placeholder string) string {
+	return "json_each({:" + placeholder + "})"
+}
+
+func (sqliteDialect) JSONArrayLength(column string, multiple bool) string {
+	return dbutils.JSONArrayLength(column)
+}
+
+func (sqliteDialect) JSONExtract(column, path string) string {
+	return dbutils.JSONExtract(column, path)
+}
+
+func (sqliteDialect) JSONText(expr string) string { return expr }
+
+func (sqliteDialect) JSONFromScalar(kind ScalarKind, expr string) string { return expr }
+
+func (sqliteDialect) JSONNumber(expr string) string { return expr }
+
+func (sqliteDialect) JoinOn() string { return "" }
+
+func (sqliteDialect) SubqueryAlias() string { return "" }
+
+// SQLite is dynamically typed: the declared type of a view column is
+// unreliable (usually empty), so no field type is inferred.
+func (sqliteDialect) ColumnKind(sqlType string) ColumnKind { return ColumnUnknown }
+
 func (sqliteDialect) BuildIndex(idx dbutils.Index) string { return idx.Build() }
 
 func (sqliteDialect) ConvertMultiplicity(db dbx.Builder, table, column string, toMultiple bool) (bool, error) {
