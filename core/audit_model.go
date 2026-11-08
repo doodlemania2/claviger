@@ -95,6 +95,11 @@ type AuditActor struct {
 	// APIKeyId is set when the request was authenticated with an API key
 	// (#95). It is written to the entry's meta.apiKeyId.
 	APIKeyId string `json:"apiKeyId,omitempty"`
+
+	// Self is set when the record acted on itself without an authenticated
+	// session (password reset confirm, sign-up, ...; #110). It is written to
+	// the entry's meta.self.
+	Self bool `json:"self,omitempty"`
 }
 
 // NewAuditActorFromRecord returns the actor for the provided auth record
@@ -401,6 +406,7 @@ func auditNextAndWrite(e *RecordEvent, action string) error {
 		if v.actor.APIKeyId != "" {
 			entry.Meta["apiKeyId"] = v.actor.APIKeyId
 		}
+		resolveSelfAuditActor(entry, e.Record)
 	} else {
 		entry.Actor = AuditActor{Type: AuditActorTypeSystem}
 	}

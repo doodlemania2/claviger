@@ -126,6 +126,7 @@ func recordConfirmPasskeyResetFinish(e *core.RequestEvent) error {
 	// user ends up with exactly the new passkey and a spent token, or nothing
 	// changes and the request fails (the user can retry with the same link).
 	var wcRecord *core.WebAuthnCredential
+	auditCtx := auditContextAs(e, record)
 	txErr := e.App.RunInTransaction(func(txApp core.App) error {
 		// Remove any previously registered credentials for the user, since
 		// the user has just proven recovery via the email-link token.
@@ -140,7 +141,7 @@ func recordConfirmPasskeyResetFinish(e *core.RequestEvent) error {
 			return err
 		}
 		for _, old := range existingRecords {
-			if err := txApp.Delete(old); err != nil {
+			if err := txApp.DeleteWithContext(auditCtx, old); err != nil {
 				return err
 			}
 		}
@@ -153,7 +154,7 @@ func recordConfirmPasskeyResetFinish(e *core.RequestEvent) error {
 		if form.Name != "" {
 			wcRecord.SetName(form.Name)
 		}
-		if err := txApp.Save(wcRecord); err != nil {
+		if err := txApp.SaveWithContext(auditCtx, wcRecord); err != nil {
 			return err
 		}
 
@@ -161,7 +162,7 @@ func recordConfirmPasskeyResetFinish(e *core.RequestEvent) error {
 		// (matches the behavior of password reset confirm via SetPassword).
 		record.RefreshTokenKey()
 
-		return txApp.Save(record)
+		return txApp.SaveWithContext(auditCtx, record)
 	})
 	if txErr != nil {
 		return e.InternalServerError("Failed to reset the passkey.", txErr)

@@ -143,7 +143,7 @@ func TestAuditLogRecordChanges(t *testing.T) {
 			},
 		},
 		{
-			Name:   "anonymous create is attributed to system and redacts password and tokenKey",
+			Name:   "anonymous sign-up is attributed to the new record itself and redacts password and tokenKey",
 			Method: http.MethodPost,
 			URL:    "/api/collections/users/records",
 			Body: strings.NewReader(`{
@@ -160,8 +160,9 @@ func TestAuditLogRecordChanges(t *testing.T) {
 					t.Fatalf("Expected 1 entry, got %d", len(entries))
 				}
 				e := entries[0]
-				if e.GetString("actorType") != "system" {
-					t.Fatalf("Expected system actor, got %s", e.GetString("actorType"))
+				if e.GetString("actorType") != "record" || e.GetString("actorId") != "auditpwuser0001" ||
+					e.GetString("actorCollection") != "users" || !strings.Contains(e.GetString("meta"), `"self":true`) || e.GetString("ip") == "" {
+					t.Fatalf("Expected the new record as (self) actor, got %s", e.PublicExport())
 				}
 				after := e.GetString("after")
 				record, _ := app.FindRecordById("users", "auditpwuser0001")

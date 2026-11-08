@@ -326,7 +326,7 @@ func oauth2Submit(e *core.RecordAuthWithOAuth2RequestEvent, optExternalAuth *cor
 			if e.Record.Email() == e.OAuth2User.Email && !e.Record.Verified() {
 				// mark as verified as long as it matches the OAuth2 data (even if the email is empty)
 				e.Record.SetVerified(true)
-				if err := txApp.Save(e.Record); err != nil {
+				if err := txApp.SaveWithContext(auditContextAs(e.RequestEvent, e.Record), e.Record); err != nil {
 					return err
 				}
 			}
@@ -354,9 +354,15 @@ func oauth2Submit(e *core.RecordAuthWithOAuth2RequestEvent, optExternalAuth *cor
 			// doing it manually here ensures that a single unverified record could have
 			// max 1 OAuth2 link to prevent further abuse when mixed with other auth flows
 			if !e.Record.Verified() {
-				err := txApp.DeleteAllExternalAuthsByRecord(e.Record)
+				// (not DeleteAllExternalAuthsByRecord, so that the unlinks keep the audit actor)
+				linked, err := txApp.FindAllExternalAuthsByRecord(e.Record)
 				if err != nil {
 					return err
+				}
+				for _, ea := range linked {
+					if err := txApp.DeleteWithContext(auditContextAs(e.RequestEvent, e.Record), ea); err != nil {
+						return err
+					}
 				}
 				optExternalAuth = nil // clear to allow recreate below
 			}
@@ -377,7 +383,7 @@ func oauth2Submit(e *core.RecordAuthWithOAuth2RequestEvent, optExternalAuth *cor
 			}
 
 			if needUpdate {
-				if err := txApp.Save(e.Record); err != nil {
+				if err := txApp.SaveWithContext(auditContextAs(e.RequestEvent, e.Record), e.Record); err != nil {
 					return err
 				}
 			}
@@ -391,7 +397,7 @@ func oauth2Submit(e *core.RecordAuthWithOAuth2RequestEvent, optExternalAuth *cor
 			optExternalAuth.SetProvider(e.ProviderName)
 			optExternalAuth.SetProviderId(e.OAuth2User.Id)
 
-			if err := txApp.Save(optExternalAuth); err != nil {
+			if err := txApp.SaveWithContext(auditContextAs(e.RequestEvent, e.Record), optExternalAuth); err != nil {
 				return fmt.Errorf("failed to save linked rel: %w", err)
 			}
 		}

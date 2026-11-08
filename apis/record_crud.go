@@ -261,7 +261,7 @@ func recordCreate(responseWriteAfterTx bool, optFinalizer func(data any) error) 
 		requestInfo.Body = data
 
 		form := forms.NewRecordUpsert(e.App, record)
-		form.SetContext(auditContext(e))
+		form.SetContext(auditContextForCreate(e, collection))
 		if hasSuperuserAuth {
 			form.GrantSuperuserAccess()
 		}

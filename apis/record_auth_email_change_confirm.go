@@ -41,7 +41,7 @@ func recordConfirmEmailChange(e *core.RequestEvent) error {
 		e.Record.SetEmail(e.NewEmail)
 		e.Record.SetVerified(true)
 
-		if err := e.App.Save(e.Record); err != nil {
+		if err := e.App.SaveWithContext(auditContextAs(e.RequestEvent, e.Record), e.Record); err != nil {
 			return firstApiError(err, e.BadRequestError("Failed to confirm email change.", err))
 		}
 
