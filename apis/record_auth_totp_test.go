@@ -23,6 +23,13 @@ func totpURL(col, suffix string) string {
 func totpCode(t testing.TB, secret string, offset int64) string {
 	t.Helper()
 
+	// Keep generation and verification inside one 30s step: a code made just
+	// before a boundary shifts its offset by one by the time the server checks
+	// it (so -1 would turn into -2 and be refused).
+	if left := 30 - time.Now().Unix()%30; left <= 2 {
+		time.Sleep(time.Duration(left)*time.Second + 100*time.Millisecond)
+	}
+
 	code, err := security.TOTPCodeAtStep(secret, security.TOTPStep(time.Now())+offset)
 	if err != nil {
 		t.Fatal(err)
@@ -290,7 +297,8 @@ func TestTOTPDisableAndRegenerate(t *testing.T) {
 	}
 
 	// regenerate with a TOTP code replaces the whole set
-	s, b := env.do(http.MethodPost, regenURL, map[string]any{"code": totpCode(t, secret, 1)}, bearer)
+	used := totpCode(t, secret, 1)
+	s, b := env.do(http.MethodPost, regenURL, map[string]any{"code": used}, bearer)
 	if s != http.StatusOK || len(b["backupCodes"].([]any)) != 10 {
 		t.Fatalf("regenerate: %d %v", s, b)
 	}
@@ -299,7 +307,7 @@ func TestTOTPDisableAndRegenerate(t *testing.T) {
 	}
 
 	// the code was consumed by the call above: a replay cannot disable TOTP either
-	s, _ = env.do(http.MethodPost, disableURL, map[string]any{"code": totpCode(t, secret, 1)}, bearer)
+	s, _ = env.do(http.MethodPost, disableURL, map[string]any{"code": used}, bearer)
 	if s != http.StatusBadRequest {
 		t.Fatalf("disable with a replayed code: expected 400, got %d", s)
 	}
