@@ -12,6 +12,10 @@ export function pageOrgs(route) {
         orgs: [],
         members: [],
         invitations: [],
+        scimTokens: [],
+        scimEndpoint: "",
+        scimSettings: null,
+        newScimToken: "",
         presets: [],
         showArchived: false,
         search: "",
@@ -119,6 +123,94 @@ export function pageOrgs(route) {
             } catch (err) {
                 app.checkApiError(err);
             }
+        });
+    }
+
+    // #79c: SCIM tokens and settings of the active org
+    async function loadScim() {
+        const org = active();
+        state.newScimToken = "";
+        if (!org || org.archived) {
+            state.scimTokens = [];
+            state.scimSettings = null;
+            return;
+        }
+        try {
+            const [tokens, settings] = await Promise.all([
+                app.pb.send(`/api/orgs/${org.id}/scim-tokens`),
+                app.pb.send(`/api/orgs/${org.id}/scim-settings`),
+            ]);
+            state.scimTokens = tokens.items;
+            state.scimEndpoint = tokens.endpoint;
+            state.scimSettings = settings;
+        } catch (err) {
+            if (!err.isAbort) {
+                app.checkApiError(err);
+            }
+        }
+    }
+
+    function createScimToken() {
+        const org = active();
+        app.modals.openOrgForm({
+            title: "New SCIM token",
+            submitLabel: "Create token",
+            fields: [{ id: "name", label: "Name", required: true, hint: "For example Entra ID production." }],
+            onsubmit: async (v) => {
+                const res = await app.pb.send(`/api/orgs/${org.id}/scim-tokens`, { method: "POST", body: { name: v.name } });
+                state.newScimToken = res.token;
+            },
+            onsave: () => {
+                const shown = state.newScimToken;
+                loadScim().then(() => state.newScimToken = shown);
+            },
+        });
+    }
+
+    function revokeScimToken(tok) {
+        const org = active();
+        app.modals.confirm(`Revoke the token "${tok.name}"? The identity provider stops working until it gets a new one.`, async () => {
+            try {
+                await app.pb.send(`/api/orgs/${org.id}/scim-tokens/${tok.id}`, { method: "DELETE" });
+                await loadScim();
+            } catch (err) {
+                app.checkApiError(err);
+            }
+        });
+    }
+
+    function editScimSettings() {
+        const org = active();
+        const cur = state.scimSettings || { defaultRole: "member", groupRoles: {}, deactivationBans: false };
+        app.modals.openOrgForm({
+            title: "SCIM settings",
+            submitLabel: "Save",
+            fields: [
+                { id: "defaultRole", label: "Role of new users", type: "select", options: ["admin", "member", "viewer"], value: cur.defaultRole },
+                {
+                    id: "groupRoles",
+                    label: "Groups that grant a role",
+                    hint: "Group name = role, separated by semicolons. Owner cannot be granted by SCIM.",
+                    value: Object.entries(cur.groupRoles || {}).map(([g, r]) => `${g} = ${r}`).join("; "),
+                },
+                { id: "deactivationBans", label: "Also ban the account on deactivation", type: "checkbox", value: !!cur.deactivationBans },
+            ],
+            onsubmit: (v) => {
+                const groupRoles = {};
+                for (const part of (v.groupRoles || "").split(";")) {
+                    const i = part.lastIndexOf("=");
+                    if (i > 0) {
+                        groupRoles[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+                    } else if (part.trim()) {
+                        throw new Error('Use "Group name = role".');
+                    }
+                }
+                return app.pb.send(`/api/orgs/${org.id}/scim-settings`, {
+                    method: "PUT",
+                    body: { defaultRole: v.defaultRole, groupRoles, deactivationBans: v.deactivationBans },
+                });
+            },
+            onsave: () => loadScim(),
         });
     }
 
@@ -268,12 +360,13 @@ export function pageOrgs(route) {
             pbEvent: "pageOrgs",
             className: "page page-orgs",
             onmount() {
-                loadOrgs().then(loadMembers).then(loadInvitations);
+                loadOrgs().then(loadMembers).then(loadInvitations).then(loadScim);
                 watchers.push(
                     watch(() => state.activeId, () => {
                         app.utils.replaceHashQueryParams({ org: state.activeId });
                         loadMembers();
                         loadInvitations();
+                        loadScim();
                     }),
                     watch(() => state.showArchived, () => loadOrgs()),
                     watch(() => state.showRules, (v) => {
@@ -485,6 +578,68 @@ export function pageOrgs(route) {
                                         inv.status == "pending" || inv.status == "expired" ? btn("ri-mail-send-line", "Resend", () => resendInvitation(inv)) : null,
                                         inv.status == "pending" ? btn("ri-close-line", "Revoke", () => revokeInvitation(inv), "danger") : null,
                                     ),
+                                ),
+                            )
+                        );
+                    }),
+                ),
+                t.div(
+                    { className: "flex m-t-20 m-b-10" },
+                    t.h6({ className: "m-r-auto" }, "SCIM provisioning"),
+                    t.button(
+                        { type: "button", className: "btn sm secondary m-r-5", hidden: () => !active() || active().archived, onclick: editScimSettings },
+                        t.i({ className: "ri-settings-3-line", ariaHidden: true }),
+                        t.span({ className: "txt" }, "Settings"),
+                    ),
+                    t.button(
+                        { type: "button", className: "btn sm", hidden: () => !active() || active().archived, onclick: createScimToken },
+                        t.i({ className: "ri-key-2-line", ariaHidden: true }),
+                        t.span({ className: "txt" }, "New token"),
+                    ),
+                ),
+                t.div(
+                    { className: "txt-hint txt-sm m-b-10", hidden: () => !state.scimEndpoint },
+                    "Tenant URL: ",
+                    t.code(null, () => state.scimEndpoint),
+                ),
+                () =>
+                    state.newScimToken
+                        ? t.div(
+                            { className: "alert success m-b-10" },
+                            t.div(null, "Copy this token now. It is shown only once."),
+                            t.div({ className: "inline-flex gap-xs" }, t.code({ className: "txt-break" }, state.newScimToken), app.components.copyButton(state.newScimToken)),
+                        )
+                        : null,
+                t.table(
+                    { className: "org-scim-table" },
+                    t.thead(
+                        null,
+                        t.tr(
+                            null,
+                            t.th(null, "Name"),
+                            t.th(null, "Token"),
+                            t.th(null, "Last used"),
+                            t.th(null, "Expires"),
+                            t.th(null, "Status"),
+                            t.th({ className: "col-meta" }),
+                        ),
+                    ),
+                    t.tbody(null, () => {
+                        if (!state.scimTokens.length) {
+                            return t.tr(null, t.td({ colSpan: 99 }, t.div({ className: "txt-center txt-hint" }, "No SCIM tokens. Without one, /scim/v2 answers 401.")));
+                        }
+
+                        return state.scimTokens.map((tok) =>
+                            t.tr(
+                                null,
+                                t.td(null, tok.name),
+                                t.td(null, t.code(null, `scim_${tok.prefix}_...`)),
+                                t.td(null, tok.lastUsed ? String(tok.lastUsed).slice(0, 16) : "never"),
+                                t.td(null, tok.expires ? String(tok.expires).slice(0, 16) : "never"),
+                                t.td(null, t.span({ className: `label sm ${tok.active ? "success" : "warning"}` }, tok.revoked ? "revoked" : tok.active ? "active" : "expired")),
+                                t.td(
+                                    { className: "col-meta" },
+                                    tok.active ? btn("ri-close-line", "Revoke", () => revokeScimToken(tok), "danger") : null,
                                 ),
                             )
                         );

@@ -37,6 +37,7 @@ const (
 	AuditActorTypeSuperuser = "superuser"
 	AuditActorTypeRecord    = "record"
 	AuditActorTypeSystem    = "system"
+	AuditActorTypeSCIM      = "scim" // #79c: a SCIM token, the actor id is "scim:<tokenId>"
 
 	// AuditRetentionDaysEnv is the environment variable that overrides the
 	// retention in days from Settings.Audit.RetentionDays. When it is set to a
@@ -115,6 +116,10 @@ type AuditActor struct {
 	// APIKeyId is set when the request was authenticated with an API key
 	// (#95). It is written to the entry's meta.apiKeyId.
 	APIKeyId string `json:"apiKeyId,omitempty"`
+
+	// OrgId is set for actors that act on behalf of one organization (a SCIM
+	// token, #79c). It is written to the entry's meta.orgId.
+	OrgId string `json:"orgId,omitempty"`
 
 	// Self is set when the record acted on itself without an authenticated
 	// session (password reset confirm, sign-up, ...; #110). It is written to
@@ -428,6 +433,9 @@ func auditNextAndWrite(e *RecordEvent, action string) error {
 		entry.IP = v.ip
 		if v.actor.APIKeyId != "" {
 			entry.Meta["apiKeyId"] = v.actor.APIKeyId
+		}
+		if v.actor.OrgId != "" {
+			entry.Meta["orgId"] = v.actor.OrgId
 		}
 		resolveSelfAuditActor(entry, e.Record)
 	} else {

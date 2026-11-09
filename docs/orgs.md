@@ -2,11 +2,11 @@
 
 Organizations (#79a) let one Claviger instance serve several groups (parishes, ministries, tenants), each with its own members and roles. With no organization created nothing changes: no extra checks run, and the new collections stay empty.
 
-Design notes and the evidence behind the rules are in `docs/specs/79-orgs-roles-scim.md`. Invitations (79b, below) and the hosted org page ship with this release. SCIM (79c) does not.
+Design notes and the evidence behind the rules are in `docs/specs/79-orgs-roles-scim.md`. Invitations (79b, below) and the hosted org page ship with this release. SCIM provisioning (79c) is described in [`docs/scim.md`](scim.md).
 
 ## Model
 
-Four hidden system collections:
+Hidden system collections:
 
 | Collection | Holds |
 |---|---|
@@ -14,6 +14,7 @@ Four hidden system collections:
 | `_orgMembers` | `org`, `user`, `role`, `status`, `tags`, `source`; unique on `(org, user)` |
 | `_orgRoles` | free-form labels (`org`, `name`, `description`), the targets of `_orgMembers.tags` |
 | `_invitations` | email invitations (`org`, `email`, `role`, `tags`, `invitedBy`, `tokenHash`, `expires`, `status`, ...), see [Invitations](#invitations) |
+| `_scimTokens`, `_scimGroups` | SCIM tokens and groups (79c), see [`docs/scim.md`](scim.md). `_orgMembers` also carries `externalId` |
 
 - **Roles** are fixed and ranked: `owner` > `admin` > `member` > `viewer`. `viewer` has no special meaning to the engine; the rule presets simply leave viewers out of write rules.
 - **Status** is `active` or `suspended`. A suspended member loses all access that goes through the rules, immediately.

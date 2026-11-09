@@ -138,6 +138,62 @@ async function invite(ev) {
   }
 }
 
+// ---- SCIM --------------------------------------------------------------------
+const scimTokenText = root.querySelector("#scimNew");
+
+async function loadScim() {
+  const r = await call("/scim-tokens");
+  const body = root.querySelector("#scimTokens tbody");
+  body.textContent = "";
+  if (!r.ok) return guard(r);
+  root.querySelector("#scimUrl").textContent = r.body.endpoint;
+  for (const t of r.body.items) {
+    body.append(el("tr", {}, el("td", {}, t.name), el("td", {}, el("code", {}, "scim_" + t.prefix + "_...")),
+      el("td", {}, when(t.created)), el("td", {}, t.lastUsed ? when(t.lastUsed) : "never"), el("td", {}, t.expires ? when(t.expires) : "never"),
+      el("td", {}, t.revoked ? "revoked" : t.active ? "active" : "expired"),
+      el("td", {}, t.active ? el("button", { class: "secondary", onclick: () => revokeScim(t) }, "Revoke") : null)));
+  }
+  const s = await call("/scim-settings");
+  if (!s.ok) return guard(s);
+  const f = root.querySelector("#scimSettings").elements;
+  f.defaultRole.value = s.body.defaultRole;
+  f.groupRoles.value = Object.entries(s.body.groupRoles || {}).map(([g, role]) => g + " = " + role).join("\n");
+  f.deactivationBans.checked = !!s.body.deactivationBans;
+}
+
+async function createScim(ev) {
+  ev.preventDefault();
+  say("");
+  scimTokenText.hidden = true;
+  const input = ev.target.elements.name;
+  const r = await call("/scim-tokens", { method: "POST", body: { name: input.value } });
+  if (await guard(r)) {
+    input.value = "";
+    scimTokenText.textContent = "Copy this token now, it is shown only once: " + r.body.token;
+    scimTokenText.hidden = false;
+    await loadScim();
+  }
+}
+
+async function revokeScim(t) {
+  if (!confirm('Revoke the token "' + t.name + '"? The identity provider stops working until it gets a new one.')) return;
+  say("");
+  if (await guard(await call("/scim-tokens/" + encodeURIComponent(t.id), { method: "DELETE" }), "Revoked.")) await loadScim();
+}
+
+async function saveScim(ev) {
+  ev.preventDefault();
+  say("");
+  const f = ev.target.elements;
+  const groupRoles = {};
+  for (const line of f.groupRoles.value.split("\n")) {
+    const i = line.lastIndexOf("=");
+    if (i > 0) groupRoles[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+    else if (line.trim()) return say('Use "Group name = role" on each line.');
+  }
+  await guard(await call("/scim-settings", { method: "PUT", body: { defaultRole: f.defaultRole.value, groupRoles, deactivationBans: f.deactivationBans.checked } }), "Saved.");
+}
+
 // ---- tags --------------------------------------------------------------------
 async function loadTags() {
   const r = await call("/tags");
@@ -197,16 +253,19 @@ async function enter(token) {
   document.title = org.name;
   for (const s of root.querySelectorAll("[data-manage]")) s.hidden = !canManage;
   root.querySelector("#inviteRole").replaceWith(Object.assign(roleSelect("member", myRank), { id: "inviteRole", name: "role" }));
+  root.querySelector("#scimDefaultRole").replaceWith(Object.assign(roleSelect("member", Math.min(myRank, RANK.admin)), { id: "scimDefaultRole", name: "defaultRole" }));
 
   signinPanel.hidden = true;
   mainPanel.hidden = false;
-  await Promise.all([loadMembers(), canManage ? loadInvitations() : null, loadTags()]);
+  await Promise.all([loadMembers(), canManage ? loadInvitations() : null, canManage ? loadScim() : null, loadTags()]);
   return true;
 }
 
 root.querySelector("#signout").addEventListener("click", signOut);
 root.querySelector("#inviteForm").addEventListener("submit", invite);
 root.querySelector("#tagForm").addEventListener("submit", addTag);
+root.querySelector("#scimTokenForm").addEventListener("submit", createScim);
+root.querySelector("#scimSettings").addEventListener("submit", saveScim);
 
 (async () => {
   const t = session.get();
