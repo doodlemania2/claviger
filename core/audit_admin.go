@@ -97,6 +97,9 @@ func applyAuditContext(ctx context.Context, entry *AuditEntry) {
 		if v.actor.APIKeyId != "" {
 			entry.Meta["apiKeyId"] = v.actor.APIKeyId
 		}
+		if v.actor.OrgId != "" {
+			entry.Meta["orgId"] = v.actor.OrgId
+		}
 		resolveSelfAuditActor(entry, nil)
 	} else {
 		entry.Actor = AuditActor{Type: AuditActorTypeSystem}
