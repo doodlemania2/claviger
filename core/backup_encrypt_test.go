@@ -485,7 +485,7 @@ func TestEncryptedBackupRestore(t *testing.T) {
 	}
 
 	before := topLevelSnapshot(t, app)
-	movedBefore := movedDirs(t, app)
+	var movedBefore int
 
 	t.Run("restores the decrypted content", func(t *testing.T) {
 		atRestart, err := restoreUntilRestart(t, app, "r.zip.enc")

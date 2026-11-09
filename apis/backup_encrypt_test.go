@@ -168,7 +168,7 @@ func TestBackupsEncryptedAPI(t *testing.T) {
 			},
 			ExpectedStatus:  200,
 			ExpectedContent: []string{`"key":"a.zip"`, `"key":"b.zip.enc"`, `"encrypted":true`},
-			ExpectedEvents: map[string]int{"*": 0},
+			ExpectedEvents:  map[string]int{"*": 0},
 		},
 		{
 			Name:   "download returns the encrypted file",
