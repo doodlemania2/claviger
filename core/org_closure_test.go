@@ -479,6 +479,9 @@ func TestOrgAncestorRules(t *testing.T) {
 		{"admin within two levels, doc in Y", rule(core.OrgAncestorOpts{Roles: []string{"admin"}, MaxDepth: 2}), "Y", "pat"},
 		{"admin at any depth, doc in Y", rule(core.OrgAncestorOpts{Roles: []string{"admin"}}), "Y", "ann,mix,pat"},
 		{"tag at an ancestor, doc in Y", rule(core.OrgAncestorOpts{Tag: "safeguarding"}), "Y", "gwen"},
+		{"tag within one level misses the diocese", rule(core.OrgAncestorOpts{Tag: "safeguarding", MaxDepth: 1}), "Y", ""},
+		{"tag and role at any depth", rule(core.OrgAncestorOpts{Tag: "safeguarding", Roles: []string{"member"}}), "Q", "gwen"},
+		{"tag and wrong role", rule(core.OrgAncestorOpts{Tag: "safeguarding", Roles: []string{"admin"}}), "Q", ""},
 		{"org-only rule has no oversight", core.OrgMemberRule("org"), "Y", "yan"},
 	}
 
@@ -556,6 +559,8 @@ func TestOrgAncestorRuleList(t *testing.T) {
 
 	adminRule, _ := core.OrgAncestorRule("org", core.OrgAncestorOpts{Roles: []string{"admin"}, MaxDepth: 2})
 
+	tagRule, _ := core.OrgAncestorRule("org", core.OrgAncestorOpts{Tag: "safeguarding"})
+
 	for _, c := range []struct {
 		user, rule string
 		want       []string
@@ -566,6 +571,8 @@ func TestOrgAncestorRuleList(t *testing.T) {
 		{"yan", rule, []string{"Y"}},
 		{"qed", rule, []string{"Q"}},
 		{"zed", rule, []string{}},
+		{"gwen", tagRule, []string{"D", "N", "P", "Q", "Y"}},
+		{"ann", tagRule, []string{}},
 		{"pat", adminRule, []string{"P", "Y"}},
 		{"ann", adminRule, []string{"D", "N", "P", "Q"}}, // within two levels of D (Y is three)
 	} {

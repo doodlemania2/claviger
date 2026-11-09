@@ -192,21 +192,50 @@ type OrgAncestorOpts struct {
 // and a membership elsewhere. Members of a lower org never see upward: the
 // rule only walks from the record's org to its ancestors.
 func OrgAncestorRule(field string, opts OrgAncestorOpts) (string, error) {
-	cp := field + "." + CollectionNameOrgClosure + "_via_descendant"
-	mp := cp + ".ancestor._orgMembers_via_org"
+	if opts.Tag != "" && !orgTagRegex.MatchString(opts.Tag) {
+		return "", fmt.Errorf("invalid tag %q", opts.Tag)
+	}
 
-	rule := fmt.Sprintf(`%s.archived = false && %s.user ?= @request.auth.id && %s.status ?= "active"`, field, mp, mp)
+	if opts.MaxDepth < 0 || opts.MaxDepth > OrgHardMaxDepth {
+		return "", fmt.Errorf("invalid depth %d", opts.MaxDepth)
+	}
 
-	switch len(opts.Roles) {
-	case 0:
-	default:
+	for _, r := range opts.Roles {
+		if OrgRoleRank(r) == 0 {
+			return "", fmt.Errorf("invalid role %q", r)
+		}
+	}
+
+	// A tag has to be matched through the tags relation of the membership,
+	// which makes the join alias of the back-relation path longer than the 63
+	// characters of a Postgres identifier (two aliases then truncate to the
+	// same name and the query fails). So a tag rule is written with explicit,
+	// short @collection aliases (k = closure row, m = membership), which keeps
+	// the conditions on one row each and works on both engines.
+	var (
+		member, depth, ancestors string
+		prefix                   string
+	)
+
+	if opts.Tag != "" {
+		k, m := "@collection."+CollectionNameOrgClosure+":k", "@collection."+CollectionNameOrgMembers+":m"
+		prefix = fmt.Sprintf(`%s.archived = false && %s.descendant ?= %s && %s.org ?= %s.ancestor`, field, k, field, m, k)
+		member = m
+		depth = k + ".depth"
+		ancestors = fmt.Sprintf(` && %s.tags.name ?= "%s"`, m, opts.Tag)
+	} else {
+		cp := field + "." + CollectionNameOrgClosure + "_via_descendant"
+		member = cp + ".ancestor._orgMembers_via_org"
+		depth = cp + ".depth"
+		prefix = field + ".archived = false"
+	}
+
+	rule := fmt.Sprintf(`%s && %s.user ?= @request.auth.id && %s.status ?= "active"`, prefix, member, member)
+
+	if len(opts.Roles) > 0 {
 		parts := make([]string, len(opts.Roles))
 		for i, r := range opts.Roles {
-			if OrgRoleRank(r) == 0 {
-				return "", fmt.Errorf("invalid role %q", r)
-			}
-
-			parts[i] = fmt.Sprintf(`%s.role ?= "%s"`, mp, r)
+			parts[i] = fmt.Sprintf(`%s.role ?= "%s"`, member, r)
 		}
 
 		if len(parts) == 1 {
@@ -216,23 +245,11 @@ func OrgAncestorRule(field string, opts OrgAncestorOpts) (string, error) {
 		}
 	}
 
-	if opts.MaxDepth < 0 || opts.MaxDepth > OrgHardMaxDepth {
-		return "", fmt.Errorf("invalid depth %d", opts.MaxDepth)
-	}
-
 	if opts.MaxDepth > 0 {
-		rule += fmt.Sprintf(` && %s.depth ?<= %d`, cp, opts.MaxDepth)
+		rule += fmt.Sprintf(` && %s ?<= %d`, depth, opts.MaxDepth)
 	}
 
-	if opts.Tag != "" {
-		if !orgTagRegex.MatchString(opts.Tag) {
-			return "", fmt.Errorf("invalid tag %q", opts.Tag)
-		}
-
-		rule += fmt.Sprintf(` && %s.tags.name ?= "%s"`, mp, opts.Tag)
-	}
-
-	return rule, nil
+	return rule + ancestors, nil
 }
 
 // OrgOversightRuleSet (#84) is the "members read, ancestors read too" rule
