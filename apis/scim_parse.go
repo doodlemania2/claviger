@@ -120,9 +120,10 @@ func scimReadAttr(s string) (attr, rest string, err error) {
 
 		switch {
 		case inQuote:
-			if c == '\\' {
+			switch c {
+			case '\\':
 				i++
-			} else if c == '"' {
+			case '"':
 				inQuote = false
 			}
 		case c == '"':

@@ -32,9 +32,10 @@ func scimUserResource(r *scimReq, member, user *core.Record) map[string]any {
 		out["name"] = map[string]any{"formatted": name}
 	}
 
-	groups := []map[string]any{}
+	userGroups := core.SCIMGroupsOfUser(r.e.App, r.org, user.Id)
+	groups := make([]map[string]any, 0, len(userGroups))
 
-	for _, g := range core.SCIMGroupsOfUser(r.e.App, r.org, user.Id) {
+	for _, g := range userGroups {
 		groups = append(groups, map[string]any{
 			"value": g.Id, "display": g.GetString("displayName"), "$ref": r.base() + "/Groups/" + g.Id,
 		})
