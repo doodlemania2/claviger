@@ -48,6 +48,11 @@ func BackupStoredName(app App, name string) string {
 	return name + BackupEncryptedExt
 }
 
+// ErrBackupEncryptionKey is wrapped by the errors of an encrypted backup
+// that cannot be created because its key source is unusable. The message is
+// actionable and never contains key material, so APIs may show it.
+var ErrBackupEncryptionKey = errors.New("backup encryption key unavailable")
+
 // backupKeySource returns the key source that wraps/unwraps backup keys.
 //
 // It is the same source as the field encryption one (CLAVIGER_KEK,

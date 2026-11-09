@@ -2,6 +2,7 @@ package apis
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"regexp"
 
@@ -28,6 +29,10 @@ func backupCreate(e *core.RequestEvent) error {
 	}
 
 	err = e.App.CreateBackup(context.Background(), form.Name)
+	if errors.Is(err, core.ErrBackupEncryptionKey) {
+		// fork (#78): actionable and free of key material
+		return e.BadRequestError("Failed to create backup: "+err.Error(), nil)
+	}
 	if err != nil {
 		return e.BadRequestError("Failed to create backup.", err)
 	}

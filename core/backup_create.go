@@ -104,7 +104,7 @@ func (app *BaseApp) CreateBackup(ctx context.Context, name string) error {
 		if IsEncryptedBackupName(e.Name) {
 			src, err := backupKeySource(e.App)
 			if err != nil {
-				return fmt.Errorf("cannot create the encrypted backup %q: %w", e.Name, err)
+				return fmt.Errorf("cannot create the encrypted backup %q: %w (%w)", e.Name, err, ErrBackupEncryptionKey)
 			}
 			kekSource = src
 		}
