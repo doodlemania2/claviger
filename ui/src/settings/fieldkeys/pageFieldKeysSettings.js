@@ -291,7 +291,19 @@ export function pageFieldKeysSettings() {
 
                             return fields.map((f) =>
                                 t.tr(
-                                    { rid: f.collection + "." + f.field },
+                                    // shablon reuses a row with the same rid as is: every shown value must be part of it,
+                                    // or a rotation or prune leaves the old key and counts on screen
+                                    {
+                                        rid: [
+                                            f.collection + "." + f.field,
+                                            f.keyId,
+                                            f.needsRewrap,
+                                            f.rowsOnCurrentKey,
+                                            f.rowsOnOldKeys,
+                                            f.rowsUnencrypted,
+                                            (f.retired || []).map((r) => r.keyId + ":" + r.rows).join(","),
+                                        ].join("|"),
+                                    },
                                     t.td(null, `${f.collection}.${f.field}`),
                                     t.td(null, t.code(null, f.keyId), f.needsRewrap ? " (old KEK)" : ""),
                                     t.td(null, `${f.rowsOnCurrentKey} / ${f.rowsOnOldKeys} / ${f.rowsUnencrypted}`),

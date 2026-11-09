@@ -141,3 +141,8 @@ export async function signInAdmin(page: Page) {
     await page.getByRole("button", { name: "Login" }).click();
     await expect(page).toHaveURL(/#\/collections/);
 }
+
+/** Accepts the admin UI's confirmation popup. */
+export async function confirmYes(page: Page) {
+    await page.locator(".modal.popup.manual").getByRole("button", { name: "Yes" }).click();
+}
