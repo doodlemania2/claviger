@@ -108,6 +108,8 @@ func LoadOldFromEnv(getenv func(string) string, appKeyEnv string) (KeySource, er
 	file := strings.TrimSpace(getenv(EnvKEKFileOld))
 
 	azure := azureKeyIDFromEnv(getenv, EnvKEKAzureKeyIDOld)
+	aws := strings.TrimSpace(getenv(EnvKEKAWSKeyIDOld))
+	gcp := strings.TrimSpace(getenv(EnvKEKGCPKeyIDOld))
 
 	fromApp := false
 	switch strings.ToLower(strings.TrimSpace(getenv(EnvKEKOldFromAppKey))) {
@@ -116,7 +118,7 @@ func LoadOldFromEnv(getenv func(string) string, appKeyEnv string) (KeySource, er
 	}
 
 	set := 0
-	for _, b := range []bool{direct != "", file != "", fromApp, azure != ""} {
+	for _, b := range []bool{direct != "", file != "", fromApp, azure != "", aws != "", gcp != ""} {
 		if b {
 			set++
 		}
@@ -126,9 +128,13 @@ func LoadOldFromEnv(getenv func(string) string, appKeyEnv string) (KeySource, er
 	case set == 0:
 		return nil, ErrNoOldKey
 	case set > 1:
-		return nil, fmt.Errorf("set only one of %s, %s, %s and %s", EnvKEKOld, EnvKEKFileOld, EnvKEKOldFromAppKey, EnvKEKAzureKeyIDOld)
+		return nil, fmt.Errorf("set only one of %s, %s, %s, %s, %s and %s", EnvKEKOld, EnvKEKFileOld, EnvKEKOldFromAppKey, EnvKEKAzureKeyIDOld, EnvKEKAWSKeyIDOld, EnvKEKGCPKeyIDOld)
 	case azure != "":
 		return newAzureSource("azure-key-vault (previous)", azure, getenv)
+	case aws != "":
+		return newAWSSource("aws-kms (previous)", aws, getenv)
+	case gcp != "":
+		return newGCPSource("gcp-kms (previous)", gcp, getenv)
 	case direct != "":
 		kek, err := decodeKEK(direct)
 		if err != nil {
