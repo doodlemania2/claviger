@@ -15737,6 +15737,13 @@ namespace core {
    */
   disableVerify: boolean
   /**
+   * Encrypt (Claviger #78) makes every new backup (manual, cron and S3) an
+   * encrypted "<name>.zip.enc" archive, wrapped with the configured
+   * key-encryption key (CLAVIGER_KEK and friends). Plain backups that
+   * already exist stay restorable. Off by default.
+   */
+  encrypt: boolean
+  /**
    * S3 is an optional S3 storage config specifying where to store the app backups.
    */
   s3: S3Config

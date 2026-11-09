@@ -35,6 +35,8 @@ type backupFileInfo struct {
 	Verification *core.BackupVerification `json:"verification,omitempty"`
 	// Verifying is true while the backup is being verified.
 	Verifying bool `json:"verifying,omitempty"`
+	// Encrypted (fork, #78) is true for the backups named like an encrypted archive ("*.enc").
+	Encrypted bool `json:"encrypted,omitempty"`
 }
 
 func backupsList(e *core.RequestEvent) error {
@@ -72,6 +74,7 @@ func backupsList(e *core.RequestEvent) error {
 
 			Verification: verifications[obj.Key],
 			Verifying:    verifyingKey != "" && verifyingKey == obj.Key,
+			Encrypted:    core.IsEncryptedBackupName(obj.Key),
 		}
 	}
 

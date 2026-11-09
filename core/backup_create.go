@@ -17,9 +17,11 @@ import (
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	"github.com/doodlemania2/claviger/tools/backupenc"
 	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/filesystem"
 	"github.com/doodlemania2/claviger/tools/hook"
+	"github.com/doodlemania2/claviger/tools/keys"
 	"github.com/doodlemania2/claviger/tools/security"
 	"github.com/doodlemania2/claviger/tools/store"
 )
@@ -93,13 +95,27 @@ func (app *BaseApp) CreateBackup(ctx context.Context, name string) error {
 			e.Name = generateBackupName(e.App, "pb_backup_")
 		}
 
+		// fork (#78): an encrypted backup is stored as "<name>.enc"
+		// (the ".enc" name is what selects the encryption)
+		e.Name = BackupStoredName(e.App, e.Name)
+		app.Store().Set(StoreKeyActiveBackup, e.Name)
+
+		var kekSource keys.KeySource
+		if IsEncryptedBackupName(e.Name) {
+			src, err := backupKeySource(e.App)
+			if err != nil {
+				return fmt.Errorf("cannot create the encrypted backup %q: %w (%w)", e.Name, err, ErrBackupEncryptionKey)
+			}
+			kekSource = src
+		}
+
 		app.Logger().Debug("[" + e.Name + "] zip archive started")
 
 		// create backup zip
 		// (it needs to be inside the current pb_data to avoid "cross-device link" errors)
 		// -----------------------------------------------------------
 		tempZipPath := filepath.Join(app.DataDir(), LocalTempDirName, "pb_backup_"+security.PseudorandomString(6))
-		err := createZip(e, tempZipPath)
+		err := createZip(e, tempZipPath, kekSource)
 		if err != nil {
 			return err
 		}
@@ -136,7 +152,7 @@ func (app *BaseApp) CreateBackup(ctx context.Context, name string) error {
 	})
 }
 
-func createZip(be *BackupEvent, tempZipPath string) error {
+func createZip(be *BackupEvent, tempZipPath string, kekSource keys.KeySource) error {
 	logPrefix := "[" + be.Name + "] "
 
 	// make sure that the special temp directory exists
@@ -152,7 +168,7 @@ func createZip(be *BackupEvent, tempZipPath string) error {
 		be.App.onFilesystemNewWriter().Unbind(tempFilesHookId)
 	}()
 
-	zipper, err := newZipWriter(tempZipPath)
+	zipper, err := newZipWriter(be.Context, tempZipPath, kekSource)
 	if err != nil {
 		return err
 	}
@@ -330,23 +346,39 @@ type zipWriter struct {
 	mu     sync.Mutex
 	w      *zip.Writer
 	f      *os.File
+	enc    io.Closer // fork (#78): the encrypting stream between w and f (nil for a plain zip)
 	closed bool
 }
 
-func newZipWriter(zipFilePath string) (*zipWriter, error) {
+// newZipWriter creates the zip at zipFilePath. With a non-nil kekSource the
+// zip is streamed through the backup encryption, so a plaintext archive never
+// touches the disk.
+func newZipWriter(ctx context.Context, zipFilePath string, kekSource keys.KeySource) (*zipWriter, error) {
 	f, err := os.Create(zipFilePath)
 	if err != nil {
 		return nil, err
 	}
 
-	w := zip.NewWriter(f)
+	var out io.Writer = f
+	var enc io.Closer
+	if kekSource != nil {
+		ew, err := backupenc.NewWriter(ctx, f, kekSource)
+		if err != nil {
+			_ = f.Close()
+			return nil, err
+		}
+		out, enc = ew, ew
+	}
+
+	w := zip.NewWriter(out)
 	w.RegisterCompressor(zip.Deflate, func(out io.Writer) (io.WriteCloser, error) {
 		return flate.NewWriter(out, flate.BestSpeed)
 	})
 
 	return &zipWriter{
-		w: w,
-		f: f,
+		w:   w,
+		f:   f,
+		enc: enc,
 	}, nil
 }
 
@@ -360,7 +392,12 @@ func (z *zipWriter) close() error {
 
 	z.closed = true
 
-	return errors.Join(z.w.Close(), z.f.Close())
+	err := z.w.Close()
+	if z.enc != nil {
+		err = errors.Join(err, z.enc.Close()) // writes the final chunk
+	}
+
+	return errors.Join(err, z.f.Close())
 }
 
 func (z *zipWriter) copyFileToZip(localPath string, zipPath string) error {

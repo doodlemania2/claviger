@@ -62,7 +62,7 @@ export function backupUploadButton(onSuccess = null) {
 
     const fileInput = t.input({
         type: "file",
-        accept: "application/zip",
+        accept: "application/zip,.enc", // fork (#78): encrypted backups
         className: "hidden",
         onchange: (e) => {
             uploadConfirm(e.target?.files?.[0]);
