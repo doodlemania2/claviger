@@ -499,6 +499,9 @@ func copyFixtureRows(src, dst core.App, collections []*core.Collection) error {
 }
 
 // adaptFixtureValue converts a SQLite value for a column of the Postgres type.
+//
+// It mirrors adaptSQLiteValue of cmd/migrate_db.go (the tests package cannot import
+// cmd, whose tests import this one): change both together.
 func adaptFixtureValue(v any, pgType string) any {
 	if v == nil {
 		return nil
