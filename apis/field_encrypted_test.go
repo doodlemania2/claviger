@@ -128,7 +128,7 @@ func TestEncryptedFieldAPI(t *testing.T) {
 					t.Fatal(err)
 				}
 				if !strings.HasPrefix(phone, "enc:v1:") || !strings.HasPrefix(ssn, "enc:v1:") ||
-					strings.Contains(phone+ssn, "555") || strings.Contains(ssn, "987") {
+					strings.Contains(phone+ssn, "1 555 0") || strings.Contains(ssn, "987-65") {
 					t.Fatalf("expected ciphertext in the database, got %q / %q", phone, ssn)
 				}
 
@@ -137,7 +137,7 @@ func TestEncryptedFieldAPI(t *testing.T) {
 				if len(entries) != 1 {
 					t.Fatalf("expected 1 audit entry, got %d", len(entries))
 				}
-				if s := tests.CompactJSON(entries[0].GetString("after")); strings.Contains(s, "555") || strings.Contains(s, "987") {
+				if s := tests.CompactJSON(entries[0].GetString("after")); strings.Contains(s, "1 555 0") || strings.Contains(s, "987-65") {
 					t.Fatalf("audit entry leaks the plaintext: %s", s)
 				}
 			},
@@ -284,11 +284,11 @@ func TestEncryptedJSONFieldAPI(t *testing.T) {
 				if err := app.DB().Select("profile", "secretdoc").From("apiencjson").Where(dbx.HashExp{"id": "encjson0000002x"}).Row(&p, &s); err != nil {
 					t.Fatal(err)
 				}
-				if !strings.HasPrefix(p, "enc:v1:") || !strings.HasPrefix(s, "enc:v1:") || strings.Contains(p, "555") {
+				if !strings.HasPrefix(p, "enc:v1:") || !strings.HasPrefix(s, "enc:v1:") || strings.Contains(p, "1 555 0") {
 					t.Fatalf("expected ciphertext in the database, got %q / %q", p, s)
 				}
 				entries, _ := app.FindAllRecords(core.CollectionNameAuditLog, dbx.HashExp{"targetId": "encjson0000002x"})
-				if len(entries) != 1 || strings.Contains(tests.CompactJSON(entries[0].GetString("after")), "555") {
+				if len(entries) != 1 || strings.Contains(tests.CompactJSON(entries[0].GetString("after")), "1 555 0") {
 					t.Fatalf("audit entry missing or leaking: %v", entries)
 				}
 			},

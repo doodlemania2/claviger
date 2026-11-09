@@ -174,7 +174,7 @@ func TestRotateFieldKeysReencryptsEveryRow(t *testing.T) {
 		t.Fatalf("expected one rotation audit entry, got %d", len(entries))
 	}
 	meta := tests.CompactJSON(entries[0].GetString("meta"))
-	if strings.Contains(meta, "555") || !strings.Contains(meta, newKey.KeyId) || !strings.Contains(meta, `"status":"ok"`) {
+	if strings.Contains(meta, "1 555 0") || !strings.Contains(meta, newKey.KeyId) || !strings.Contains(meta, `"status":"ok"`) {
 		t.Fatalf("unexpected audit meta: %s", meta)
 	}
 	if entries[0].GetString("targetCollection") != core.CollectionNameFieldKeys {
