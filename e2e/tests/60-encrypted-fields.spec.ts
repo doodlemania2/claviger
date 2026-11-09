@@ -1,11 +1,12 @@
-import { test, expect, state, api } from "../fixtures";
+import { test, expect, api } from "../fixtures";
 import type { Page } from "@playwright/test";
-import { execFileSync } from "node:child_process";
-import { join } from "node:path";
-
-function dbValue(sql: string): string {
-    // The server holds the database open in WAL mode; a read-only query is fine.
-    return execFileSync("sqlite3", ["-readonly", join(state().data, "data.db"), sql], { encoding: "utf8" }).trim();
+/**
+ * Reads the raw stored value through the superuser SQL endpoint, which returns the column as the
+ * database holds it (ciphertext). No sqlite3 binary needed, so it runs on any CI runner.
+ */
+async function dbValue(sql: string): Promise<string> {
+    const res = await api("POST", "/api/sql", { query: sql });
+    return String(res.rows?.[0]?.[0] ?? "");
 }
 
 /**
@@ -19,6 +20,8 @@ async function recordEditorLoaded(page: Page) {
 }
 
 test("Encrypted fields: add both types in the collection editor, create and edit a record", async ({ admin }) => {
+    // a retry starts clean
+    await api("DELETE", "/api/collections/e2e_notes").catch(() => {});
     await api("POST", "/api/collections", {
         name: "e2e_notes",
         type: "base",
@@ -56,7 +59,7 @@ test("Encrypted fields: add both types in the collection editor, create and edit
     expect(item.encryptedJSON).toEqual({ phone: "555-0100" });
 
     // at rest it is ciphertext
-    const stored = dbValue(`select encryptedText || '|' || encryptedJSON from e2e_notes where id='${item.id}'`);
+    const stored = await dbValue(`select encryptedText || '|' || encryptedJSON from e2e_notes where id='${item.id}'`);
     expect(stored).toMatch(/^enc:v1:[^|]+\|enc:v1:/);
     expect(stored).not.toContain("555-0100");
 
