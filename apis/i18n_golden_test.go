@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +19,8 @@ import (
 // carries the strings the page scripts need (stripped before comparing).
 // Regenerate with -update-i18n-golden only for a deliberate change.
 var updateI18nGolden = flag.Bool("update-i18n-golden", false, "rewrite the i18n golden files")
+
+var inlineModuleRe = regexp.MustCompile(`(?s)<script type="module">.*?</script>`)
 
 var i18nDataBlockRe = regexp.MustCompile(`(?s)<script type="application/json" id="i18n">.*?</script>\n?`)
 
@@ -38,6 +41,12 @@ func checkI18nGolden(t *testing.T, name, got string) {
 	want, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// the inline script of /passkeys is localized code, not text: compare the markup around it
+	if strings.Contains(name, "passkeys") {
+		want = inlineModuleRe.ReplaceAll(want, nil)
+		got = inlineModuleRe.ReplaceAllString(got, "")
 	}
 
 	if string(want) != got {
