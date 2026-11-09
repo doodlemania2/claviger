@@ -5,9 +5,11 @@ import (
 	"html/template"
 	"net/mail"
 	"strings"
+	"time"
 
 	"github.com/doodlemania2/claviger/core"
 	"github.com/doodlemania2/claviger/mails/templates"
+	"github.com/doodlemania2/claviger/tools/i18n"
 	"github.com/doodlemania2/claviger/tools/mailer"
 )
 
@@ -49,11 +51,19 @@ func InvitationURL(app core.App, token string) string {
 // SendOrgInvitation emails the invitation link. inviter is a display name
 // ("" when unknown).
 func SendOrgInvitation(app core.App, org, inv *core.Record, inviter, token string) error {
+	// fork-local (#97): the invitation is sent in the language of the invitee's
+	// account when there is one, otherwise in the app default
+	bundle := core.I18n(app)
+	lang := bundle.Negotiate(i18n.Preference{
+		Record:  inviteeLanguage(app, inv.GetString("email")),
+		Default: app.Settings().Meta.DefaultLang(),
+	})
+
 	if inviter == "" {
-		inviter = "Someone"
+		inviter = bundle.Raw(lang, "email.invitation.someone")
 	}
 
-	tpl := DefaultOrgInvitationTemplate
+	tpl := BuiltinInvitationTemplate(bundle, lang)
 	if s, b := core.InvitationEmailOverride(org); s != "" || b != "" {
 		if s != "" {
 			tpl.Subject = s
@@ -66,7 +76,7 @@ func SendOrgInvitation(app core.App, org, inv *core.Record, inviter, token strin
 
 	meta := app.Settings().Meta
 	link := InvitationURL(app, token)
-	expires := inv.GetDateTime("expires").Time().UTC().Format("2 January 2006")
+	expires := invitationDate(inv.GetDateTime("expires").Time().UTC(), lang)
 
 	raw := map[string]any{
 		core.EmailPlaceholderAppName: meta.AppName,
@@ -103,4 +113,44 @@ func SendOrgInvitation(app core.App, org, inv *core.Record, inviter, token strin
 		Subject: subject,
 		HTML:    body,
 	})
+}
+
+// BuiltinInvitationTemplate is the invitation template without an org
+// override, in the language. The English result equals DefaultOrgInvitationTemplate.
+func BuiltinInvitationTemplate(b *i18n.Bundle, lang string) core.EmailTemplate {
+	return core.EmailTemplate{
+		Subject: b.Raw(lang, "email.invitation.subject"),
+		Body: composeBody(b, lang, "email.invitation.", []block{
+			para("intro"),
+			button("button", EmailPlaceholderInviteURL),
+			para("expiry"), italic("ignore"),
+		}),
+	}
+}
+
+// invitationDate formats the expiry: "2 January 2006" in English, ISO 8601
+// elsewhere (month names are not part of the catalog, and a numeric date is
+// unambiguous in every language).
+func invitationDate(t time.Time, lang string) string {
+	if i18n.Primary(lang) == "en" {
+		return t.Format("2 January 2006")
+	}
+
+	return t.Format("2006-01-02")
+}
+
+// inviteeLanguage is the language preference of the account with the
+// invitation's email, "" when there is no account or no preference.
+func inviteeLanguage(app core.App, email string) string {
+	col, err := core.OrgUserCollection(app)
+	if err != nil {
+		return ""
+	}
+
+	rec, err := app.FindAuthRecordByEmail(col, email)
+	if err != nil {
+		return ""
+	}
+
+	return core.RecordLanguage(app, rec)
 }
