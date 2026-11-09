@@ -68,39 +68,41 @@ type Client struct {
 	app    core.App
 	record *core.Record
 
-	ClientID       string
-	Name           string
-	SecretHash     string
-	Public         bool
-	FirstParty     bool
-	Disabled       bool
-	RequirePKCE    bool
-	AuthCollection string
-	Redirects      []string
-	PostLogout     []string
-	Scopes         []string
-	Opaque         bool
-	Alg            string
-	OrgID          string // optional org binding (#79a)
-	devMode        bool
+	ClientID        string
+	Name            string
+	SecretHash      string
+	Public          bool
+	FirstParty      bool
+	Disabled        bool
+	RequirePKCE     bool
+	AuthCollection  string
+	Redirects       []string
+	PostLogout      []string
+	Scopes          []string
+	Opaque          bool
+	Alg             string
+	OrgID           string // optional org binding (#79a)
+	AllowDeviceFlow bool   // the device authorization grant (RFC 8628, #96)
+	devMode         bool
 }
 
 func (s *Store) clientFromRecord(rec *core.Record) *Client {
 	c := &Client{
-		app:            s.app,
-		record:         rec,
-		ClientID:       rec.GetString("clientId"),
-		Name:           rec.GetString("name"),
-		SecretHash:     rec.GetString("secretHash"),
-		Public:         rec.GetBool("public"),
-		FirstParty:     rec.GetBool("firstParty"),
-		Disabled:       rec.GetBool("disabled"),
-		RequirePKCE:    rec.GetBool("requirePkce"),
-		AuthCollection: rec.GetString("authCollection"),
-		Opaque:         rec.GetString("accessTokenType") == "opaque",
-		Alg:            rec.GetString("signingAlg"),
-		OrgID:          rec.GetString("org"),
-		devMode:        s.app.IsDev(),
+		app:             s.app,
+		record:          rec,
+		ClientID:        rec.GetString("clientId"),
+		Name:            rec.GetString("name"),
+		SecretHash:      rec.GetString("secretHash"),
+		Public:          rec.GetBool("public"),
+		FirstParty:      rec.GetBool("firstParty"),
+		Disabled:        rec.GetBool("disabled"),
+		RequirePKCE:     rec.GetBool("requirePkce"),
+		AuthCollection:  rec.GetString("authCollection"),
+		Opaque:          rec.GetString("accessTokenType") == "opaque",
+		Alg:             rec.GetString("signingAlg"),
+		OrgID:           rec.GetString("org"),
+		AllowDeviceFlow: rec.GetBool("allowDeviceFlow"),
+		devMode:         s.app.IsDev(),
 	}
 
 	_ = rec.UnmarshalJSONField("redirectUris", &c.Redirects)
@@ -193,6 +195,10 @@ func (c *Client) ResponseTypes() []oidc.ResponseType {
 }
 
 func (c *Client) GrantTypes() []oidc.GrantType {
+	if c.AllowDeviceFlow {
+		return []oidc.GrantType{oidc.GrantTypeCode, oidc.GrantTypeRefreshToken, oidc.GrantTypeDeviceCode}
+	}
+
 	return []oidc.GrantType{oidc.GrantTypeCode, oidc.GrantTypeRefreshToken}
 }
 

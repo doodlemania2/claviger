@@ -53,17 +53,19 @@ const statusEl = root.querySelector("#status");
 
 let mfaId = "";
 
+if (root.dataset.loginHint) pw.elements.identity.value = root.dataset.loginHint;
+
 function fail(text) {
   statusEl.textContent = text;
   statusEl.hidden = !text;
 }
 
 async function finish(token) {
-  const res = await fetch("/oidc/login/finish", {
+  const res = await fetch(root.dataset.finish || "/oidc/login/finish", {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json", Authorization: token },
-    body: JSON.stringify({ authRequestID: requestID }),
+    body: JSON.stringify({ authRequestID: requestID, ref: requestID }),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok || !body.redirect) {
