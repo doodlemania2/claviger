@@ -60,7 +60,7 @@ The differences from SQLite that you can observe are listed under [Differences f
 | Views written in SQLite SQL, raw SQL in your own migrations | Written for the engine you run on, see [Your own SQL](#your-own-sql). `migrate-db` has `--skip-views` for the first. |
 | The request logs (`auxiliary.db`) | Stay in a local SQLite file, one per replica. |
 
-A skipped test is not a pass: the `postgres` CI job fails if one of the tests skips, except for the documented known gaps (the `known_gap` tests in `tests/pgtests` and the 14 tests in `tests/postgres_skip.txt`), which are skipped on purpose and printed with their reason.
+A skipped test is not a pass: the `postgres` CI job fails if one of the tests skips, except for the documented known gaps (the `known_gap` tests in `tests/pgtests` and the 16 tests in `tests/postgres_skip.txt`), which are skipped on purpose and printed with their reason.
 
 ### Moving from SQLite to PostgreSQL
 
@@ -204,7 +204,7 @@ The tests that cannot pass on Postgres are listed in `tests/postgres_skip.txt`, 
 
 **CI.** The `postgres` job is a matrix over the supported majors, pinned to patch releases (16.15 and 17.11): 16 on every PR and push, 17 on pushes to master and manual runs. Each leg runs `tests/pgtests`, the regular suites (`scripts/test_postgres_suites.sh`, which retries a failed test once and reports it as flaky) and the migrate-db smoke test.
 
-**The skip list.** `tests/postgres_skip.txt` went from 35 tests at M4 to 14 at M6. Tests that only asserted a SQLite spelling were made engine neutral with two small helpers (`tests.ColumnType` and `tests.NormalizeQuotes`, one line per test); the 14 that remain assert SQLite SQL text, SQLite catalogs or SQLite column defaults, and each names where the Postgres behavior is covered. The list may only shrink.
+**The skip list.** `tests/postgres_skip.txt` went from 35 tests at M4 to 16 at M6. Tests that only asserted a SQLite spelling were made engine neutral with two small helpers (`tests.ColumnType` and `tests.NormalizeQuotes`, one line per test); the 16 that remain assert SQLite SQL text, SQLite catalogs or SQLite column defaults (two are SQLite-only watcher tests that never touch Postgres), and each names where the Postgres behavior is covered. The list may only shrink.
 
 ### For developers
 

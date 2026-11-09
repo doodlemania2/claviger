@@ -8,13 +8,11 @@
 #
 # scripts/test_postgres_suites.sh turns this file into `go test -skip` and prints it.
 #
-# History: 35 entries at M4, 14 since M6. Made engine neutral (tests.ColumnType and
+# History: 35 entries at M4, 16 since M6. Made engine neutral (tests.ColumnType and
 # tests.NormalizeQuotes translate the SQLite spelling an upstream test asserts; the view
 # temp-table check asks the right catalog): the 13 *FieldColumnType tests, TestCollectionQuery,
 # TestModelQuery, TestBindDbx, TestDeleteView and TestCreateViewFieldsWithDiscardedNestedTransaction.
-# Passing as they are (the M3 backup work and the data dir based watchers): TestCreateBackup,
-# TestNotifyWatcher_CollectionsUpdate and _SettingsUpdate (the latter two flake on macOS and
-# in CI on SQLite as well; the script retries a failed test once).
+# Passing as they are since the M3 backup work: TestCreateBackup.
 
 # --- the test asserts the SQL text or the quoting of SQLite --------------------------------
 TestRecordDelete	asserts the SQLite SQL text of the cascade queries (json_each); the Postgres SQL is pinned in tools/search/dialect_postgres_test.go
@@ -39,3 +37,7 @@ TestSQLRun	asserts SQLite error text and column types; the Postgres behavior is 
 
 # --- the SQLite connection pools ------------------------------------------------------------
 TestBaseAppDBDualBuilder	checks the separate read and write pools of SQLite; Postgres uses one pool
+
+# --- tests that never touch Postgres -------------------------------------------------------
+TestNotifyWatcher_CollectionsUpdate	opens two SQLite apps on a shared pb_data (core.NewBaseApp without DBConnect) and watches .pb_notify files: it does not use Postgres at all, so it adds nothing here but its fsnotify flake (duplicate events on macOS); it runs in the SQLite `test` job. Cross process reload on Postgres is M7
+TestNotifyWatcher_SettingsUpdate	same as TestNotifyWatcher_CollectionsUpdate (measured flaky on macOS: 3 failures in 8 runs)

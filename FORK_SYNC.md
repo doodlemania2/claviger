@@ -345,7 +345,7 @@ Upstream test files were touched only for fork-owned behaviour: none of the upst
 | `core/collection_query_test.go`, `core/db_test.go`, `plugins/jsvm/binds_test.go` (one line each) | The statement text is compared through `tests.NormalizeQuotes` (Postgres quotes with `"`). | |
 | `core/view_test.go` | The temp view check asks `information_schema.views` on Postgres. | |
 | `tests/app_postgres.go` | `ColumnType` and `NormalizeQuotes` helpers. `adaptFixtureValue` mirrors `adaptSQLiteValue` in `cmd/migrate_db.go` (the `tests` package cannot import `cmd`: its tests import `tests`). | Change both together. |
-| `tests/postgres_skip.txt` | 35 entries down to 14. | A new upstream test that asserts SQLite SQL goes here with its reason. |
+| `tests/postgres_skip.txt` | 35 entries down to 16. | A new upstream test that asserts SQLite SQL goes here with its reason. |
 | `.github/workflows/test.yml` | The `postgres` job is a matrix (`pg`: 16.15, plus 17.11 off pull requests) and has the migrate-db smoke step. The service image tags are bumped by hand. | The job name changed to `postgres <version>`: update required status checks if any name `postgres`. |
 | `scripts/pgembedded/main.go` | `EPG_VERSION` (16 or 17). | |
 
