@@ -218,7 +218,13 @@ export function backupsList(propsArg = {}) {
                 return data.backups.map((backup) => {
                     return t.div(
                         { className: () => `list-item ${data.isLoading ? "faded" : ""}` },
-                        t.i({ className: "ri-folder-zip-line", ariaHidden: true }),
+                        // fork (#78): a lock marks the encrypted backups
+                        backup.encrypted
+                            ? t.i({
+                                className: "ri-lock-2-line txt-success",
+                                ariaLabel: app.attrs.tooltip("Encrypted backup"),
+                            })
+                            : t.i({ className: "ri-folder-zip-line", ariaHidden: true }),
                         t.div(
                             { className: "content" },
                             t.span({
@@ -242,7 +248,11 @@ export function backupsList(propsArg = {}) {
                             t.button(
                                 {
                                     type: "button",
-                                    ariaLabel: app.attrs.tooltip("Download"),
+                                    ariaLabel: app.attrs.tooltip(
+                                        backup.encrypted
+                                            ? "Download (the file stays encrypted, decrypt it with: backups decrypt)"
+                                            : "Download",
+                                    ),
                                     className: () =>
                                         `btn sm circle secondary transparent ${
                                             data.isDownloading[backup.key] ? "loading" : ""

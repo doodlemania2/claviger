@@ -79,6 +79,8 @@ type OrgMemberInput struct {
 	Status string
 	Tags   []string
 	Source string
+	// ExternalId is the identity provider's key for the user (SCIM, #79c).
+	ExternalId string
 }
 
 // OrgMemberPatch describes a change of a membership (nil = unchanged).
@@ -86,6 +88,8 @@ type OrgMemberPatch struct {
 	Role   *string
 	Status *string
 	Tags   *[]string
+	// ExternalId sets (or with "" clears) the identity provider's key (#79c).
+	ExternalId *string
 }
 
 // FindOrgUser resolves a user id or email of the member collection. The error
@@ -236,6 +240,10 @@ func AddOrgMember(app App, ctx context.Context, actor *OrgActor, org *Record, in
 		member.Set("source", in.Source)
 		member.Set("tags", tags)
 
+		if in.ExternalId != "" {
+			member.Set("externalId", in.ExternalId)
+		}
+
 		return saveOrgRecord(txApp, ctx, member)
 	})
 	if txErr != nil {
@@ -299,6 +307,10 @@ func UpdateOrgMember(app App, ctx context.Context, actor *OrgActor, org, member 
 
 		if patch.Status != nil {
 			fresh.Set("status", *patch.Status)
+		}
+
+		if patch.ExternalId != nil {
+			fresh.Set("externalId", *patch.ExternalId)
 		}
 
 		if patch.Tags != nil {

@@ -1,11 +1,13 @@
 package apis
 
 import (
+	"io"
 	"net/http"
 
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
 	"github.com/doodlemania2/claviger/core"
 	"github.com/doodlemania2/claviger/core/validators"
+	"github.com/doodlemania2/claviger/tools/backupenc"
 	"github.com/doodlemania2/claviger/tools/filesystem"
 )
 
@@ -51,10 +53,35 @@ func (form *backupUploadForm) validate() error {
 		validation.Field(
 			&form.File,
 			validation.Required,
-			validation.By(validators.UploadedFileMimeType([]string{"application/zip"})),
+			validation.By(uploadedBackupType),
 			validation.By(form.checkUniqueName),
 		),
 	)
+}
+
+// uploadedBackupType accepts a zip archive or (fork, #78) an encrypted backup:
+// a file named "*.enc" that starts with the encrypted backup magic bytes.
+func uploadedBackupType(value any) error {
+	f, _ := value.(*filesystem.File)
+	if f == nil || !core.IsEncryptedBackupName(f.OriginalName) {
+		return validators.UploadedFileMimeType([]string{"application/zip"})(value)
+	}
+
+	invalid := validation.NewError("validation_invalid_mime_type", "The file is not an encrypted Claviger backup.")
+
+	r, err := f.Reader.Open()
+	if err != nil {
+		return invalid
+	}
+	defer r.Close()
+
+	head := make([]byte, len(backupenc.Magic))
+	n, _ := io.ReadFull(r, head)
+	if !backupenc.IsEncrypted(head[:n]) {
+		return invalid
+	}
+
+	return nil
 }
 
 func (form *backupUploadForm) checkUniqueName(value any) error {

@@ -178,6 +178,24 @@ var orgsPageTemplates = template.Must(template.New("pages").Parse(orgsPageHead +
 <thead><tr><th>Email</th><th>Role</th><th>Tags</th><th>Status</th><th>Expires / accepted</th><th>Sent</th><th></th></tr></thead>
 <tbody></tbody>
 </table></div>
+
+<h2>SCIM provisioning</h2>
+<p class="muted">Tenant URL: <code id="scimUrl"></code></p>
+<form id="scimTokenForm" class="inline">
+<label>Token name<input name="name" autocomplete="off" maxlength="100" required></label>
+<button type="submit">Create a token</button>
+</form>
+<p id="scimNew" class="msg ok" role="status" hidden></p>
+<div class="tablewrap"><table id="scimTokens">
+<thead><tr><th>Name</th><th>Token</th><th>Created</th><th>Last used</th><th>Expires</th><th>Status</th><th></th></tr></thead>
+<tbody></tbody>
+</table></div>
+<form id="scimSettings">
+<label>Role of new users<select id="scimDefaultRole" name="defaultRole"><option>member</option></select></label>
+<label>Groups that grant a role (one per line, <code>Group name = role</code>)<textarea name="groupRoles" rows="3" autocomplete="off"></textarea></label>
+<label class="check"><input name="deactivationBans" type="checkbox"> Also ban the account when the identity provider deactivates a user</label>
+<button type="submit">Save SCIM settings</button>
+</form>
 </div>
 
 <h2>Tags</h2>

@@ -197,6 +197,16 @@ Upstream-owned files the fork edits. Re-check these on every sync merge (conflic
 | `apis/record_crud.go` | The create path uses `auditContextForCreate(e, collection)` (anonymous sign-up of an auth record is attributed to the new record, `meta.self`) (#110). |
 | `core/external_auth_model.go` | The verified-upgrade cleanup deletes external auths with the event context (`DeleteWithContext(e.Context, ...)`) instead of `DeleteAllExternalAuthsByRecord`, so the unlinks keep the actor (#110). |
 | `core/audit_model.go` | `AuditActor.Self` and one `resolveSelfAuditActor(entry, e.Record)` call in `auditNextAndWrite` (new file `core/audit_actor.go`) (#110). |
+| `core/backup.go` | `registerAutobackupHooks` calls `registerBackupEncryptionHooks()` and the cron name goes through `BackupStoredName` (".enc" when encrypting) (#78). |
+| `core/backup_create.go` | `CreateBackup` maps the name with `BackupStoredName`, loads the key source up front (a missing key fails before any file is written) and passes it to `createZip`/`newZipWriter`, which stream the zip through `backupenc.NewWriter` (the plaintext archive never touches the disk) (#78). |
+| `core/backup_restore.go` | Both restore paths decrypt an encrypted backup into the temp dir with `copyBackupAsZip` / `decryptLocalBackupToTemp` before anything in `pb_data` moves (#78). |
+| `core/settings_model.go`, `core/settings_model_test.go` | `BackupsConfig.Encrypt`. The exact-JSON assertions carry `"encrypt":false` (#78). |
+| `apis/backup_create.go` | `backupNameRegex` accepts `.zip.enc`; the unique-name check uses the stored name; key errors (`core.ErrBackupEncryptionKey`) are shown in the 400 message (#78). |
+| `apis/backup.go` | The list adds `encrypted` (name ends with `.enc`) (#78). |
+| `apis/backup_upload.go` | `uploadedBackupType` accepts a `*.enc` file that starts with the backup magic, besides application/zip (#78). |
+| `pocketbase.go` | `Start()` registers `cmd.NewBackupsCommand(pb)`; `skipBootstrap` returns true for the `backups` subcommands (offline file operation) (#78). |
+| `ui/src/settings/backups/backupsForm.js`, `backupsList.js`, `backupCreateModal.js`, `backupUploadButton.js` | Encrypt switch with the key warning, lock icon and download note, `.zip.enc` name pattern, `.enc` accepted by the upload picker (#78). |
+| `plugins/jsvm/internal/types/generated/types.d.ts` | `BackupsConfig.encrypt` (hand-added) (#78). |
 | `apis/audit_test.go` | The anonymous create scenario expects the self actor instead of `system`; `seedAuditEntry` clears the entries written by the fixture's migrations (#110). |
 | `core/settings_model.go`, `core/settings_model_test.go` | `Settings.Audit` (`AuditConfig.RetentionDays`, `0` = forever), validated in `PostValidate`. The exact-JSON snapshots in `TestSettings_DBExport` (both subtests) and `TestSettingsMarshalJSON` end with `,"audit":{"retentionDays":0}` (#110). |
 | `core/audit_model.go` | `auditRetentionDays(app)`: `CLAVIGER_AUDIT_RETENTION_DAYS` wins when it is a valid non-negative number, otherwise `Settings.Audit.RetentionDays` (#110). |
@@ -235,6 +245,10 @@ Upstream-owned files the fork edits. Re-check these on every sync merge (conflic
 | `core/apikey.go` | `_invitations` added to `APIKeyForbiddenCollections` (#79b). |
 | `apis/base.go` | `bindOrgsPages(app)` after `bindPasskeysPage(app)` (#79b). The invitation and tag routes are bound from `bindOrgsApi` (`apis/orgs.go`, fork-owned). |
 | `apis/collection_test.go`, `apis/collection_import_test.go` | System collection count +1 (`_invitations`, #79b): total 36; the paging scenario now reads page 3 (page 1 is `_invitations` and one org collection, page 2 the other two, page 3 starts at `_fieldKeys`). The conductor reconciles the count across agents. |
+| `core/audit_model.go`, `core/audit_admin.go` | `AuditActor.OrgId` (written to `meta.orgId`) and the `scim` actor type, in the two places that copy the actor onto an entry (#79c). |
+| `core/apikey.go` | `_scimTokens`, `_scimGroups` added to `APIKeyForbiddenCollections` (#79c). |
+| `apis/base.go` | `bindSCIMApi(app, pbRouter)` after `bindOrgsApi` (#79c): the `/scim/v2` routes, bound on the router so the default middlewares apply. |
+| `apis/collection_test.go`, `apis/collection_import_test.go`, `core/collection_query_test.go` | System collection count +2 (`_scimTokens`, `_scimGroups`, #79c): total 38; the paging scenario now reads page 4 (page 1 is the two SCIM collections, page 2 `_invitations` and an org collection, page 3 the other two, page 4 starts at `_fieldKeys`). The conductor reconciles the count across agents. |
 | `ui/src/orgs/pageOrgs.js` (fork-owned) | Invitations table, invite/resend/revoke and a link to the hosted org page (#79b). `ui/dist` is not rebuilt on the #79b branch. |
 | `oidc/` (fork-owned) | `oidc/orgs.go` (new) plus small hunks in `claims.go`, `client.go`, `login.go`, `oidc.go`, `store.go`, `admin.go`: scope `orgs`, org-bound clients (#79a). Migration `1780001000_add_orgs.go` also adds `_oauthClients.org`. |
 | `core/record_field_resolver_runner.go` | One hunk in `finalizeActivePropsProcessing`, right after the hidden-field check: `checkEncryptedFieldFilterable(field)` rejects `encryptedText` fields in every filter, sort and API rule (#75). The only way to cover rules and relation traversal; client filters alone could be pre-validated in the handler, rules could not. |
@@ -250,6 +264,8 @@ Upstream-owned files the fork edits. Re-check these on every sync merge (conflic
 Fork-only files for #79b (invitations): `core/invitation.go`, `core/org_tags.go`, `migrations/1780001100_add_invitations.go`, `mails/invitation.go`, `apis/invitations.go`, `apis/orgs_tags.go`, `apis/orgs_pages.go`, `apis/orgs_pages/` (embedded hosted page assets), their tests (`core/invitation_test.go`, `apis/invitations*_test.go`, `apis/orgs_pages_test.go`) and the invitations section of `docs/orgs.md`. Sync checks: `grep -n registerInvitationHooks core/base.go`, `go test -run 'Invitation|OrgTags|OrgAdminPage|OrgPages|HostedPages' ./core/ ./apis/`.
 
 Fork-only files for #75 (field encryption): `tools/keys/`, `core/field_keys.go`, `core/field_keys_ops.go`, `core/field_sealed.go`, `core/field_encrypted_text.go`, `core/field_encrypted_json.go`, `migrations/1780000800_add_field_keys.go`, `migrations/1780000900_field_keys_strict.go`, `apis/field_encrypted.go`, `apis/field_keys.go`, `apis/apikey_auth.go` (denies `/api/field-keys` to API keys), `cmd/keys.go`, `cmd/keys_rotate.go`, `cmd/keys_lock_unix.go`, `cmd/keys_lock_other.go`, `scripts/test_entrypoint_keys_preflight.sh`, `ui/src/fields/encryptedText/`, `ui/src/fields/encryptedJSON/`, `ui/src/settings/fieldkeys/`, `docs/field-encryption.md`. UI files outside those directories: `ui/src/main.js` (field type imports), `ui/src/router.js` and `ui/src/store.js` (the Encryption keys settings page, #75 M3). Sync checks: `grep -n registerFieldEncryptionHooks core/base.go`, `grep -n checkEncryptedFieldFilterable core/record_field_resolver_runner.go`, and `go test -run 'EncryptedText|EncryptedJSON|FieldKeys|KeysCheck|EncryptedField|RotateFieldKeys|Rewrap|Convert|Keys' ./core/ ./apis/ ./cmd/ ./tools/keys/`. The field relies on `Record.originalData` (read via `GetRaw` fallback, copied by `Original()`), `newRecordFromNullStringMap` calling `PrepareValue` after the `id` field, and `Record.dbExport` calling `DriverValuer`; the tests above catch a change in any of them.
+
+Fork-only files for #78 (backup encryption): `tools/backupenc/` (the chunked AES-256-GCM container), `core/backup_encrypt.go` (+ `_test.go`), `cmd/backups.go` (+ `_test.go`), `apis/backup_encrypt_test.go`, `docs/backup-encryption.md`. The format is specified in the doc and pinned by `go test ./tools/backupenc`; the doc's Python decryptor was run against a Go-written file when it was written.
 
 Fork-only files for #91: `core/settings_captcha.go`, `tools/captcha/`, `tools/telemetry/captcha.go`, `apis/captcha.go`, `apis/rate_limit_store.go`, `ui/src/auth/captcha.js`, `ui/src/settings/captcha/`. Fork-owned files touched: `apis/record_auth_with_webauthn_login_begin_limit.go` (its two limiters are persistent, rule names prefixed `webauthn:` so a Settings reload does not reset them), `apis/passkeys_page.go` (CSP builder, `getCaptchaToken` client option and widget loader), `apis/apikey_auth.go` and `apis/record_auth_totp.go` (unchanged; they reach the persistent store through `checkRateLimit`).
 
@@ -335,6 +351,21 @@ After a sync, also run `go test ./tools/search -run 'Golden|PostgresFilterSQL'` 
 | `ui/src/settings/backups/pageBackupsSettings.js` (+41 -1), `ui/dist` | The Postgres notice (`health.data.database`). `ui/dist` rebuilt. | |
 
 Upstream test files were touched only for fork-owned behaviour: none of the upstream tests changed (the SQLite specific ones are in `tests/postgres_skip.txt`). Fork test files that wrote SQLite SQL now use `{{table}}` / `[[column]]` placeholders, `core.DialectOf(app).Checkpoint` and `tests.CompactJSON` (JSONB renders `{"a": 1}`). After a sync run `scripts/test_postgres_suites.sh`: a new upstream test that asserts SQLite SQL goes into `tests/postgres_skip.txt` with its reason (or is fixed), never into a silent skip.
+
+**M5 (`claviger migrate-db`) and M6 (CI matrix, skip list).** Fork-only files: `cmd/migrate_db.go`, `cmd/migrate_db_verify.go`, `cmd/migrate_db_test.go`, `scripts/test_migrate_db_smoke.sh`, `scripts/pgdb/` (create or drop a database without psql). Upstream-owned hunks:
+
+| File | Fork change | Re-check on sync |
+| --- | --- | --- |
+| `pocketbase.go` (+9) | `Start()` registers `cmd.NewMigrateDBCommand`; `skipBootstrap()` returns true for `migrate-db` (it opens the SQLite source read only and bootstraps the target itself, so the eager bootstrap must not migrate either). | A rewritten `Start()` or `skipBootstrap()`. |
+| `core/field_{autodate,date,editor,email,file,geo_point,json,number,password,relation,select,text,url}_test.go` (13 files, one line each) | `ColumnType` tests compare against `tests.ColumnType(expected)`, which translates the SQLite definition for Postgres. | An upstream change of a field's column type: update the expected string, and `tools/dialect` for both engines. |
+| `core/collection_query_test.go`, `core/db_test.go`, `plugins/jsvm/binds_test.go` (one line each) | The statement text is compared through `tests.NormalizeQuotes` (Postgres quotes with `"`). | |
+| `core/view_test.go` | The temp view check asks `information_schema.views` on Postgres. | |
+| `tests/app_postgres.go` | `ColumnType` and `NormalizeQuotes` helpers. `adaptFixtureValue` mirrors `adaptSQLiteValue` in `cmd/migrate_db.go` (the `tests` package cannot import `cmd`: its tests import `tests`). | Change both together. |
+| `tests/postgres_skip.txt` | 35 entries down to 16. | A new upstream test that asserts SQLite SQL goes here with its reason. |
+| `.github/workflows/test.yml` | The `postgres` job is a matrix (`pg`: 16.15, plus 17.11 off pull requests) and has the migrate-db smoke step. The service image tags are bumped by hand. | The job name changed to `postgres <version>`: update required status checks if any name `postgres`. |
+| `scripts/pgembedded/main.go` | `EPG_VERSION` (16 or 17). | |
+
+`migrate-db` reads the stored `_collections` rows and the system migration list (`core.SystemMigrations`): after a sync that adds a system migration or changes how `ImportCollections` treats system collections, run `go test ./cmd -run MigrateDB` against a Postgres (`CLAVIGER_TEST_PG_URL`). The `_migrations`, `_params` and `_collections` handling in `copyTable` / `copyMigrations` follows the upstream table layout.
 
 ## CI
 

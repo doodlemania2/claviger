@@ -56,17 +56,29 @@ jobs:
           version: v2.14.0
           args: -c ./golangci.yml
 
-  # PostgreSQL storage (experimental, #106): the tagged integration tests against a
+  # PostgreSQL storage (#106): the tagged integration tests and the regular suites against a
   # real server. Runs after `test` so a broken SQLite suite stops here first.
+  #
+  # A matrix over the supported majors. 16 is the minimum and runs on every PR and push. 17
+  # (the newest major we test) runs on pushes to master and manual runs only: the two legs run
+  # in parallel, so the wall time is the same, and skipping 17 on PRs halves the CI minutes of
+  # a PR run (the suites take about 20 minutes per leg on the k3s runners). A 17-only
+  # regression therefore shows up on master, one merge late, which is the accepted trade.
   postgres:
+    name: postgres ${{ matrix.pg }}
     timeout-minutes: 75
     runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || (vars.RUNNER_LIGHT || 'tdp-k3s-claviger') }}
     needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        # Pinned to patch releases (the newest of each major on 2026-11-08, from the official
+        # image tags on Docker Hub); bump by hand: Dependabot does not scan workflow service
+        # images. Keep the 16 entry at the lowest major we support.
+        pg: ${{ fromJSON(github.event_name == 'pull_request' && '["16.15"]' || '["16.15", "17.11"]') }}
     services:
       postgres:
-        # Minimum supported version is 16. Pinned to a patch release; bump it by hand
-        # (Dependabot does not scan workflow service images).
-        image: postgres:16.9
+        image: postgres:${{ matrix.pg }}
         env:
           POSTGRES_USER: pb
           POSTGRES_PASSWORD: pb
@@ -113,6 +125,13 @@ jobs:
       # does a run that passes too few tests or one that ran on SQLite.
       - name: Run the regular suites on Postgres
         run: scripts/test_postgres_suites.sh
+
+      # migrate-db end to end with the real binary (#106, M5): a SQLite pb_data is copied into a
+      # fresh database of this server, and the same records are read back through the API of a
+      # server that runs on CLAVIGER_DB_URL. The package tests of migrate-db (fixture, every fork
+      # feature, resume, refusals) already ran in the suites above.
+      - name: migrate-db smoke test
+        run: scripts/test_migrate_db_smoke.sh
 
   docker-build:
     timeout-minutes: 15

@@ -26,7 +26,7 @@ func TestCollectionQuery(t *testing.T) {
 	expected := "SELECT {{_collections}}.* FROM `_collections`"
 
 	sql := app.CollectionQuery().Build().SQL()
-	if sql != expected {
+	if tests.NormalizeQuotes(sql) != expected {
 		t.Errorf("Expected sql %s, got %s", expected, sql)
 	}
 }
@@ -82,9 +82,9 @@ func TestFindAllCollections(t *testing.T) {
 		collectionTypes []string
 		expectTotal     int
 	}{
-		{nil, 36},
-		{[]string{}, 36},
-		{[]string{""}, 36},
+		{nil, 38},
+		{[]string{}, 38},
+		{[]string{""}, 38},
 		{[]string{"unknown"}, 0},
 		{[]string{"unknown", core.CollectionTypeAuth}, 4},
 		{[]string{core.CollectionTypeAuth, core.CollectionTypeView}, 7},
