@@ -41,3 +41,8 @@ TestBaseAppDBDualBuilder	checks the separate read and write pools of SQLite; Pos
 # --- tests that never touch Postgres -------------------------------------------------------
 TestNotifyWatcher_CollectionsUpdate	opens two SQLite apps on a shared pb_data (core.NewBaseApp without DBConnect) and watches .pb_notify files: it does not use Postgres at all, so it adds nothing here but its fsnotify flake (duplicate events on macOS); it runs in the SQLite `test` job. Cross process reload on Postgres is M7
 TestNotifyWatcher_SettingsUpdate	same as TestNotifyWatcher_CollectionsUpdate (measured flaky on macOS: 3 failures in 8 runs)
+
+# --- SQLite archive internals (#78) -------------------------------------------------------
+TestEncryptedBackupRestore	opens the data.db inside a decrypted SQLite archive; on Postgres the archive has no database (tests/pgtests TestBackupsOnPostgres covers encrypted Postgres archives)
+TestEncryptedBackupVerify	same as TestEncryptedBackupRestore: verification checks the archived data.db, which a Postgres archive does not contain
+TestEncryptedBackupVerifyTamper	same as TestEncryptedBackupRestore: it tampers with chunks of an archive holding a SQLite data.db
