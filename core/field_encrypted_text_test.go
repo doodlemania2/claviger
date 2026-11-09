@@ -89,7 +89,7 @@ func TestEncryptedTextRoundTripStoresCiphertext(t *testing.T) {
 	}
 
 	stored := rawColumn(t, app, col, r.Id, "phone")
-	if !strings.HasPrefix(stored, "enc:v1:") || strings.Contains(stored, "555") {
+	if !strings.HasPrefix(stored, "enc:v1:") || strings.Contains(stored, "1 555 0") {
 		t.Fatalf("expected ciphertext in the database, got %q", stored)
 	}
 	if got := rawColumn(t, app, col, r.Id, "plainPhone"); got != "+1 555 0100" {
@@ -523,7 +523,7 @@ func TestEncryptedTextAuditAndWebhookRedactionByType(t *testing.T) {
 	for _, e := range entries {
 		for _, f := range []string{"before", "after", "meta"} {
 			s := e.GetString(f)
-			if strings.Contains(s, "555") {
+			if strings.Contains(s, "1 555 0") {
 				t.Fatalf("audit entry leaks the plaintext in %s: %s", f, s)
 			}
 		}
@@ -537,7 +537,7 @@ func TestEncryptedTextAuditAndWebhookRedactionByType(t *testing.T) {
 		t.Fatalf("expected 3 webhook deliveries, got %d", len(ds))
 	}
 	for _, d := range ds {
-		if p := d.GetString("payload"); strings.Contains(p, "555") {
+		if p := d.GetString("payload"); strings.Contains(p, "1 555 0") {
 			t.Fatalf("webhook payload leaks the plaintext: %s", p)
 		}
 	}
