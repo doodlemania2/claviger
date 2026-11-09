@@ -32,6 +32,7 @@ import (
 //	introspect       600             1200          a resource server may call it per request
 //	revoke            60              300
 //	userinfo         300               60 / token  no client id in the request: the bearer token is the key
+//	device_authorization 30           300          one call per device sign-in (#96)
 //
 // The per-client budget is a ceiling against a runaway client loop, not an
 // abuse control: the client id of an unauthenticated request is public, so a
@@ -60,6 +61,14 @@ const (
 	limitersClean  = time.Minute
 	rateErrorCode  = "temporarily_unavailable"
 	maxBodyForAuth = 64 << 10
+
+	// Device user code entry (#96): 30 submissions a minute per IP, and a
+	// brute-force stop of 10 wrong codes per 15 minutes per IP. The codes are
+	// 20^8 (2.6e10) and live 10 minutes, so ten guesses a quarter hour is far
+	// from a hit.
+	deviceEntryPerIP = 30
+	deviceFailPerIP  = 10
+	deviceFailWindow = 15 * time.Minute
 )
 
 type budget struct{ ip, client int }
@@ -70,6 +79,11 @@ var endpointBudgets = map[string]budget{
 	"introspect": {600, 1200},
 	"revoke":     {60, 300},
 	"userinfo":   {300, 60},
+
+	// device_authorization (#96) creates a row per call and needs no
+	// credentials from a public client, so the budget is the tightest of the
+	// protocol endpoints: a device asks once per sign-in.
+	"device_authorization": {30, 300},
 }
 
 // endpointOf maps a request path to the limited endpoint ("" for the others).
@@ -87,6 +101,8 @@ func endpointOf(p string) string {
 		return "revoke"
 	case "/userinfo":
 		return "userinfo"
+	case "/device_authorization":
+		return "device_authorization"
 	}
 
 	return ""
@@ -95,12 +111,15 @@ func endpointOf(p string) string {
 // clientAuthenticated endpoints authenticate the client, so a 401 is a failed
 // client authentication.
 func clientAuthenticated(endpoint string) bool {
-	return endpoint == "token" || endpoint == "introspect" || endpoint == "revoke"
+	return endpoint == "token" || endpoint == "introspect" || endpoint == "revoke" || endpoint == "device_authorization"
 }
 
 type limiterSet struct {
 	ip, client       map[string]*apis.FixedWindowLimiter
 	failIP, failPair *apis.FixedWindowLimiter
+
+	// device code entry (#96): every attempt, and the wrong ones apart
+	deviceEntry, deviceFail *apis.FixedWindowLimiter
 
 	mu        sync.Mutex
 	lastClean time.Time
@@ -114,11 +133,14 @@ func (m *module) limiters() *limiterSet {
 	s, _ := m.app.Store().Get(limitersKey).(*limiterSet)
 	if s == nil {
 		s = &limiterSet{
-			ip:        map[string]*apis.FixedWindowLimiter{},
-			client:    map[string]*apis.FixedWindowLimiter{},
-			failIP:    apis.NewFixedWindowLimiter(m.app, "oidc:failauth:ip", failedPerIP, failedWindow),
-			failPair:  apis.NewFixedWindowLimiter(m.app, "oidc:failauth:pair", failedPerPair, failedWindow),
-			lastClean: time.Now(),
+			ip:       map[string]*apis.FixedWindowLimiter{},
+			client:   map[string]*apis.FixedWindowLimiter{},
+			failIP:   apis.NewFixedWindowLimiter(m.app, "oidc:failauth:ip", failedPerIP, failedWindow),
+			failPair: apis.NewFixedWindowLimiter(m.app, "oidc:failauth:pair", failedPerPair, failedWindow),
+
+			deviceEntry: apis.NewFixedWindowLimiter(m.app, "oidc:device:entry:ip", deviceEntryPerIP, rateWindow),
+			deviceFail:  apis.NewFixedWindowLimiter(m.app, "oidc:device:fail:ip", deviceFailPerIP, deviceFailWindow),
+			lastClean:   time.Now(),
 		}
 
 		for name, b := range endpointBudgets {
@@ -150,6 +172,8 @@ func (m *module) limiters() *limiterSet {
 
 		s.failIP.Clean()
 		s.failPair.Clean()
+		s.deviceEntry.Clean()
+		s.deviceFail.Clean()
 	}
 
 	return s

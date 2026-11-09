@@ -118,6 +118,7 @@ type requestData struct {
 	MaxAge       *uint    `json:"maxAge,omitempty"`
 	Prompt       []string `json:"prompt,omitempty"`
 	ACRValues    []string `json:"acrValues,omitempty"`
+	LoginHint    string   `json:"loginHint,omitempty"`
 }
 
 type requestRow struct {
@@ -235,14 +236,19 @@ func (s *Store) CreateAuthRequest(ctx context.Context, r *oidc.AuthRequest, _ st
 			return nil, oidc.ErrInvalidRequest().WithDescription("prompt=none cannot be combined with other values")
 		}
 
-		// no user interface may be shown: the single sign-on session has to
-		// carry the request as it is, or the client gets an error
-		account, _ := s.ssoAccount(ssoFromContext(ctx), c, r.MaxAge, r.Prompt)
-		if account == nil {
+		// no user interface may be shown: one of the browser's accounts has to
+		// carry the request as it is, or the client gets an error. Which
+		// accounts exist is never part of the error.
+		entry, code := decideNone(s.ssoEntries(ssoFromContext(ctx), c, r.MaxAge), r.LoginHint)
+		if entry == nil {
+			if code == "account_selection_required" {
+				return nil, errAccountSelectionRequired()
+			}
+
 			return nil, oidc.ErrLoginRequired()
 		}
 
-		if !c.FirstParty && !s.hasConsent(account, c.ClientID, scopes) {
+		if !c.FirstParty && !s.hasConsent(entry.account, c.ClientID, scopes) {
 			return nil, errConsentRequired()
 		}
 	}
@@ -259,6 +265,7 @@ func (s *Store) CreateAuthRequest(ctx context.Context, r *oidc.AuthRequest, _ st
 		MaxAge:       r.MaxAge,
 		Prompt:       []string(r.Prompt),
 		ACRValues:    r.ACRValues,
+		LoginHint:    r.LoginHint,
 	}
 
 	raw, _ := json.Marshal(d)
@@ -287,7 +294,7 @@ func (s *Store) CreateAuthRequest(ctx context.Context, r *oidc.AuthRequest, _ st
 func (s *Store) purgeExpired() {
 	cutoff := dateString(time.Now().Add(-time.Hour))
 
-	for _, table := range []string{core.CollectionNameOAuthRequests, core.CollectionNameOAuthTokens, core.CollectionNameOAuthRefreshTokens, core.CollectionNameOAuthSso} {
+	for _, table := range []string{core.CollectionNameOAuthRequests, core.CollectionNameOAuthTokens, core.CollectionNameOAuthRefreshTokens, core.CollectionNameOAuthSso, core.CollectionNameOAuthDeviceCodes} {
 		if _, err := exec(s.app, "DELETE FROM {{"+table+"}} WHERE [[expires]] != '' AND [[expires]] < {:cutoff}", dbx.Params{"cutoff": cutoff}); err != nil {
 			s.app.Logger().Debug("Failed to purge expired OIDC rows", "table", table, "error", err)
 		}
@@ -442,6 +449,18 @@ func grantFrom(req op.TokenRequest) (*grant, error) {
 			family: r.row.FamilyId, client: r.row.ClientId, collection: r.row.CollectionRef, subject: r.row.Subject,
 			sid: r.row.Sid, acr: r.row.Acr, scopes: r.scopes, audience: r.GetAudience(), amr: r.GetAMR(),
 			authTime: r.GetAuthTime(),
+		}, nil
+	case *op.DeviceAuthorizationState:
+		// the library's state has no room for the session: device.go keeps it
+		extra, ok := deviceExtraOf(r)
+		if !ok {
+			return nil, errors.New("unknown device authorization")
+		}
+
+		return &grant{
+			family: extra.family, client: r.ClientID, collection: extra.collection, subject: r.Subject,
+			sid: extra.sid, acr: extra.acr, scopes: r.Scopes, audience: r.GetAudience(), amr: r.AMR,
+			authTime: r.AuthTime,
 		}, nil
 	}
 
@@ -733,19 +752,34 @@ func (s *Store) TerminateSession(context.Context, string, string) error { return
 // the browser (its cookie travels with the request) ends too, together with the
 // Claviger session it is bound to.
 func (s *Store) TerminateSessionFromRequest(ctx context.Context, req *op.EndSessionRequest) (string, error) {
-	if sso := s.ssoRow(ssoFromContext(ctx)); sso != nil {
-		if err := s.endSession(ctx, sso.Sid, sso.Subject, "signed out of the sign-in page", req.ClientID); err != nil {
-			return "", err
+	hinted := req.IDTokenHintClaims != nil && req.UserID != ""
+
+	hintSid := ""
+	if hinted {
+		hintSid = req.IDTokenHintClaims.SessionID
+	}
+
+	if hintSid == "" {
+		// nothing says which account is leaving: every account of the browser
+		// signs out
+		for _, value := range ssoValues(ssoFromContext(ctx)) {
+			if sso := s.ssoRow(value); sso != nil {
+				if err := s.endSession(ctx, sso.Sid, sso.Subject, "signed out of the sign-in page", req.ClientID); err != nil {
+					return "", err
+				}
+			}
 		}
 	}
 
-	if req.IDTokenHintClaims == nil || req.UserID == "" {
+	if !hinted {
 		// nothing identifies the session: only the redirect is honoured
 		return req.RedirectURI, nil
 	}
 
-	if sid := req.IDTokenHintClaims.SessionID; sid != "" {
-		if err := s.endSession(ctx, sid, req.UserID, "signed out by "+req.ClientID, req.ClientID); err != nil {
+	if hintSid != "" {
+		// the id_token_hint names one account: that one signs out, the browser's
+		// other accounts stay
+		if err := s.endSession(ctx, hintSid, req.UserID, "signed out by "+req.ClientID, req.ClientID); err != nil {
 			return "", err
 		}
 	} else {

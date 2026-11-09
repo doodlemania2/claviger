@@ -207,6 +207,7 @@ export function pageOidc() {
                                     t.span({ className: "label sm" }, c.public ? "public" : "confidential"),
                                     " ",
                                     c.firstParty ? t.span({ className: "label sm success" }, "first party") : null,
+                                    c.allowDeviceFlow ? t.span({ className: "label sm" }, "device flow") : null,
                                 ),
                                 t.td(
                                     { className: "col-meta" },

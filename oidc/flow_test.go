@@ -37,7 +37,7 @@ func TestDiscoveryAndJWKS(t *testing.T) {
 			t.Fatal("the implicit grant is advertised")
 		}
 	}
-	if len(grants) != 2 {
+	if len(grants) != 3 {
 		t.Fatalf("grant types: %v", grants)
 	}
 
@@ -45,8 +45,9 @@ func TestDiscoveryAndJWKS(t *testing.T) {
 		t.Fatalf("response types: %v", rt)
 	}
 
-	if _, ok := doc["device_authorization_endpoint"]; ok {
-		t.Fatal("the device flow is advertised")
+	// the device authorization grant (#96) is advertised whenever the provider runs
+	if doc["device_authorization_endpoint"] != issuerURL+"/device_authorization" {
+		t.Fatalf("device_authorization_endpoint: %v", doc["device_authorization_endpoint"])
 	}
 
 	for _, k := range []string{"authorization_endpoint", "token_endpoint", "userinfo_endpoint", "jwks_uri", "end_session_endpoint", "revocation_endpoint"} {

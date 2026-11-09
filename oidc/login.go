@@ -73,7 +73,7 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
 <link rel="stylesheet" href="/oidc/assets/oidc.css">
 {{if .Script}}{{.Text.DataBlock}}{{end}}</head>
 <body>
-<main class="card" id="app" data-page="{{.Page}}" data-request="{{.RequestID}}" data-collection="{{.Collection}}">
+<main class="card" id="app" data-page="{{.Page}}" data-request="{{.RequestID}}" data-collection="{{.Collection}}"{{if .Finish}} data-finish="{{.Finish}}"{{end}}{{if .LoginHint}} data-login-hint="{{.LoginHint}}"{{end}}>
 <h1>{{.Heading}}</h1>
 {{if .Message}}<p class="msg {{.MessageClass}}" role="alert">{{.Message}}</p>{{end}}
 {{if eq .Page "login"}}
@@ -113,6 +113,7 @@ type scopeInfo struct{ Label, Detail string }
 type pageData struct {
 	Title, Heading, Page, RequestID, Collection, ClientName, Account string
 	Message, MessageClass, Script                                    string
+	Finish, LoginHint                                                string // sign-in page: where the token goes (default /oidc/login/finish), prefilled identity
 	Scopes                                                           []scopeInfo
 
 	// fork-local (#97): the language of the page; render fills it in when the caller did not
@@ -176,6 +177,11 @@ func (m *module) bindPages(se *core.ServeEvent) {
 	se.Router.GET(mountPath+"/assets/oidc.css", asset("text/css; charset=utf-8", oidcCSS))
 	se.Router.GET(mountPath+"/assets/login.js", asset("application/javascript; charset=utf-8", loginJS))
 	se.Router.GET(mountPath+"/assets/consent.js", asset("application/javascript; charset=utf-8", consentJS))
+	se.Router.GET(mountPath+"/assets/chooser.css", asset("text/css; charset=utf-8", chooserCSS))
+	se.Router.GET(mountPath+"/assets/chooser.js", asset("application/javascript; charset=utf-8", chooserJS))
+	se.Router.GET(mountPath+"/assets/device.js", asset("application/javascript; charset=utf-8", deviceJS))
+
+	m.bindDeviceRoutes(se)
 }
 
 // ---- browser binding -----------------------------------------------------
@@ -261,28 +267,44 @@ func (m *module) loginPage(e *core.RequestEvent) error {
 		return m.errorPage(e, http.StatusBadRequest, "oidc.err.appUnavailable")
 	}
 
-	// a single sign-on session of this browser carries the request without credentials
 	if req.row.Status == statusPending {
-		value := ssoCookieValue(e.Request)
-
-		account, _ := m.store.ssoAccount(value, client, req.d.MaxAge, req.d.Prompt)
-		if account != nil {
-			if row := m.store.ssoRow(value); row != nil {
-				target, aerr := m.advance(req, client, col, account, grantAuth{
-					sid: row.Sid, acr: row.Acr, amr: parseList(row.Amr), authTime: row.AuthTime.Time(),
-				})
-				if aerr == nil {
-					return e.Redirect(http.StatusFound, target)
-				}
-
-				if errors.Is(aerr, errNeedsConsent) {
-					return m.denyRequest(e, req, "consent_required", "The user has not consented to this client yet.")
-				}
-			}
-		}
+		entries := m.store.ssoEntries(ssoCookieValue(e.Request), client, req.d.MaxAge)
 
 		if slices.Contains(req.d.Prompt, oidc.PromptNone) {
+			// no page may be shown: one account carries the request or the client gets an error
+			entry, code := decideNone(entries, req.d.LoginHint)
+			if entry == nil {
+				return m.denyRequest(e, req, code, "The user is not signed in, or more than one account is.")
+			}
+
+			target, aerr := m.continueWith(req, client, col, entry)
+			if aerr == nil {
+				return e.Redirect(http.StatusFound, target)
+			}
+
+			if errors.Is(aerr, errNeedsConsent) {
+				return m.denyRequest(e, req, "consent_required", "The user has not consented to this client yet.")
+			}
+
 			return m.denyRequest(e, req, "login_required", "The user is not signed in.")
+		}
+
+		// the browser's accounts carry the request without credentials, or the
+		// user picks one
+		dec := decideSSO(entries, decideParams{
+			prompt: req.d.Prompt, hint: req.d.LoginHint, forceLogin: e.Request.URL.Query().Get("account") == "new",
+		})
+
+		switch dec.action {
+		case actContinue:
+			if target, aerr := m.continueWith(req, client, col, dec.entry); aerr == nil {
+				return e.Redirect(http.StatusFound, target)
+			}
+		case actChoose:
+			return m.renderChooser(e, chooserView{
+				flow: flowAuthorize, ref: id, client: client, entries: entries, preselect: dec.preselect,
+				other: mountPath + "/login?authRequestID=" + url.QueryEscape(id) + "&account=new",
+			})
 		}
 	}
 
@@ -291,6 +313,14 @@ func (m *module) loginPage(e *core.RequestEvent) error {
 	return m.render(e, http.StatusOK, pageData{
 		Title: text.T("js.signIn"), Heading: text.T("js.signIn"), Page: "login", RequestID: id,
 		Collection: col.Name, ClientName: client.Name, Script: mountPath + "/assets/login.js", Text: text,
+		LoginHint: req.d.LoginHint,
+	})
+}
+
+// continueWith completes the authorize request with an account of the browser.
+func (m *module) continueWith(req *authRequest, client *Client, col *core.Collection, entry *ssoEntry) (string, error) {
+	return m.advance(req, client, col, entry.account, grantAuth{
+		sid: entry.row.Sid, acr: entry.row.Acr, amr: parseList(entry.row.Amr), authTime: entry.row.AuthTime.Time(),
 	})
 }
 
@@ -332,39 +362,12 @@ func (m *module) loginFinish(e *core.RequestEvent) error {
 		return jsonError(e, http.StatusBadRequest, "oidc.err.appUnavailable")
 	}
 
-	if e.Auth == nil || e.Auth.Collection().Id != col.Id {
-		return jsonError(e, http.StatusUnauthorized, "oidc.err.wrongAccountType")
+	auth, status, msg := m.freshSignIn(e, client, col)
+	if status != 0 {
+		return jsonError(e, status, msg)
 	}
 
-	// only a real, fresh sign-in counts: not an API key, not a token that
-	// predates sessions, not one that has been lying around
-	sid := apis.SessionIdFromRequest(e)
-	if sid == "" {
-		return jsonError(e, http.StatusUnauthorized, "oidc.err.freshRequired")
-	}
-
-	if core.IsBanned(m.app, e.Auth) {
-		return jsonError(e, http.StatusForbidden, "oidc.err.cannotSignIn")
-	}
-
-	if err := m.store.orgBoundOK(client, e.Auth); err != nil {
-		return jsonError(e, http.StatusForbidden, "oidc.err.notOrgMember")
-	}
-
-	var sess struct {
-		Created    types.DateTime `db:"created"`
-		AuthMethod string         `db:"authMethod"`
-	}
-	if err := m.app.ConcurrentDB().NewQuery(
-		"SELECT [[created]], [[authMethod]] FROM {{" + core.CollectionNameSessions + "}} WHERE [[id]] = {:sid}",
-	).Bind(dbx.Params{"sid": sid}).One(&sess); err != nil {
-		return jsonError(e, http.StatusUnauthorized, "oidc.err.freshRequired")
-	}
-
-	authTime := sess.Created.Time()
-	if time.Since(authTime) > maxSignInAge {
-		return jsonError(e, http.StatusUnauthorized, "oidc.err.tooOld")
-	}
+	authTime := auth.authTime
 
 	// max_age (and prompt=login, which the library turns into max_age=0) asks
 	// for a sign-in that is recent enough. One that happened while this very
@@ -375,10 +378,6 @@ func (m *module) loginFinish(e *core.RequestEvent) error {
 		return jsonError(e, http.StatusUnauthorized, "oidc.err.signInAgain")
 	}
 
-	amr, acr := authnContext(sess.AuthMethod, apis.HasFreshPasskey(e, maxSignInAge))
-
-	auth := grantAuth{sid: sid, acr: acr, amr: amr, authTime: authTime}
-
 	target, err := m.advance(req, client, col, e.Auth, auth)
 	if err != nil {
 		if errors.Is(err, errRequestGone) {
@@ -388,10 +387,54 @@ func (m *module) loginFinish(e *core.RequestEvent) error {
 		return jsonError(e, http.StatusInternalServerError, "oidc.err.consentCheckFailed")
 	}
 
-	// this sign-in is now the browser's single sign-on session
-	m.ssoStart(e, col.Id, e.Auth.Id, sid, acr, amr, authTime)
+	// this sign-in is now one of the browser's single sign-on sessions
+	m.ssoStart(e, col.Id, e.Auth.Id, auth.sid, auth.acr, auth.amr, authTime)
 
 	return e.JSON(http.StatusOK, map[string]any{"redirect": target})
+}
+
+// freshSignIn checks that the request carries the token of a real, fresh
+// sign-in of an account that may use the client, and returns how and when it
+// happened. A non-zero status is the HTTP error to answer with. The authorize
+// flow and the device flow share it.
+func (m *module) freshSignIn(e *core.RequestEvent, client *Client, col *core.Collection) (grantAuth, int, string) {
+	if e.Auth == nil || e.Auth.Collection().Id != col.Id {
+		return grantAuth{}, http.StatusUnauthorized, "oidc.err.wrongAccountType"
+	}
+
+	// only a real, fresh sign-in counts: not an API key, not a token that
+	// predates sessions, not one that has been lying around
+	sid := apis.SessionIdFromRequest(e)
+	if sid == "" {
+		return grantAuth{}, http.StatusUnauthorized, "oidc.err.freshRequired"
+	}
+
+	if core.IsBanned(m.app, e.Auth) {
+		return grantAuth{}, http.StatusForbidden, "oidc.err.cannotSignIn"
+	}
+
+	if err := m.store.orgBoundOK(client, e.Auth); err != nil {
+		return grantAuth{}, http.StatusForbidden, "oidc.err.notOrgMember"
+	}
+
+	var sess struct {
+		Created    types.DateTime `db:"created"`
+		AuthMethod string         `db:"authMethod"`
+	}
+	if err := m.app.ConcurrentDB().NewQuery(
+		"SELECT [[created]], [[authMethod]] FROM {{" + core.CollectionNameSessions + "}} WHERE [[id]] = {:sid}",
+	).Bind(dbx.Params{"sid": sid}).One(&sess); err != nil {
+		return grantAuth{}, http.StatusUnauthorized, "oidc.err.freshRequired"
+	}
+
+	authTime := sess.Created.Time()
+	if time.Since(authTime) > maxSignInAge {
+		return grantAuth{}, http.StatusUnauthorized, "oidc.err.tooOld"
+	}
+
+	amr, acr := authnContext(sess.AuthMethod, apis.HasFreshPasskey(e, maxSignInAge))
+
+	return grantAuth{sid: sid, acr: acr, amr: amr, authTime: authTime}, 0, ""
 }
 
 // grantAuth is how and when the user authenticated.
