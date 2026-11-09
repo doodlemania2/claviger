@@ -28,6 +28,19 @@ make jstypes       # regenerate jsvm TS type declarations
 - The release binary and image binary are named `claviger` (`/usr/local/bin/claviger`, with a compat symlink `/usr/local/bin/pocketbase`).
 - Requires Go 1.27+.
 
+### Browser end-to-end tests (`e2e/`)
+
+Playwright (pinned in `e2e/package.json`) drives the admin UI and the hosted pages (`/passkeys`, `/oidc/*`, `/orgs/*`) in Chromium against a real binary. `global-setup.ts` builds `./examples/base`, starts it on `localhost:18090` with a temp data dir and `PB_ENCRYPTION_KEY`, and creates a superuser and a user. Every page is watched for console errors and CSP violations. Specs run in file order against one instance (later ones rely on earlier fixtures).
+
+```bash
+cd e2e
+npm ci
+npx playwright install chromium     # 1.58.2 -> chromium build 1208; a no-op when ~/Library/Caches/ms-playwright has it
+npx playwright test                 # E2E_SKIP_BUILD=1 reuses e2e/.bin/claviger; E2E_KEEP=1 keeps the temp data dir
+```
+
+After a UI change run `npm run build` in `ui/` first (the binary embeds `ui/dist`). CI: the `e2e` job in `test.yml` (master pushes and manual runs).
+
 ### Admin UI (`ui/`)
 
 Svelte + Vite SPA, embedded into the Go binary via `//go:embed all:dist` in `ui/embed.go` (excludable with `-tags no_ui`). Requires Node 24+.

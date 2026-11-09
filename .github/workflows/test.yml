@@ -133,6 +133,53 @@ jobs:
       - name: migrate-db smoke test
         run: scripts/test_migrate_db_smoke.sh
 
+  # Browser end-to-end tests (e2e/): the admin UI and the hosted pages (/passkeys, /oidc/*,
+  # /orgs/*) driven in Chromium against a real binary. Master pushes and manual runs only:
+  # never on a PR (a PR does not need ~10 minutes of browser time per push).
+  #
+  # The Playwright version is pinned in e2e/package.json; `playwright install` fetches the
+  # matching Chromium build (about 150 MB), so a runner that cannot reach the Playwright CDN
+  # fails here with the download error.
+  e2e:
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 30
+    runs-on: ${{ vars.RUNNER_LIGHT || 'tdp-k3s-claviger' }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+
+      - name: Install the e2e dependencies and the pinned browser
+        working-directory: e2e
+        run: |
+          npm ci --no-audit --no-fund
+          # --with-deps installs the system libraries (apt; sudo when not root)
+          npx playwright install --with-deps chromium
+
+      # Builds ./examples/base itself (global-setup.ts) and starts it on a temp data dir.
+      - name: Run the browser tests
+        working-directory: e2e
+        env:
+          CI: "true"
+        run: npx playwright test
+
+      - name: Upload the report on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+            e2e/.run/server.log
+          retention-days: 7
+
   docker-build:
     timeout-minutes: 15
     runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || (vars.RUNNER_LIGHT || 'tdp-k3s-claviger') }}
