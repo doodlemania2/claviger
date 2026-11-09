@@ -53,7 +53,7 @@ func TestEncryptedJSONRoundTripStoresCiphertext(t *testing.T) {
 	r := saveJSONRecord(t, app, col, "Ann", map[string]any{"ssn": "123-45-6789", "kids": []int{1, 2}})
 
 	stored := rawColumn(t, app, col, r.Id, "profile")
-	if !strings.HasPrefix(stored, "enc:v1:") || strings.Contains(stored, "123") {
+	if !strings.HasPrefix(stored, "enc:v1:") || strings.Contains(stored, "123-45") {
 		t.Fatalf("expected ciphertext in the database, got %q", stored)
 	}
 

@@ -5,6 +5,8 @@
 FROM golang:1.27-alpine AS builder
 
 ARG VERSION=dev
+# Optional build tags, e.g. GO_TAGS=kms_aws,kms_gcp for the AWS KMS / Google Cloud KMS key sources.
+ARG GO_TAGS=""
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -16,6 +18,7 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build \
+    -tags "${GO_TAGS}" \
     -ldflags="-s -w -X github.com/doodlemania2/claviger.Version=${VERSION}" \
     -o /claviger \
     ./examples/base

@@ -65,6 +65,7 @@ var auditExcludedCollections = []string{
 	CollectionNameOTPs,
 	CollectionNameAuthOrigins,
 	CollectionNameWebhookDeliveries, // #77: bookkeeping rows of the webhook outbox
+	CollectionNameOrgClosure,        // #84: derived table; a re-parent writes one org_reparent entry
 }
 
 // auditNoiseFields are fields whose changes alone do not warrant an entry

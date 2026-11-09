@@ -42,6 +42,9 @@ jobs:
         # The apis package alone runs past go test's default 10m on the k3s runners.
         run: go test -timeout 30m ./... -v --cover
 
+      - name: Run KMS key source tests (AWS KMS and Google Cloud KMS build tags)
+        run: go test -tags kms_aws,kms_gcp -count=1 ./tools/keys/...
+
       - name: Run linter
         # golangci.yml is schema `version: "2"`, which requires golangci-lint v2
         # (action v7+). The old action@v6 installs v1 and fails to parse it.

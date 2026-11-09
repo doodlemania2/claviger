@@ -167,3 +167,102 @@ func OrgRulePresets(field string) []OrgRulePreset {
 		},
 	}
 }
+
+// OrgAncestorOpts narrows OrgAncestorRule. The zero value means "an active
+// member of the record's org or of any ancestor org, any role".
+type OrgAncestorOpts struct {
+	// Roles limits the membership at the ancestor (empty = any role).
+	Roles []string
+	// MaxDepth, when > 0, only counts ancestors at most this many levels above
+	// the record's org (0 is the org itself, 1 its parent, ...).
+	MaxDepth int
+	// Tag, when set, requires the membership to carry this tag.
+	Tag string
+}
+
+// OrgAncestorRule (#84) grants access to active members of the record's org
+// **or of any of its ancestors** through the closure table `_orgClosure`.
+// Oversight is opt-in: use it only on collections that should be visible to
+// higher orgs; the presets stay org-only (OrgMemberRule). Pastoral data
+// never gets an ancestor rule.
+//
+// Every condition on `ancestor._orgMembers_via_org` and on `depth` shares one
+// join, so role, tag and depth are read from the same row: "admin at an
+// ancestor within two levels" means that one ancestor, not an admin somewhere
+// and a membership elsewhere. Members of a lower org never see upward: the
+// rule only walks from the record's org to its ancestors.
+func OrgAncestorRule(field string, opts OrgAncestorOpts) (string, error) {
+	if opts.Tag != "" && !orgTagRegex.MatchString(opts.Tag) {
+		return "", fmt.Errorf("invalid tag %q", opts.Tag)
+	}
+
+	if opts.MaxDepth < 0 || opts.MaxDepth > OrgHardMaxDepth {
+		return "", fmt.Errorf("invalid depth %d", opts.MaxDepth)
+	}
+
+	for _, r := range opts.Roles {
+		if OrgRoleRank(r) == 0 {
+			return "", fmt.Errorf("invalid role %q", r)
+		}
+	}
+
+	// A tag has to be matched through the tags relation of the membership,
+	// which makes the join alias of the back-relation path longer than the 63
+	// characters of a Postgres identifier (two aliases then truncate to the
+	// same name and the query fails). So a tag rule is written with explicit,
+	// short @collection aliases (k = closure row, m = membership), which keeps
+	// the conditions on one row each and works on both engines.
+	var (
+		member, depth, ancestors string
+		prefix                   string
+	)
+
+	if opts.Tag != "" {
+		k, m := "@collection."+CollectionNameOrgClosure+":k", "@collection."+CollectionNameOrgMembers+":m"
+		prefix = fmt.Sprintf(`%s.archived = false && %s.descendant ?= %s && %s.org ?= %s.ancestor`, field, k, field, m, k)
+		member = m
+		depth = k + ".depth"
+		ancestors = fmt.Sprintf(` && %s.tags.name ?= "%s"`, m, opts.Tag)
+	} else {
+		cp := field + "." + CollectionNameOrgClosure + "_via_descendant"
+		member = cp + ".ancestor._orgMembers_via_org"
+		depth = cp + ".depth"
+		prefix = field + ".archived = false"
+	}
+
+	rule := fmt.Sprintf(`%s && %s.user ?= @request.auth.id && %s.status ?= "active"`, prefix, member, member)
+
+	if len(opts.Roles) > 0 {
+		parts := make([]string, len(opts.Roles))
+		for i, r := range opts.Roles {
+			parts[i] = fmt.Sprintf(`%s.role ?= "%s"`, member, r)
+		}
+
+		if len(parts) == 1 {
+			rule += " && " + parts[0]
+		} else {
+			rule += " && (" + strings.Join(parts, " || ") + ")"
+		}
+	}
+
+	if opts.MaxDepth > 0 {
+		rule += fmt.Sprintf(` && %s ?<= %d`, depth, opts.MaxDepth)
+	}
+
+	return rule + ancestors, nil
+}
+
+// OrgOversightRuleSet (#84) is the "members read, ancestors read too" rule
+// set: list and view use OrgAncestorRule, writes stay with the record's own
+// org (the "members" preset).
+func OrgOversightRuleSet(field string, opts OrgAncestorOpts) (OrgRuleSet, error) {
+	read, err := OrgAncestorRule(field, opts)
+	if err != nil {
+		return OrgRuleSet{}, err
+	}
+
+	set := OrgRulePresets(field)[0].Rules
+	set.List, set.View = &read, &read
+
+	return set, nil
+}

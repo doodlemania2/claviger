@@ -21,6 +21,8 @@ With no encrypted fields defined, nothing changes: no key is needed and no extra
    | `CLAVIGER_KEK` | The key itself: base64 of exactly 32 bytes. Preferred. |
    | `CLAVIGER_KEK_FILE` | Path of a file holding the same base64 text. The file must not be readable by group or others (`chmod 600`). Setting both `CLAVIGER_KEK` and `CLAVIGER_KEK_FILE` is an error. |
    | `CLAVIGER_KEK_AZURE_KEY_ID` | Use a key in Azure Key Vault or Managed HSM instead of a local key: see [Azure Key Vault](#azure-key-vault). Excludes `CLAVIGER_KEK` and `CLAVIGER_KEK_FILE` (setting both is an error). |
+   | `CLAVIGER_KEK_AWS_KEY_ID` | Use a key in AWS KMS: see [AWS KMS](#aws-kms). Needs a build with `-tags kms_aws`. Excludes every other key source. |
+   | `CLAVIGER_KEK_GCP_KEY_ID` | Use a key in Google Cloud KMS: see [Google Cloud KMS](#google-cloud-kms). Needs a build with `-tags kms_gcp`. Excludes every other key source. |
    | the app encryption key (`PB_ENCRYPTION_KEY`, or whatever `--encryptionEnv` names) | Fallback. The key is derived with HKDF-SHA256 and the fixed info string `claviger/kek/v1`, so the same string is never used as two different keys. One secret then guards the settings and the fields, and rotating it means rotating both. |
 
 3. Add the field in the collection editor (type **Encrypted text** or **Encrypted JSON**) or through the API with `"type": "encryptedText"` / `"type": "encryptedJSON"`. Saving a collection that has such a field without a key configured fails with an error naming the variables.
@@ -180,6 +182,7 @@ The app must be able to read the data keys while you switch, so both KEKs are ma
    | `CLAVIGER_KEK_OLD` | The previous KEK (base64). |
    | `CLAVIGER_KEK_FILE_OLD` | A file holding it (mode 600). |
    | `CLAVIGER_KEK_OLD_FROM_APP_KEY=1` | The previous KEK is the one derived from `PB_ENCRYPTION_KEY`: use this to move from the fallback to a dedicated `CLAVIGER_KEK`. |
+   | `CLAVIGER_KEK_AWS_KEY_ID_OLD` / `CLAVIGER_KEK_GCP_KEY_ID_OLD` | The previous KEK is an AWS KMS or Google Cloud KMS key (same format as the primary variable). Needs the same build tag. |
    | `CLAVIGER_KEK_AZURE_KEY_ID_OLD` | The previous KEK is a Key Vault key (URL as for `CLAVIGER_KEK_AZURE_KEY_ID`): use this to move from Key Vault back to a local key, or to another Key Vault key. |
 
    Set only one of them. The app starts, reads every data key through the previous KEK, and writes new keys under the primary. `keys check` (the entrypoint pre-flight) accepts the same variables. A previous KEK that is set but malformed or unreadable is an error: it fails closed.
@@ -222,7 +225,7 @@ Field encryption protects individual values inside `data.db`. To encrypt the who
 
 ## Roadmap
 
-Cloud key sources (Azure Key Vault first) are tracked in #75. The `keyId` in every ciphertext and the `retired` column of `_fieldKeys` are what rotation is built on; a KMS source only has to implement wrap and unwrap.
+Cloud key sources are tracked in #75: Azure Key Vault, AWS KMS and Google Cloud KMS are implemented (the last two behind build tags). The `keyId` in every ciphertext and the `retired` column of `_fieldKeys` are what rotation is built on; a KMS source only has to implement wrap and unwrap.
 
 ## Azure Key Vault
 
@@ -283,3 +286,51 @@ Both directions use the same rewrap flow as any KEK rotation:
 ### Live test
 
 `CLAVIGER_LIVE_KEY_URL=https://<vault>.vault.azure.net/keys/<name> go test -tags azurekv_live -run Live ./tools/keys/azurekv` runs a wrap/unwrap round trip against a real vault with the credentials from the environment. It is not part of CI.
+
+## AWS KMS and Google Cloud KMS
+
+AWS KMS and Google Cloud KMS work like Azure Key Vault: the key-encryption key stays in the service, Claviger only asks it to wrap and unwrap the field data keys, and record data never leaves the server. Both talk to the service's REST API directly with the standard library (SigV4 signing for AWS, OAuth2 for Google), with no cloud SDK, so they add **no Go module dependencies**.
+
+**Build tags.** The sources are compiled in only with `-tags kms_aws` and/or `-tags kms_gcp`. The release binary and image are built **without** them. To use one, build your own:
+
+```sh
+go build -tags kms_aws,kms_gcp -o claviger ./examples/base
+docker build --build-arg GO_TAGS=kms_aws,kms_gcp -t claviger:kms .
+```
+
+If the variable is set in a binary built without the tag, the app **does not start** (and `keys check` reports `FAILED`): the error names the variable and the tag. It never falls back to another key. Exactly one key source may be configured; setting two (for example `CLAVIGER_KEK_AWS_KEY_ID` and `CLAVIGER_KEK_GCP_KEY_ID`, or one of them with `CLAVIGER_KEK`) is an error. Everything under [Failure behaviour](#failure-behaviour) in the Azure section applies unchanged: fail closed at startup when the service refuses, inconclusive results (timeout, network, throttling, 5xx) skip the pre-flight, calls are retried with backoff and jitter, and credentials, tokens and key material are never logged. Cost and availability are the same too: a few calls per start, none while serving.
+
+### AWS KMS
+
+| Variable | Meaning |
+|---|---|
+| `CLAVIGER_KEK_AWS_KEY_ID` | A symmetric key ARN (preferred), key id, or alias (`alias/name`). It is resolved with `DescribeKey` at startup and the key's **ARN** is what is stored (`awskms:<arn>`), so repointing an alias later cannot silently change the KEK. A key id or alias needs `AWS_REGION` (or `AWS_DEFAULT_REGION`); an ARN carries its region. |
+| `CLAVIGER_KEK_AWS_KEY_ID_OLD` | The previous key during a rotation. It is read with the same credentials as the primary. |
+| `AWS_ENDPOINT_URL_KMS` | Optional endpoint override (VPC endpoint, emulator). |
+
+Credentials, in order: `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (/ `AWS_SESSION_TOKEN`); web identity (`AWS_WEB_IDENTITY_TOKEN_FILE` + `AWS_ROLE_ARN`, as set by EKS IRSA; `AWS_ENDPOINT_URL_STS` overrides STS); the shared credentials file (`AWS_SHARED_CREDENTIALS_FILE`, `AWS_PROFILE`; static keys only, role-assumption and SSO profiles are not supported); the ECS task role (`AWS_CONTAINER_CREDENTIALS_*`); the EC2 instance profile (IMDSv2). Temporary credentials are refreshed before they expire.
+
+What to create: a **symmetric** `ENCRYPT_DECRYPT` key (`SYMMETRIC_DEFAULT`; asymmetric and HMAC keys are refused). The identity needs `kms:DescribeKey`, `kms:Encrypt` and `kms:Decrypt` on the key. Claviger binds each wrapped data key to the encryption context `purpose=claviger-dek-wrap`; do not write key policies or grants that require a different context.
+
+Rotation: turning on **automatic key rotation** in KMS keeps the ARN and old ciphertexts stay readable, so nothing needs re-wrapping. To move to a different KMS key (or from or to a local or other cloud key), set the new key as primary and the old one in `CLAVIGER_KEK_AWS_KEY_ID_OLD` (or `CLAVIGER_KEK_OLD`, `CLAVIGER_KEK_AZURE_KEY_ID_OLD`, ...), start, run `claviger keys rewrap`, then remove the old variable. Do not schedule deletion of the old key before the rewrap has finished; KMS key deletion is irreversible and makes the data unreadable.
+
+Runbook: [docs/testing/aws-kms-kek.md](testing/aws-kms-kek.md).
+
+### Google Cloud KMS
+
+| Variable | Meaning |
+|---|---|
+| `CLAVIGER_KEK_GCP_KEY_ID` | `projects/<project>/locations/<location>/keyRings/<ring>/cryptoKeys/<key>`, a symmetric `ENCRYPT_DECRYPT` key, **without** a version. Cloud KMS decrypts with whichever version produced the ciphertext, so adding or rotating versions needs no re-wrap; the stored key id is `gcpkms:<resource name>`. |
+| `CLAVIGER_KEK_GCP_KEY_ID_OLD` | The previous key during a rotation. |
+
+Credentials: the service account key file named by `GOOGLE_APPLICATION_CREDENTIALS` (a signed JWT is exchanged for an access token) when set, else the metadata server (Compute Engine, GKE Workload Identity, Cloud Run, ...; `GCE_METADATA_HOST` overrides the host). Authorized-user files (`gcloud auth application-default login`) and external-account (workload identity federation) files are **not** supported; use an attached service account or a key file. Prefer an attached service account to a key file.
+
+What to create: a symmetric key whose primary version is enabled, and grant the service account `roles/cloudkms.cryptoKeyEncrypterDecrypter` on the key (it includes `cloudkms.cryptoKeys.get`, which Claviger uses once at startup). Wrapped data keys are bound to the key id as additional authenticated data.
+
+Rotation: new key versions are transparent. To move to a different key, set it as primary, the old one in `CLAVIGER_KEK_GCP_KEY_ID_OLD`, start, `claviger keys rewrap`, then remove the old variable. Do not destroy a key version that still protects data keys.
+
+Runbook: [docs/testing/gcp-kms-kek.md](testing/gcp-kms-kek.md).
+
+### Tests
+
+`go test -tags kms_aws,kms_gcp ./tools/keys/...` runs the cloud KMS suites against in-process fakes (CI runs it in the `test` job). The fakes perform real AES-GCM wrapping and the AWS fake verifies SigV4 signatures independently of the client. There is no live-cloud test in CI; use the runbooks.
