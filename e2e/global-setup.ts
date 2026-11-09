@@ -33,12 +33,15 @@ export default async function globalSetup() {
         execFileSync("go", ["build", "-o", bin, "./examples/base"], { cwd: root, stdio: "inherit" });
     }
 
-    const data = mkdtempSync(join(tmpdir(), "claviger-e2e-"));
+    // A private parent directory: the binary writes automigrate files to
+    // <dir>/../pb_migrations and would otherwise share them with every other run.
+    const sandbox = mkdtempSync(join(tmpdir(), "claviger-e2e-"));
+    const data = join(sandbox, "pb_data");
     // 32 chars: enables the settings encryption, the OIDC provider and field encryption
     const env = { ...process.env, PB_ENCRYPTION_KEY: randomBytes(24).toString("base64").slice(0, 32) };
     const admin = { email: "admin@example.com", password: randomBytes(12).toString("hex") };
 
-    execFileSync(bin, ["superuser", "upsert", admin.email, admin.password, "--dir", data, "--encryptionEnv", "PB_ENCRYPTION_KEY"], { env, stdio: "inherit" });
+    execFileSync(bin, ["superuser", "upsert", admin.email, admin.password, "--dir", data, "--encryptionEnv", "PB_ENCRYPTION_KEY"], { env, cwd: sandbox, stdio: "inherit" });
 
     // The settings allow plain http only for localhost; the application URL is
     // the OIDC issuer base, so it has to match what the browser uses.
@@ -47,7 +50,7 @@ export default async function globalSetup() {
     const child = spawn(
         bin,
         ["serve", "--http", `127.0.0.1:${port}`, "--dir", data, "--encryptionEnv", "PB_ENCRYPTION_KEY"],
-        { env, stdio: ["ignore", out, out], detached: false },
+        { env, cwd: sandbox, stdio: ["ignore", out, out], detached: false },
     );
     child.on("exit", (code) => {
         if (code) console.error(`e2e: claviger exited with ${code}, see ${logFile}`);
@@ -63,7 +66,7 @@ export default async function globalSetup() {
     if (!res.ok) throw new Error(`superuser sign-in failed: ${res.status} ${await res.text()}`);
     const { token } = (await res.json()) as { token: string };
 
-    const state = { base, port, pid: child.pid, data, admin, token, log: logFile };
+    const state = { base, port, pid: child.pid, data, sandbox, admin, token, log: logFile };
     writeFileSync(join(runDir, "state.json"), JSON.stringify(state));
 
     const api = async (method: string, path: string, body?: unknown) => {
