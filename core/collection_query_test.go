@@ -26,7 +26,7 @@ func TestCollectionQuery(t *testing.T) {
 	expected := "SELECT {{_collections}}.* FROM `_collections`"
 
 	sql := app.CollectionQuery().Build().SQL()
-	if sql != expected {
+	if tests.NormalizeQuotes(sql) != expected {
 		t.Errorf("Expected sql %s, got %s", expected, sql)
 	}
 }

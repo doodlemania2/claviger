@@ -49,7 +49,7 @@ func TestModelQuery(t *testing.T) {
 	expectedSQL := "SELECT {{_collections}}.* FROM `_collections`"
 	for i, q := range []*dbx.SelectQuery{modelsQuery, logsModelQuery} {
 		sql := q.Build().SQL()
-		if sql != expectedSQL {
+		if tests.NormalizeQuotes(sql) != expectedSQL {
 			t.Fatalf("[%d] Expected select\n%s\ngot\n%s", i, expectedSQL, sql)
 		}
 	}

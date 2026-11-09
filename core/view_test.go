@@ -14,12 +14,20 @@ import (
 func ensureNoTempViews(app core.App, t *testing.T) {
 	var total int
 
-	err := app.DB().Select("count(*)").
+	query := app.DB().Select("count(*)").
 		From("sqlite_schema").
 		AndWhere(dbx.HashExp{"type": "view"}).
 		AndWhere(dbx.NewExp(`[[name]] LIKE '%\_temp\_%' ESCAPE '\'`)).
-		Limit(1).
-		Row(&total)
+		Limit(1)
+	if tests.IsPostgres() {
+		// the Postgres catalog (fork: the SQLite catalog does not exist there)
+		query = app.DB().Select("count(*)").
+			From("information_schema.views").
+			AndWhere(dbx.NewExp(`[[table_schema]] = current_schema()`)).
+			AndWhere(dbx.NewExp(`[[table_name]] LIKE '%\_temp\_%'`)).
+			Limit(1)
+	}
+	err := query.Row(&total)
 	if err != nil {
 		t.Fatalf("Failed to check for temp views: %v", err)
 	}

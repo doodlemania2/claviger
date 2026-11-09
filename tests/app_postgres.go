@@ -75,6 +75,35 @@ func SkipOnPostgres(t testing.TB, reason string) {
 	}
 }
 
+// ColumnType translates the SQLite column definition that an upstream test
+// expects (for example "TEXT DEFAULT ” NOT NULL") to the definition of the
+// engine of the test apps, so that the same assertion holds on both. The
+// Postgres definitions are pinned by tools/dialect and docs/datastores.md
+// ("How data is stored").
+func ColumnType(sqlite string) string {
+	if !IsPostgres() {
+		return sqlite
+	}
+
+	return strings.NewReplacer(
+		"TEXT DEFAULT", `TEXT COLLATE "C" DEFAULT`,
+		"JSON DEFAULT", "JSONB DEFAULT",
+		"NUMERIC DEFAULT", "DOUBLE PRECISION DEFAULT",
+	).Replace(sqlite)
+}
+
+// NormalizeQuotes turns the identifier quoting of the SQL that a builder of the
+// test apps produced into the SQLite spelling (backticks), so that tests that
+// assert a statement text hold on both engines. SQL built for the SQLite
+// auxiliary database is returned as it is.
+func NormalizeQuotes(sql string) string {
+	if !IsPostgres() {
+		return sql
+	}
+
+	return strings.ReplaceAll(sql, `"`, "`")
+}
+
 type testPostgres struct {
 	adminURL string
 	tplName  string

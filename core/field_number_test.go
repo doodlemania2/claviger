@@ -22,7 +22,7 @@ func TestNumberFieldColumnType(t *testing.T) {
 
 	expected := "NUMERIC DEFAULT 0 NOT NULL"
 
-	if v := f.ColumnType(app); v != expected {
+	if v := f.ColumnType(app); v != tests.ColumnType(expected) {
 		t.Fatalf("Expected\n%q\ngot\n%q", expected, v)
 	}
 }
