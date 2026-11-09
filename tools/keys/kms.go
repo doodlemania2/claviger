@@ -1,7 +1,5 @@
 package keys
 
-import "fmt"
-
 // Fork-local (Claviger #75): AWS KMS and Google Cloud KMS as KEK sources.
 //
 // The clients (tools/keys/awskms, tools/keys/gcpkms) are plain standard-library
@@ -27,7 +25,3 @@ const (
 	// EnvKEKGCPKeyIDOld names the previous Cloud KMS key during a rotation.
 	EnvKEKGCPKeyIDOld = "CLAVIGER_KEK_GCP_KEY_ID_OLD"
 )
-
-func notBuilt(envName, tag string) error {
-	return fmt.Errorf("%s is set but this build has no support for it: rebuild with -tags %s (the release image does not include it unless built with that tag)", envName, tag)
-}
