@@ -273,6 +273,39 @@ export function backupsForm(propsArg = {}) {
                         ),
                         t.div(
                             { className: "col-lg-12" },
+                            t.div(
+                                { className: "field" },
+                                t.input({
+                                    id: "backups.encrypt",
+                                    type: "checkbox",
+                                    className: "switch",
+                                    checked: () => !!data.formSettings.backups.encrypt,
+                                    onchange: (e) => {
+                                        data.formSettings.backups.encrypt = e.target.checked;
+                                    },
+                                }),
+                                t.label({ htmlFor: "backups.encrypt" }, "Encrypt new backups"),
+                            ),
+                            t.div(
+                                { className: "field-help" },
+                                "New backups (manual, auto and S3) are saved as .zip.enc, encrypted with your key-encryption key (CLAVIGER_KEK).",
+                            ),
+                            t.div(
+                                {
+                                    hidden: () => !data.formSettings.backups.encrypt,
+                                    className: "alert warning m-t-10",
+                                },
+                                t.div(
+                                    { className: "content" },
+                                    t.strong({}, "Back up your key separately. "),
+                                    "If you lose the key-encryption key, every encrypted backup is unrecoverable. ",
+                                    "Downloads stay encrypted and are decrypted with the `backups decrypt` command. ",
+                                    "Existing plain backups keep working.",
+                                ),
+                            ),
+                        ),
+                        t.div(
+                            { className: "col-lg-12" },
                             app.components.s3ConfigFields({
                                 toggleLabel: "Store backups in S3 storage",
                                 testFilesystem: "backups",
