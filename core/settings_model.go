@@ -521,6 +521,12 @@ type BackupsConfig struct {
 	// by older versions (without this field) keep verification ON.
 	DisableVerify bool `form:"disableVerify" json:"disableVerify"`
 
+	// Encrypt (Claviger #78) makes every new backup (manual, cron and S3) an
+	// encrypted "<name>.zip.enc" archive, wrapped with the configured
+	// key-encryption key (CLAVIGER_KEK and friends). Plain backups that
+	// already exist stay restorable. Off by default.
+	Encrypt bool `form:"encrypt" json:"encrypt"`
+
 	// S3 is an optional S3 storage config specifying where to store the app backups.
 	S3 S3Config `form:"s3" json:"s3"`
 }

@@ -39,7 +39,8 @@ func backupCreate(e *core.RequestEvent) error {
 
 // -------------------------------------------------------------------
 
-var backupNameRegex = regexp.MustCompile(`^[a-z0-9_-]+\.zip$`)
+// backupNameRegex accepts plain ".zip" names and (fork, #78) encrypted ".zip.enc" ones.
+var backupNameRegex = regexp.MustCompile(`^[a-z0-9_-]+\.zip(\.enc)?$`)
 
 type backupCreateForm struct {
 	app core.App
@@ -70,7 +71,8 @@ func (form *backupCreateForm) checkUniqueName(value any) error {
 	}
 	defer fsys.Close()
 
-	if exists, err := fsys.Exists(v); err != nil || exists {
+	// fork (#78): with backup encryption on, the file is stored as "<name>.enc"
+	if exists, err := fsys.Exists(core.BackupStoredName(form.app, v)); err != nil || exists {
 		return validation.NewError("validation_backup_name_exists", "The backup file name is invalid or already exists.")
 	}
 

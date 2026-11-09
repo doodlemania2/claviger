@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -112,7 +111,10 @@ func (app *BaseApp) RestoreBackup(ctx context.Context, name string) error {
 			defer os.Remove(tempZip.Name())
 			defer tempZip.Close() // note: this technically shouldn't be necessary but it is here to workaround platforms discrepancies
 
-			_, err = io.Copy(tempZip, br)
+			// fork (#78): decrypts an encrypted backup on the fly; the
+			// current pb_data is not touched until the whole archive was
+			// decrypted, authenticated and extracted
+			_, err = copyBackupAsZip(e.Context, e.App, br, tempZip)
 			if err != nil {
 				return err
 			}
@@ -138,9 +140,30 @@ func (app *BaseApp) RestoreBackup(ctx context.Context, name string) error {
 			// since the blob reader currently doesn't implement ReaderAt
 			zipPath := filepath.Join(e.App.DataDir(), LocalBackupsDirName, filepath.Base(name))
 
-			err = archive.Extract(zipPath, extractedDataDir)
+			// fork (#78): an encrypted backup is decrypted into a temp zip first
+			encrypted, err := backupFileIsEncrypted(zipPath)
 			if err != nil {
 				return err
+			}
+
+			if encrypted {
+				tempZipPath, err := decryptLocalBackupToTemp(e.Context, e.App, zipPath, localTempDir, "pb_restore_zip")
+				if err != nil {
+					return err
+				}
+				defer os.Remove(tempZipPath)
+
+				err = archive.Extract(tempZipPath, extractedDataDir)
+				if err != nil {
+					return err
+				}
+
+				_ = os.Remove(tempZipPath)
+			} else {
+				err = archive.Extract(zipPath, extractedDataDir)
+				if err != nil {
+					return err
+				}
 			}
 		}
 

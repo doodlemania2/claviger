@@ -196,6 +196,10 @@ type BackupVerification struct {
 	DurationMs  int64          `json:"durationMs"`
 	CheckedAt   types.DateTime `json:"checkedAt"`
 	ArchiveSize int64          `json:"archiveSize"`
+
+	// Encrypted is true when the archive was an encrypted backup (it was
+	// decrypted, authenticated and then verified like a plain one).
+	Encrypted bool `json:"encrypted"`
 }
 
 // IsVerifyingBackup returns the key of the backup currently being verified (if any).
@@ -367,13 +371,31 @@ func runBackupVerification(
 		if err != nil {
 			return err, true
 		}
-		_, err = io.Copy(f, &ctxReader{ctx: ctx, r: br})
+		// fork (#78): an encrypted backup is decrypted while it downloads
+		encrypted, err := copyBackupAsZip(ctx, app, br, f)
 		err = errors.Join(err, f.Close())
+		result.Encrypted = encrypted
 		if err != nil {
+			if encrypted {
+				return fmt.Errorf("failed to decrypt the backup: %w", err), false
+			}
 			return fmt.Errorf("failed to download the backup: %w", err), false
 		}
 	} else {
 		zipPath = filepath.Join(app.DataDir(), LocalBackupsDirName, filepath.Base(key))
+
+		// fork (#78): decrypt an encrypted backup into the temp dir
+		encrypted, err := backupFileIsEncrypted(zipPath)
+		if err != nil {
+			return fmt.Errorf("failed to read the backup: %w", err), false
+		}
+		result.Encrypted = encrypted
+		if encrypted {
+			zipPath, err = decryptLocalBackupToTemp(ctx, app, zipPath, tempDir, "archive_*.zip")
+			if err != nil {
+				return fmt.Errorf("failed to decrypt the backup: %w", err), false
+			}
+		}
 	}
 
 	zr, err := zip.OpenReader(zipPath)

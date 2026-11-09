@@ -175,7 +175,8 @@ func (pb *PocketBase) Start() error {
 	pb.RootCmd.AddCommand(cmd.NewSuperuserCommand(pb))
 	pb.RootCmd.AddCommand(oidc.NewCommand(pb))
 	pb.RootCmd.AddCommand(cmd.NewServeCommand(pb, !pb.hideStartBanner))
-	pb.RootCmd.AddCommand(cmd.NewKeysCommand(pb)) // fork-local (#75)
+	pb.RootCmd.AddCommand(cmd.NewKeysCommand(pb))    // fork-local (#75)
+	pb.RootCmd.AddCommand(cmd.NewBackupsCommand(pb)) // fork-local (#78)
 
 	return pb.Execute()
 }
@@ -286,6 +287,11 @@ func (pb *PocketBase) skipBootstrap() bool {
 	// replica still owns it, and the maintenance commands first check that no
 	// server does (each of them bootstraps the app itself)
 	if cmd.Parent() != nil && cmd.Parent().Name() == "keys" {
+		return true
+	}
+
+	// fork-local (#78): `backups decrypt` is an offline file operation
+	if cmd.Parent() != nil && cmd.Parent().Name() == "backups" {
 		return true
 	}
 

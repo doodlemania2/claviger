@@ -33,6 +33,8 @@ func generateBackupName(app App, prefix string) string {
 func (app *BaseApp) registerAutobackupHooks() {
 	const jobId = "__pbAutoBackup__"
 
+	app.registerBackupEncryptionHooks() // fork (#78)
+
 	loadJob := func() {
 		rawSchedule := app.Settings().Backups.Cron
 		if rawSchedule == "" {
@@ -43,7 +45,7 @@ func (app *BaseApp) registerAutobackupHooks() {
 		app.Cron().Add(jobId, rawSchedule, func() {
 			const autoPrefix = "@auto_pb_backup_"
 
-			name := generateBackupName(app, autoPrefix)
+			name := BackupStoredName(app, generateBackupName(app, autoPrefix)) // fork (#78): ".enc" when encrypting
 
 			if err := app.CreateBackup(context.Background(), name); err != nil {
 				app.Logger().Error(
