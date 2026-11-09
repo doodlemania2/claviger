@@ -131,7 +131,7 @@ func TestOrgsUpdateArchiveDelete(t *testing.T) {
 		patch("archived orgs refuse other changes from owners", "hank", orgA, `{"name":"Nope"}`, 409),
 		patch("admin cannot set the parent", "bob", orgP1, `{"parent":""}`, 403),
 		patch("superuser sets the parent", "super", orgP2, `{"parent":"`+orgD+`"}`, 200),
-		patch("an org with children cannot get a parent", "super", orgD, `{"parent":"`+orgP2+`"}`, 400),
+		patch("an org cannot become a child of its own descendant (#84)", "super", orgD, `{"parent":"`+orgP1+`"}`, 400),
 		patch("an org cannot be its own parent", "super", orgP2, `{"parent":"`+orgP2+`"}`, 400),
 		{
 			name: "archiving hides the org from member rules", who: "alice", method: http.MethodPatch, url: "/api/orgs/" + orgP1,
