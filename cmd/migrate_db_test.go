@@ -114,9 +114,19 @@ func openMigrateApp(t testing.TB, dir, pgURL string) core.App {
 	if err := app.Bootstrap(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = app.ClearBootstrap() })
+	t.Cleanup(func() { terminateMigrateApp(app) })
 
 	return app
+}
+
+// terminateMigrateApp stops what OnServe started (the webhook worker) before the
+// databases are closed, like TestApp.Cleanup does.
+func terminateMigrateApp(app core.App) {
+	event := new(core.TerminateEvent)
+	event.App = app
+	_ = app.OnTerminate().Trigger(event, func(e *core.TerminateEvent) error {
+		return e.App.ClearBootstrap()
+	})
 }
 
 func serveHandler(t testing.TB, app core.App) http.Handler {
@@ -522,7 +532,7 @@ func TestMigrateDBResume(t *testing.T) {
 	if _, err := app.DB().NewQuery("INSERT INTO _params (id, value, created, updated) VALUES ('zz', '1', '', '')").Execute(); err != nil {
 		t.Fatal(err)
 	}
-	_ = app.ClearBootstrap()
+	terminateMigrateApp(app)
 	_, err = MigrateDB(context.Background(), MigrateDBOptions{Dir: other, TargetURL: target, Resume: true})
 	if err == nil || !strings.Contains(err.Error(), "source changed") {
 		t.Fatalf("expected a changed source error, got %v", err)
@@ -834,7 +844,7 @@ func TestMigrateDBForkFeatures(t *testing.T) {
 	{
 		app := openMigrateApp(t, dir, "")
 		populateForkDB(t, app)
-		_ = app.ClearBootstrap()
+		terminateMigrateApp(app)
 	}
 
 	target := newMigrateTarget(t)
