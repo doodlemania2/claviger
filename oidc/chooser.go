@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/doodlemania2/claviger/apis"
 	"github.com/doodlemania2/claviger/core"
 )
 
@@ -27,24 +28,8 @@ import (
 // another browser can enumerate or pick them, and nothing about them reaches
 // the relying party.
 //
-// Every user-visible string of the page is in chooserText (Go) or STRINGS at
-// the top of chooserJS, so the page can be translated without touching the
-// logic.
-
-var chooserText = struct {
-	Title, Heading, Sub, UseAnother, SignOut, SignOutAll string
-	ReasonCollection, ReasonOrg, ReasonReauth            string
-}{
-	Title:            "Choose an account",
-	Heading:          "Choose an account",
-	Sub:              "to continue to",
-	UseAnother:       "Use another account",
-	SignOut:          "Sign out",
-	SignOutAll:       "Sign out of all accounts",
-	ReasonCollection: "This account cannot be used with this application.",
-	ReasonOrg:        "This account is not a member of the organization this application belongs to.",
-	ReasonReauth:     "This account has to sign in again.",
-}
+// Every user-visible string of the page is in the catalog (oidc.chooser.*, and
+// js.chooser.* for the script), see docs/localization.md.
 
 const (
 	flowAuthorize = "authorize"
@@ -92,10 +77,12 @@ func initialOf(s string) string {
 }
 
 func (m *module) renderChooser(e *core.RequestEvent, v chooserView) error {
+	text := apis.NewPageText(e, "")
+
 	d := extData{
-		Page: "chooser", Title: chooserText.Title, Heading: chooserText.Heading, Ref: v.ref, Flow: v.flow,
+		Page: "chooser", Title: text.T("oidc.chooser.title"), Heading: text.T("oidc.chooser.heading"), Ref: v.ref, Flow: v.flow,
 		ClientName: v.client.Name, Script: mountPath + "/assets/chooser.js", Other: v.other,
-		SelectURL: mountPath + "/account/select", SignoutURL: mountPath + "/account/signout", T: chooserText,
+		SelectURL: mountPath + "/account/select", SignoutURL: mountPath + "/account/signout", Text: text,
 	}
 
 	for _, en := range v.entries {
@@ -112,11 +99,11 @@ func (m *module) renderChooser(e *core.RequestEvent, v chooserView) error {
 
 		switch en.reason {
 		case reasonCollection:
-			a.Reason = chooserText.ReasonCollection
+			a.Reason = text.T("oidc.chooser.reasonCollection")
 		case reasonOrg:
-			a.Reason = chooserText.ReasonOrg
+			a.Reason = text.T("oidc.chooser.reasonOrg")
 		case reasonReauth:
-			a.Reason = chooserText.ReasonReauth
+			a.Reason = text.T("oidc.chooser.reasonReauth")
 		}
 
 		d.Accounts = append(d.Accounts, a)
@@ -142,21 +129,21 @@ func (m *module) loadFlow(e *core.RequestEvent, flow, ref string) (*pendingFlow,
 	case flowAuthorize:
 		req, err := m.store.requestByID(ref)
 		if err != nil || req.row.Status != statusPending {
-			return nil, http.StatusBadRequest, "This sign-in has expired. Return to the app and try again."
+			return nil, http.StatusBadRequest, "oidc.err.signInExpired"
 		}
 
 		if !m.checkBinding(e, req) {
-			return nil, http.StatusForbidden, "This sign-in was started in another browser."
+			return nil, http.StatusForbidden, "oidc.err.signInOtherBrowser"
 		}
 
 		client, err := m.store.findClient(req.row.ClientId)
 		if err != nil {
-			return nil, http.StatusBadRequest, "This application is not available."
+			return nil, http.StatusBadRequest, "oidc.err.appUnavailable"
 		}
 
 		col, err := client.collection()
 		if err != nil {
-			return nil, http.StatusBadRequest, "This application is not available."
+			return nil, http.StatusBadRequest, "oidc.err.appUnavailable"
 		}
 
 		return &pendingFlow{
@@ -173,7 +160,7 @@ func (m *module) loadFlow(e *core.RequestEvent, flow, ref string) (*pendingFlow,
 		}
 
 		if row.Status != deviceStatusPending {
-			return nil, http.StatusBadRequest, "This code has already been used."
+			return nil, http.StatusBadRequest, "oidc.device.used"
 		}
 
 		return &pendingFlow{
@@ -186,7 +173,7 @@ func (m *module) loadFlow(e *core.RequestEvent, flow, ref string) (*pendingFlow,
 		}, 0, ""
 	}
 
-	return nil, http.StatusBadRequest, "Invalid request."
+	return nil, http.StatusBadRequest, "oidc.err.invalidRequest"
 }
 
 type chooserBody struct {
@@ -199,7 +186,7 @@ type chooserBody struct {
 func (m *module) accountSelect(e *core.RequestEvent) error {
 	var body chooserBody
 	if err := e.BindBody(&body); err != nil {
-		return jsonError(e, http.StatusBadRequest, "Invalid request.")
+		return jsonError(e, http.StatusBadRequest, "oidc.err.invalidRequest")
 	}
 
 	pf, status, msg := m.loadFlow(e, body.Flow, body.Ref)
@@ -213,18 +200,18 @@ func (m *module) accountSelect(e *core.RequestEvent) error {
 		}
 
 		if !en.eligible() {
-			return jsonError(e, http.StatusBadRequest, "This account cannot be used here.")
+			return jsonError(e, http.StatusBadRequest, "oidc.chooser.cannotUseHere")
 		}
 
 		target, err := pf.proceed(&en)
 		if err != nil {
-			return jsonError(e, http.StatusBadRequest, "This sign-in has expired. Return to the app and try again.")
+			return jsonError(e, http.StatusBadRequest, "oidc.err.signInExpired")
 		}
 
 		return e.JSON(http.StatusOK, map[string]any{"redirect": target})
 	}
 
-	return jsonError(e, http.StatusBadRequest, "That account is no longer signed in.")
+	return jsonError(e, http.StatusBadRequest, "oidc.chooser.noLongerSignedIn")
 }
 
 // accountSignout signs one account (or, with "all", every account) of the
@@ -233,7 +220,7 @@ func (m *module) accountSelect(e *core.RequestEvent) error {
 func (m *module) accountSignout(e *core.RequestEvent) error {
 	var body chooserBody
 	if err := e.BindBody(&body); err != nil {
-		return jsonError(e, http.StatusBadRequest, "Invalid request.")
+		return jsonError(e, http.StatusBadRequest, "oidc.err.invalidRequest")
 	}
 
 	pf, status, msg := m.loadFlow(e, body.Flow, body.Ref)
@@ -248,7 +235,7 @@ func (m *module) accountSignout(e *core.RequestEvent) error {
 		}
 
 		if err := m.store.endSession(e.Request.Context(), en.row.Sid, en.row.Subject, "signed out on the sign-in page", pf.clientID); err != nil {
-			return jsonError(e, http.StatusInternalServerError, "Failed to sign out.")
+			return jsonError(e, http.StatusInternalServerError, "oidc.chooser.signOutFailed")
 		}
 	}
 
@@ -266,14 +253,13 @@ type extData struct {
 	Other, SelectURL, SignoutURL                                                    string
 	Scopes                                                                          []scopeInfo
 	Account, UserCode, Action                                                       string
-	T                                                                               any // the page's strings
+	Text                                                                            *apis.PageText // the language of the page; renderExt fills it in when the caller did not
+	AccountHTML                                                                     template.HTML
 }
 
-const defaultLang = "en"
-
-var extTemplate = template.Must(template.New("ext").Funcs(template.FuncMap{"lang": func() string { return defaultLang }}).Parse(`
+var extTemplate = template.Must(template.New("ext").Parse(`
 {{define "head"}}<!doctype html>
-<html lang="{{lang}}">
+<html lang="{{.Text.Lang}}"{{.Text.Attrs}}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -282,7 +268,7 @@ var extTemplate = template.Must(template.New("ext").Funcs(template.FuncMap{"lang
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/oidc/assets/oidc.css">
 <link rel="stylesheet" href="/oidc/assets/chooser.css">
-</head>
+{{if .Script}}{{.Text.DataBlock}}{{end}}</head>
 <body>
 <main class="card" id="app" data-page="{{.Page}}" data-flow="{{.Flow}}" data-request="{{.Ref}}" data-other="{{.Other}}" data-select="{{.SelectURL}}" data-signout="{{.SignoutURL}}">
 <h1>{{.Heading}}</h1>
@@ -294,36 +280,36 @@ var extTemplate = template.Must(template.New("ext").Funcs(template.FuncMap{"lang
 </html>{{end}}
 
 {{define "chooser"}}{{template "head" .}}
-<p class="sub">{{.T.Sub}} <strong>{{.ClientName}}</strong></p>
+<p class="sub">{{.Text.HTML "oidc.login.continueToHtml" (.Text.Args "client" .ClientName)}}</p>
 <ul class="accounts">
 {{range .Accounts}}<li>
 <button type="button" class="account{{if .Preselected}} pre{{end}}" data-account="{{.ID}}"{{if not .Eligible}} disabled{{end}}>
 <span class="avatar" aria-hidden="true">{{.Initial}}</span>
 <span class="who"><strong>{{.Name}}</strong>{{if .Email}}<span class="muted">{{.Email}}</span>{{end}}<span class="muted">{{.Collection}}</span>{{if .Reason}}<span class="why">{{.Reason}}</span>{{end}}</span>
 </button>
-<button type="button" class="link" data-signout="{{.ID}}">{{$.T.SignOut}}</button>
+<button type="button" class="link" data-signout="{{.ID}}">{{$.Text.T "oidc.chooser.signOut"}}</button>
 </li>{{end}}
 </ul>
-<button id="other" type="button" class="secondary">{{.T.UseAnother}}</button>
-<button id="signoutAll" type="button" class="link">{{.T.SignOutAll}}</button>
+<button id="other" type="button" class="secondary">{{.Text.T "oidc.chooser.useAnother"}}</button>
+<button id="signoutAll" type="button" class="link">{{.Text.T "oidc.chooser.signOutAll"}}</button>
 <p id="status" class="msg err" role="alert" hidden></p>
 {{template "foot" .}}{{end}}
 
 {{define "device-code"}}{{template "head" .}}
-<p class="sub">{{.T.Sub}}</p>
+<p class="sub">{{.Text.T "oidc.device.sub"}}</p>
 <form method="post" action="{{.Action}}">
-<label>{{.T.CodeLabel}}<input name="user_code" value="{{.UserCode}}" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" maxlength="20" required autofocus class="usercode"></label>
-<button type="submit">{{.T.Continue}}</button>
+<label>{{.Text.T "oidc.device.codeLabel"}}<input name="user_code" value="{{.UserCode}}" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" maxlength="20" required autofocus class="usercode"></label>
+<button type="submit">{{.Text.T "oidc.device.continue"}}</button>
 </form>
 {{template "foot" .}}{{end}}
 
 {{define "device-approve"}}{{template "head" .}}
-<p class="sub"><strong>{{.ClientName}}</strong> {{.T.Wants}}{{if .Account}} <span class="muted">({{.Account}})</span>{{end}}.</p>
+<p class="sub">{{.Text.HTML "oidc.device.wantsHtml" (.Text.Args "client" .ClientName "account" .AccountHTML)}}</p>
 <ul class="scopes">{{range .Scopes}}<li><strong>{{.Label}}</strong><span>{{.Detail}}</span></li>{{end}}</ul>
-<p class="msg warn">{{.T.Warning}}</p>
+<p class="msg warn">{{.Text.T "oidc.device.warning"}}</p>
 <div class="row">
-<button id="allow" type="button">{{.T.Approve}}</button>
-<button id="deny" type="button" class="secondary">{{.T.Deny}}</button>
+<button id="allow" type="button">{{.Text.T "oidc.consent.allow"}}</button>
+<button id="deny" type="button" class="secondary">{{.Text.T "oidc.consent.cancel"}}</button>
 </div>
 <p id="status" class="msg err" role="alert" hidden></p>
 {{template "foot" .}}{{end}}
@@ -335,6 +321,15 @@ var extTemplate = template.Must(template.New("ext").Funcs(template.FuncMap{"lang
 // renderExt renders a page of extTemplate with the strict page policy.
 func (m *module) renderExt(e *core.RequestEvent, status int, d extData) error {
 	m.pageHeaders(e, d.Page)
+
+	if d.Text == nil {
+		d.Text = apis.NewPageText(e, "")
+	}
+
+	if d.Account != "" {
+		d.AccountHTML = template.HTML(` <span class="muted">(` + template.HTMLEscapeString(d.Account) + `)</span>`) //nolint:gosec // escaped
+	}
+
 	e.Response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	e.Response.WriteHeader(status)
 
@@ -343,7 +338,7 @@ func (m *module) renderExt(e *core.RequestEvent, status int, d extData) error {
 
 const chooserCSS = `.accounts { list-style: none; margin: 16px 0 0; padding: 0; }
 .accounts li { display: flex; gap: 8px; align-items: stretch; margin-top: 8px; }
-button.account { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; margin: 0; text-align: left;
+button.account { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; margin: 0; text-align: start;
   font-weight: 500; color: var(--fg); background: transparent; border-color: var(--line); }
 button.account.pre { border-color: var(--accent); }
 .avatar { flex: none; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%;
@@ -360,9 +355,10 @@ button.link { width: auto; margin: 0; padding: 6px 8px; font-weight: 500; text-d
 .msg.warn { background: var(--err-bg); color: var(--err-fg); }
 `
 
-const chooserJS = `const STRINGS = {
-  failed: "That did not work. Try again.",
-};
+const chooserJS = `// the strings of the page, in the language the server negotiated (the JSON data block in the head)
+let MESSAGES = {};
+try { MESSAGES = JSON.parse(document.getElementById("i18n").textContent); } catch (e) { /* English keys show */ }
+const t = (key) => (Object.prototype.hasOwnProperty.call(MESSAGES, key) ? MESSAGES[key] : key);
 
 const root = document.getElementById("app");
 const flow = root.dataset.flow;
@@ -386,7 +382,7 @@ async function act(url, payload) {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok || !body.redirect) {
-    fail(body.message || STRINGS.failed);
+    fail(body.message || t("js.chooser.failed"));
     return;
   }
   window.location.assign(body.redirect);
