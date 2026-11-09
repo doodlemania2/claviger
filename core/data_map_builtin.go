@@ -55,6 +55,8 @@ var builtinDataMap = []DataMapEntry{
 		Note: "Organization names and settings. Not about a person."},
 	{Collection: CollectionNameOrgRoles, Treatment: DataMapTreatmentNone,
 		Note: "Role definitions. Not about a person."},
+	{Collection: CollectionNameOrgClosure, Treatment: DataMapTreatmentNone,
+		Note: "Org hierarchy closure table (#84), derived from _orgs. Not about a person."},
 	{Collection: CollectionNameSCIMTokens, Treatment: DataMapTreatmentNone,
 		Note: "Provisioning tokens of an organization (hash only). Not about a person."},
 	{Collection: CollectionNameSCIMGroups, Treatment: DataMapTreatmentNone,

@@ -205,7 +205,7 @@ func TestOrgTagsMustBelongToTheSameOrg(t *testing.T) {
 	}
 }
 
-func TestOrgHierarchyIsOneLevel(t *testing.T) {
+func TestOrgHierarchyBasics(t *testing.T) {
 	f := newOrgFixture(t)
 
 	child := core.NewRecord(f.orgs)
@@ -216,15 +216,14 @@ func TestOrgHierarchyIsOneLevel(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// since #84 deeper trees are allowed (see org_closure_test.go for the cap)
 	grand := core.NewRecord(f.orgs)
 	grand.Set("name", "Grand")
 	grand.Set("slug", "grand")
 	grand.Set("parent", child.Id)
-	wantOrgErr(t, f.app.Save(grand), 400)
-
-	// org1 now has a child and cannot get a parent
-	f.org1.Set("parent", f.org2.Id)
-	wantOrgErr(t, f.app.Save(f.org1), 400)
+	if err := f.app.Save(grand); err != nil {
+		t.Fatal(err)
+	}
 
 	// a parent with children cannot be deleted
 	f.org1, _ = f.app.FindRecordById(core.CollectionNameOrgs, f.org1.Id)

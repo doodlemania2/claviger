@@ -10,9 +10,10 @@ Hidden system collections:
 
 | Collection | Holds |
 |---|---|
-| `_orgs` | `name`, `slug` (unique, `^[a-z0-9-]{2,64}$`), `parent` (optional, one level), `archived`, `settings` |
+| `_orgs` | `name`, `slug` (unique, `^[a-z0-9-]{2,64}$`), `parent` (optional), `archived`, `settings` |
 | `_orgMembers` | `org`, `user`, `role`, `status`, `tags`, `source`; unique on `(org, user)` |
 | `_orgRoles` | free-form labels (`org`, `name`, `description`), the targets of `_orgMembers.tags` |
+| `_orgClosure` | derived ancestor/descendant pairs of the org tree (#84), see [Hierarchy](#hierarchy). Holds no personal data |
 | `_invitations` | email invitations (`org`, `email`, `role`, `tags`, `invitedBy`, `tokenHash`, `expires`, `status`, ...), see [Invitations](#invitations) |
 | `_scimTokens`, `_scimGroups` | SCIM tokens and groups (79c), see [`docs/scim.md`](scim.md). `_orgMembers` also carries `externalId` |
 
@@ -20,7 +21,7 @@ Hidden system collections:
 - **Status** is `active` or `suspended`. A suspended member loses all access that goes through the rules, immediately.
 - **Tags** are labels such as "youth leader" or "treasurer", scoped to one org. Use them in rules for anything the four roles cannot say.
 - **Archiving** hides an org: every rule below checks `org.archived = false`, and the member routes refuse changes. Deleting is a separate, explicit action (see below).
-- **Hierarchy** is one level (`parent`). Setting a parent is a superuser action. A parent cannot have a parent, and a parent with children cannot be deleted.
+- **Hierarchy** is a tree (`parent`), up to 4 levels by default (see [Hierarchy](#hierarchy)). Setting a parent is a superuser action, and a parent with children cannot be deleted.
 
 ### Which users are members
 
@@ -29,6 +30,51 @@ Hidden system collections:
 ### Who can create organizations
 
 Superusers. Set `CLAVIGER_ORGS_USERS_CAN_CREATE=true` to let any signed-in user of the member collection create one; they become its owner. Only superusers set a `parent` or name another owner.
+
+## Hierarchy
+
+A diocese, deanery, parish and ministry can be nested: `_orgs.parent` is the source of truth, and the hidden system collection `_orgClosure` (#84) is derived from it for rules.
+
+- **Depth.** `CLAVIGER_ORGS_MAX_DEPTH` is the number of levels a tree may have (a root is level 1). Default 4, hard cap 8; a bigger value is clamped, an invalid one means 4. A save is refused (400) when it would exceed the cap or create a cycle (an org as its own ancestor). Moving an org counts its whole subtree. The shape is only checked when the parent changes, so lowering the cap does not block renaming a deep org.
+- **`_orgClosure`** has `ancestor`, `descendant` (both relations to `_orgs`, cascade delete) and `depth`. Every org has a row to itself at depth 0, and one row per ancestor (1 = parent). Unique on `(ancestor, descendant)`; indexed on `descendant` and on `(ancestor, depth)`. Members of the ancestor or the descendant org can read the rows; write rules are null and the table is on the API-key forbidden list.
+- **Kept consistent by hooks** on `_orgs`, in the same transaction as the org write: create adds the self row and one row per ancestor, a re-parent replaces the rows of the moved subtree (and writes one `org_reparent` audit entry with counts), delete removes the org's rows. The rows are written with plain SQL, so they cause no record hooks, realtime events or per-row audit entries.
+- **Existing deployments.** The migration fills the table from the current `parent` values.
+- **Repair.** After a restore or a manual database edit run `claviger orgs closure-repair` (`--dry-run` to only report). It rebuilds the table from `parent` in one transaction and prints how many rows were missing, extra or had the wrong depth; a second run reports nothing. The server also logs a warning at startup when the table differs from the tree. In Go: `core.RepairOrgClosure(app, dryRun)`.
+- **No inheritance, no upward visibility.** Being admin of a diocese does not make you a member of its parishes, and a parish member never sees the diocese's records. Oversight is **opt-in per collection**: the presets stay org-only, and pastoral data never gets an ancestor rule.
+
+### Oversight rules
+
+With `cp = org._orgClosure_via_descendant` and `mp = cp.ancestor._orgMembers_via_org` (all conditions on `mp` and `cp.depth` share one row, so role, tag and depth are read from the same ancestor):
+
+| Goal | Rule |
+|---|---|
+| Members of the org **or any ancestor** read | `org.archived = false && mp.user ?= @request.auth.id && mp.status ?= "active"` |
+| Admins of an ancestor within N levels | add `&& mp.role ?= "admin" && cp.depth ?<= N` (0 is the org itself, 1 its parent) |
+| Tag at any ancestor | use the alias form below |
+
+The tag form uses short `@collection` aliases, because the join path through `tags` is longer than the 63 characters of a Postgres identifier and fails there:
+
+```
+org.archived = false && @collection._orgClosure:k.descendant ?= org && @collection._orgMembers:m.org ?= @collection._orgClosure:k.ancestor && @collection._orgMembers:m.user ?= @request.auth.id && @collection._orgMembers:m.status ?= "active" && @collection._orgMembers:m.tags.name ?= "safeguarding"
+```
+
+(A multi-valued path on the **right** of a comparison, `... ?= org._orgClosure_via_descendant.ancestor`, silently matches nothing. Use a second `@collection` alias as above.)
+
+Go helpers generate exactly these strings: `core.OrgAncestorRule(field, core.OrgAncestorOpts{Roles, MaxDepth, Tag})`, and `core.OrgOversightRuleSet(field, opts)` for a full set (list and view with oversight, writes from the "members" preset, org-only). `apis/orgs_rules_test.go` style tests for them are in `core/org_closure_test.go` and run on SQLite and Postgres.
+
+### Performance of the closure join
+
+`go test ./core/ -run xxx -bench OrgClosureList` (500 orgs in four levels, 20,000 memberships, 200,000 records, user is a member of every org, which is the worst case; Apple M4 Max, 10 runs, order of magnitude):
+
+| List, page of 30 | SQLite | Postgres |
+|---|---|---|
+| org-only rule, total count | 284 ms | 152 ms |
+| ancestor rule, total count | 1.6 s | 757 ms |
+| ancestor rule, `skipTotal=1` | 0.19 ms | 710 ms |
+| ancestor rule, `filter=org="..."` and `skipTotal=1` | 0.3 ms | 1.4 ms |
+| ancestor admin within 3 levels, `filter=org=...` and `skipTotal=1` | 1.2 ms | 1.4 ms |
+
+So the closure join costs about 3 to 5 times the org-only rule on an unfiltered count over every org. As with org-only rules: index `org`, send `filter=org="<id>"` and `skipTotal=1` on big collections. Unfiltered Postgres lists without a filter scan the table even with `skipTotal`.
 
 ## API
 
@@ -162,13 +208,13 @@ Other presets, generated by `GET /api/orgs/rule-templates` and shown on the Orga
 | Record shared by several orgs (`orgs`) | `orgs.archived ?= false && orgs._orgMembers_via_org.user ?= @request.auth.id && orgs._orgMembers_via_org.status ?= "active"` (any of the orgs) |
 | Create into the org named in the body | `@request.auth.id != "" && @collection._orgMembers:m.org ?= @request.body.org && @collection._orgMembers:m.user ?= @request.auth.id && @collection._orgMembers:m.status ?= "active" && @collection._orgMembers:m.role ?= "admin"` |
 
-Go helpers with the same strings: `core.OrgMemberRule`, `core.OrgTagRule`, `core.OrgParentRule`, `core.OrgNoMoveRule`, `core.OrgRulePresets`. They are what the tests (`apis/orgs_rules_test.go`) run against real collections.
+Go helpers with the same strings: `core.OrgMemberRule`, `core.OrgTagRule`, `core.OrgParentRule` (one level; for deeper trees use `core.OrgAncestorRule`, see [Hierarchy](#hierarchy)), `core.OrgNoMoveRule`, `core.OrgRulePresets`. They are what the tests (`apis/orgs_rules_test.go`) run against real collections.
 
 ### Things to know
 
 - **Multi-valued paths need the `?` operators.** Back-relations are multi-valued. Use `?=`, `?>`, `?~`. A plain `>` or `=` on such a path requires every matched row to satisfy it and silently denies. (`org.archived = false` is fine: `org` is a single relation.)
 - **Silent denials.** A wrong rule returns an empty list, not an error. A denied create answers 400, a denied update/view/delete 404, a denied list 200 with no items.
-- **System collection rules are fixed.** The list and view rules of the three org collections are set once by the migration and cannot be edited.
+- **System collection rules are fixed.** The list and view rules of the org collections are set once by the migration and cannot be edited.
 - **Postgres.** The rules use only the back-relation and `@collection` syntax that the dialect layer preserves; run the cookbook tests on it when you enable it.
 
 ### Performance

@@ -305,6 +305,8 @@ func (app *BaseApp) registerOrgHooks() {
 		},
 	})
 
+	app.registerOrgClosureHooks() // #84
+
 	// roles of a deleted tag row are dropped from memberships by the relation
 	// cleanup of the records engine; nothing to do here.
 }
@@ -344,35 +346,6 @@ func validateOrgMemberTags(app App, m *Record) error {
 	for _, t := range tags {
 		if t.GetString("org") != m.GetString("org") {
 			return orgErr(400, "A tag belongs to a different organization.")
-		}
-	}
-
-	return nil
-}
-
-func validateOrg(app App, org *Record) error {
-	parentId := org.GetString("parent")
-	if parentId == "" {
-		return nil
-	}
-
-	if parentId == org.Id {
-		return orgErr(400, "An organization cannot be its own parent.")
-	}
-
-	parent, err := app.FindRecordById(CollectionNameOrgs, parentId)
-	if err != nil {
-		return orgErr(400, "Unknown parent organization.")
-	}
-
-	if parent.GetString("parent") != "" {
-		return orgErr(400, "Only one level of hierarchy is supported: the parent already has a parent.")
-	}
-
-	if !org.IsNew() {
-		kids, _ := app.FindRecordsByFilter(CollectionNameOrgs, "parent={:id}", "", 1, 0, dbx.Params{"id": org.Id})
-		if len(kids) > 0 {
-			return orgErr(400, "Only one level of hierarchy is supported: this organization has child organizations.")
 		}
 	}
 
