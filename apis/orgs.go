@@ -44,6 +44,7 @@ func bindOrgsApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 	sub.DELETE("/{id}/members/{member}", orgMembersRemove)
 	bindInvitationsApi(app, rg, sub) // fork-local (#79b)
 	bindOrgTagsApi(sub)              // fork-local (#79b)
+	bindSCIMTokensApi(sub)           // fork-local (#79c)
 }
 
 func orgHTTP(e *core.RequestEvent, err error) error {
