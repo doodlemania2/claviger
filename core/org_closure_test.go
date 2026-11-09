@@ -256,7 +256,6 @@ func TestOrgClosureDepthCap(t *testing.T) {
 		t.Fatal("expected 5")
 	}
 
-	l2, _ = f.app.FindRecordById(core.CollectionNameOrgs, l2.Id)
 	tooDeep = core.NewRecord(f.orgs)
 	tooDeep.Set("name", "L5")
 	tooDeep.Set("slug", "l5")

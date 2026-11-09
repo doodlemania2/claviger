@@ -35,7 +35,6 @@ type Fake struct {
 	aliases  map[string]string
 	calls    []string
 	failNext int // answer 503 this many times
-	seq      int
 
 	// Deny makes every KMS action answer AccessDeniedException.
 	Deny bool

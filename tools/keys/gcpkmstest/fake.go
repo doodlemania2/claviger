@@ -116,8 +116,8 @@ func errJSON(w http.ResponseWriter, code int, status, msg string) {
 }
 
 func (f *Fake) handle(w http.ResponseWriter, r *http.Request) {
-	switch {
-	case r.URL.Path == "/computeMetadata/v1/instance/service-accounts/default/token":
+	switch r.URL.Path {
+	case "/computeMetadata/v1/instance/service-accounts/default/token":
 		if r.Header.Get("Metadata-Flavor") != "Google" {
 			errJSON(w, 403, "FORBIDDEN", "missing Metadata-Flavor")
 			return
@@ -127,7 +127,7 @@ func (f *Fake) handle(w http.ResponseWriter, r *http.Request) {
 		f.mu.Unlock()
 		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": f.issued(), "expires_in": 3600, "token_type": "Bearer"})
 		return
-	case r.URL.Path == "/token":
+	case "/token":
 		f.token(w, r)
 		return
 	}
