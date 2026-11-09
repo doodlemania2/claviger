@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Organization</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/orgs/assets/hosted.css">
+</head>
+<body>
+<main class="card wide" id="app" data-page="org" data-slug="parish-1" data-collection="users">
+<p id="pstatus" class="msg err" role="alert" hidden></p>
+<div id="captchaBox" hidden></div>
+
+<div id="denied" hidden>
+<h1>No access</h1>
+<p class="muted">This account is not an active member of that organization.</p>
+<p><button id="deniedOut" type="button" class="secondary">Sign out</button></p>
+</div>
+
+<section id="signin" hidden>
+<h2>Sign in</h2>
+<form id="pw" hidden>
+<label>Email or username<input name="identity" autocomplete="username webauthn" required></label>
+<label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+<button type="submit">Sign in</button>
+</form>
+<form id="totp" hidden>
+<label>Authenticator code or backup code<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<button type="submit">Verify</button>
+</form>
+<div id="otpBox" hidden>
+<div class="or"><span>or</span></div>
+<button id="otpSend" type="button" class="secondary">Email me a sign-in code</button>
+<form id="otpForm" hidden>
+<label>Code from the email<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<button type="submit">Sign in</button>
+</form>
+</div>
+<div id="passkeyBox" hidden>
+<div class="or"><span>or</span></div>
+<button id="passkey" type="button" class="secondary">Sign in with a passkey</button>
+</div>
+<p id="status" class="msg err" role="alert" hidden></p>
+
+</section>
+
+<div id="main" hidden>
+<header class="bar">
+<div><h1 id="orgName"></h1><p class="muted" id="myRole"></p></div>
+<button id="signout" type="button" class="secondary">Sign out</button>
+</header>
+
+<h2>Members</h2>
+<div class="tablewrap"><table id="members">
+<thead><tr><th>Member</th><th>Role</th><th>Status</th><th>Tags</th><th></th></tr></thead>
+<tbody></tbody>
+</table></div>
+
+<div data-manage hidden>
+<h2>Invite someone</h2>
+<form id="inviteForm" class="inline">
+<label>Email<input name="email" type="email" autocomplete="off" required></label>
+<label>Role<select id="inviteRole" name="role"><option>member</option></select></label>
+<label>Tags (comma separated)<input name="tags" autocomplete="off"></label>
+<button type="submit">Send invitation</button>
+</form>
+
+<h2>Invitations</h2>
+<div class="tablewrap"><table id="invitations">
+<thead><tr><th>Email</th><th>Role</th><th>Tags</th><th>Status</th><th>Expires / accepted</th><th>Sent</th><th></th></tr></thead>
+<tbody></tbody>
+</table></div>
+
+<h2>SCIM provisioning</h2>
+<p class="muted">Tenant URL: <code id="scimUrl"></code></p>
+<form id="scimTokenForm" class="inline">
+<label>Token name<input name="name" autocomplete="off" maxlength="100" required></label>
+<button type="submit">Create a token</button>
+</form>
+<p id="scimNew" class="msg ok" role="status" hidden></p>
+<div class="tablewrap"><table id="scimTokens">
+<thead><tr><th>Name</th><th>Token</th><th>Created</th><th>Last used</th><th>Expires</th><th>Status</th><th></th></tr></thead>
+<tbody></tbody>
+</table></div>
+<form id="scimSettings">
+<label>Role of new users<select id="scimDefaultRole" name="defaultRole"><option>member</option></select></label>
+<label>Groups that grant a role (one per line, <code>Group name = role</code>)<textarea name="groupRoles" rows="3" autocomplete="off"></textarea></label>
+<label class="check"><input name="deactivationBans" type="checkbox"> Also ban the account when the identity provider deactivates a user</label>
+<button type="submit">Save SCIM settings</button>
+</form>
+</div>
+
+<h2>Tags</h2>
+<p id="taglist"></p>
+<form id="tagForm" class="inline" data-manage hidden>
+<label>New tag<input name="name" autocomplete="off" maxlength="64" required></label>
+<button type="submit">Add tag</button>
+</form>
+</div>
+</main>
+<script type="module" src="/orgs/assets/admin.js"></script>
+</body></html>

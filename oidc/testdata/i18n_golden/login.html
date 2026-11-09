@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Sign in</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/oidc/assets/oidc.css">
+</head>
+<body>
+<main class="card" id="app" data-page="login" data-request="ID" data-collection="users">
+<h1>Sign in</h1>
+
+
+<p class="sub">to continue to <strong>Third Party App</strong></p>
+<form id="pw" hidden>
+<label>Email or username<input name="identity" autocomplete="username webauthn" required></label>
+<label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+<button type="submit">Sign in</button>
+</form>
+<form id="totp" hidden>
+<label>Authenticator code or backup code<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<button type="submit">Verify</button>
+</form>
+<div id="captchaBox" hidden></div>
+<div id="passkeyBox" hidden>
+<div class="or"><span>or</span></div>
+<button id="passkey" type="button" class="secondary">Sign in with a passkey</button>
+</div>
+<p id="status" class="msg err" role="alert" hidden></p>
+
+
+</main>
+<script type="module" src="/oidc/assets/login.js"></script>
+</body>
+</html>
