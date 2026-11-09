@@ -315,12 +315,13 @@ func TestRotateFieldKeysRowsSavedDuringRotationEndOnTheNewKey(t *testing.T) {
 	col := newEncryptedCollection(t, app)
 	want := seedPeople(t, app, col, 60)
 
-	// a record loaded BEFORE the rotation (it carries the old ciphertext in its stash)
+	// a record loaded BEFORE the rotation (it carries the old ciphertext in its stash).
+	// Take the lowest id: the hook below rewrites the highest one, and saving a stale
+	// copy of that same row afterwards would (correctly) write its old value back.
 	var staleId string
 	for id, p := range want {
-		if p != "" {
+		if p != "" && (staleId == "" || id < staleId) {
 			staleId = id
-			break
 		}
 	}
 	stale, err := app.FindRecordById(col, staleId)
