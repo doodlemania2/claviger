@@ -8,8 +8,10 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,6 +25,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/doodlemania2/claviger/apis"
 	"github.com/doodlemania2/claviger/core"
@@ -152,7 +155,7 @@ func apiGet(h http.Handler, token, path string) (int, any) {
 // compareThroughAPI lists every collection through the records API of a SQLite
 // app (the source) and of a Postgres app (the migrated copy), as the same
 // superuser, and requires the same status and the same records.
-func compareThroughAPI(t *testing.T, srcDir, pgURL string) {
+func compareThroughAPI(t *testing.T, srcDir, pgURL string, normalizeSource ...func(item map[string]any)) {
 	t.Helper()
 
 	src := openMigrateApp(t, srcDir, "")
@@ -199,10 +202,19 @@ func compareThroughAPI(t *testing.T, srcDir, pgURL string) {
 			continue
 		}
 
+		if sm, ok := sb.(map[string]any); ok {
+			items, _ := sm["items"].([]any)
+			for _, it := range items {
+				if im, ok := it.(map[string]any); ok {
+					for _, n := range normalizeSource {
+						n(im)
+					}
+				}
+			}
+		}
+
 		if !reflect.DeepEqual(sb, db) {
-			sj, _ := json.MarshalIndent(sb, "", " ")
-			dj, _ := json.MarshalIndent(db, "", " ")
-			t.Errorf("%s: the records differ\nSQLite:   %s\nPostgres: %s", c.Name, clipTest(string(sj)), clipTest(string(dj)))
+			t.Errorf("%s: the records differ: %s", c.Name, firstDifference(sb, db))
 			continue
 		}
 		compared++
@@ -220,10 +232,33 @@ func compareThroughAPI(t *testing.T, srcDir, pgURL string) {
 }
 
 func clipTest(s string) string {
-	if len(s) > 3000 {
-		return s[:3000] + "..."
+	if len(s) > 300 {
+		return s[:300] + "..."
 	}
 	return s
+}
+
+// firstDifference names the first record and field that differ between two list responses.
+func firstDifference(a, b any) string {
+	am, _ := a.(map[string]any)
+	bm, _ := b.(map[string]any)
+	ai, _ := am["items"].([]any)
+	bi, _ := bm["items"].([]any)
+	if len(ai) != len(bi) {
+		return fmt.Sprintf("%d records on SQLite, %d on Postgres", len(ai), len(bi))
+	}
+	for i := range ai {
+		ar, _ := ai[i].(map[string]any)
+		br, _ := bi[i].(map[string]any)
+		for k, av := range ar {
+			if !reflect.DeepEqual(av, br[k]) {
+				aj, _ := json.Marshal(av)
+				bj, _ := json.Marshal(br[k])
+				return fmt.Sprintf("record %v field %s: SQLite %s, Postgres %s", ar["id"], k, clipTest(string(aj)), clipTest(string(bj)))
+			}
+		}
+	}
+	return "other keys"
 }
 
 func fileSums(t testing.TB, dir string) map[string]string {
@@ -607,3 +642,331 @@ func TestSampleIndexes(t *testing.T) {
 }
 
 var _ = io.Discard
+
+// ---- a database with every fork feature populated ----------------------------------------
+
+func randomKEK(t testing.TB) {
+	t.Helper()
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAVIGER_KEK", base64.StdEncoding.EncodeToString(b))
+	t.Setenv("CLAVIGER_KEK_FILE", "")
+}
+
+// fillerValue returns a valid-looking value for the field, or false to leave it out.
+func fillerValue(f core.Field, n int) (any, bool) {
+	switch ff := f.(type) {
+	case *core.TextField:
+		if f.GetName() == "id" {
+			return nil, false
+		}
+		return fmt.Sprintf("%s %d", f.GetName(), n), true
+	case *core.EditorField:
+		return fmt.Sprintf("<p>%s %d</p>", f.GetName(), n), true
+	case *core.NumberField:
+		return float64(n) + 0.5, true
+	case *core.BoolField:
+		return n%2 == 0, true
+	case *core.EmailField:
+		return fmt.Sprintf("filler%d@example.com", n), true
+	case *core.URLField:
+		return fmt.Sprintf("https://example.com/%d", n), true
+	case *core.DateField:
+		return fmt.Sprintf("2024-0%d-1%d 10:00:00.000Z", n%9+1, n%9), true
+	case *core.SelectField:
+		if len(ff.Values) > 0 {
+			return ff.Values[n%len(ff.Values)], true
+		}
+	case *core.JSONField:
+		return map[string]any{"n": n, "list": []any{1, "two", nil, true}, "é": "ü"}, true
+	case *core.GeoPointField:
+		return map[string]any{"lon": 1.5 + float64(n), "lat": 2.5}, true
+	case *core.RelationField:
+		if ff.Required {
+			return security.RandomString(15), true
+		}
+	case *core.EncryptedTextField:
+		return fmt.Sprintf("secret text %d", n), true
+	case *core.EncryptedJSONField:
+		return map[string]any{"secret": n}, true
+	}
+	return nil, false
+}
+
+// populateForkDB fills a freshly bootstrapped SQLite app with data in every
+// table: real flows where there is a constructor (users, field encryption,
+// sessions), and filler rows for the rest of the system collections (audit log
+// entries are written by the record hooks).
+func populateForkDB(t *testing.T, app core.App) {
+	t.Helper()
+
+	// a user, with a session
+	users, err := app.FindCollectionByNameOrId("users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user := core.NewRecord(users)
+	user.SetEmail("member@example.com")
+	user.SetPassword("1234567890")
+	if err := app.Save(user); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := core.CreateSession(app, user, "password", "agent/1.0", "10.0.0.1", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	// field encryption: ciphertext and the wrapped data keys
+	people := core.NewBaseCollection("people")
+	people.Fields.Add(
+		&core.TextField{Name: "name"},
+		&core.EncryptedTextField{Name: "phone", Max: 50},
+		&core.EncryptedJSONField{Name: "notes"},
+	)
+	if err := app.Save(people); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 3 {
+		r := core.NewRecord(people)
+		r.Set("name", fmt.Sprintf("person %d", i))
+		r.Set("phone", fmt.Sprintf("+1 555 000 %04d", i))
+		r.Set("notes", map[string]any{"i": i, "ü": "é"})
+		if err := app.Save(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// edge values of a user collection
+	edge := core.NewBaseCollection("edge")
+	edge.Fields.Add(
+		&core.TextField{Name: "txt"},
+		&core.NumberField{Name: "num"},
+		&core.BoolField{Name: "flag"},
+		&core.JSONField{Name: "js"},
+		&core.SelectField{Name: "tags", Values: []string{"a", "b", "c"}, MaxSelect: 3},
+		&core.DateField{Name: "day"},
+		&core.GeoPointField{Name: "pt"},
+	)
+	edge.AddIndex("idx_edge_txt", true, "txt", "txt != ''")
+	if err := app.Save(edge); err != nil {
+		t.Fatal(err)
+	}
+	for i, txt := range []string{"plain", "ünïcödé 日本語 🙂", "", "quote ' and \" and \\ and `tick`", strings.Repeat("long ", 900)} {
+		r := core.NewRecord(edge)
+		r.Set("txt", txt+fmt.Sprint(i))
+		r.Set("num", []float64{0, -1.25, 1e21, 3, 0.1}[i])
+		r.Set("flag", i%2 == 0)
+		r.Set("js", []any{map[string]any{"a": []any{}}, "text", 12, nil, true}[i])
+		r.Set("tags", []string{"a", "c"}[:i%3])
+		r.Set("day", fmt.Sprintf("2020-0%d-15 08:30:00.000Z", i+1))
+		r.Set("pt", map[string]any{"lon": 10.5, "lat": -20.25})
+		if err := app.Save(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// SQLite's loose typing: values the typed fields would never write
+	for _, q := range []string{
+		"UPDATE edge SET js = '' WHERE rowid = 1",
+		"UPDATE edge SET num = '12.50' WHERE rowid = 2",
+		"UPDATE edge SET txt = 77 WHERE rowid = 3",
+	} {
+		if _, err := app.DB().NewQuery(q).Execute(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// the rest of the system collections: filler rows
+	collections, err := app.FindAllCollections()
+	if err != nil {
+		t.Fatal(err)
+	}
+	filled := 0
+	for _, c := range collections {
+		if c.IsView() || c.Name == core.CollectionNameAuditLog || c.Name == core.CollectionNameFieldKeys {
+			continue
+		}
+		var n int
+		_ = app.DB().Select("count(*)").From(c.Name).Row(&n)
+		if n > 0 {
+			continue
+		}
+		for i := 1; i <= 2; i++ {
+			r := core.NewRecord(c)
+			for _, f := range c.Fields {
+				if v, ok := fillerValue(f, i); ok {
+					r.Set(f.GetName(), v)
+				}
+			}
+			if c.IsAuth() {
+				r.SetEmail(fmt.Sprintf("%s%d@example.com", strings.TrimPrefix(c.Name, "_"), i))
+				r.SetPassword("1234567890")
+			}
+			if err := app.SaveNoValidate(r); err != nil {
+				t.Logf("filler row of %s: %v", c.Name, err)
+				continue
+			}
+			filled++
+		}
+	}
+	t.Logf("%d filler rows", filled)
+
+	// every fork table must now hold data
+	for _, name := range []string{
+		core.CollectionNameAuditLog, core.CollectionNameSessions, core.CollectionNameFieldKeys,
+		core.CollectionNameAPIKeys, core.CollectionNameWebhooks, core.CollectionNameOAuthClients,
+		core.CollectionNameOrgs, core.CollectionNameOrgMembers, core.CollectionNameInvitations,
+	} {
+		var n int
+		if err := app.DB().Select("count(*)").From(name).Row(&n); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if n == 0 {
+			t.Errorf("the populated database has no rows in %s", name)
+		}
+	}
+}
+
+func TestMigrateDBForkFeatures(t *testing.T) {
+	randomKEK(t)
+
+	dir := t.TempDir()
+	{
+		app := openMigrateApp(t, dir, "")
+		populateForkDB(t, app)
+		_ = app.ClearBootstrap()
+	}
+
+	target := newMigrateTarget(t)
+
+	var out bytes.Buffer
+	report, err := MigrateDB(context.Background(), MigrateDBOptions{Dir: dir, TargetURL: target, BatchSize: 3, Out: &out})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	if !report.Verified {
+		t.Fatal("not verified")
+	}
+
+	// the one documented adaptation: an empty string in a JSON column (only
+	// possible by writing SQLite directly) becomes NULL
+	compareThroughAPI(t, dir, target, func(item map[string]any) {
+		if v, ok := item["js"]; ok && v == "" && item["collectionName"] == "edge" {
+			item["js"] = nil
+		}
+	})
+
+	// the encrypted values: the wrapped data keys travelled, the KEK stays configured
+	t.Setenv(core.DBURLEnv, target)
+	msg, err := CheckFieldKeys(context.Background(), dir, "", os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(msg, "OK (") || strings.Contains(msg, "no encrypted fields") {
+		t.Fatalf("unexpected keys check result on the migrated database: %s", msg)
+	}
+
+	pg := openMigrateApp(t, t.TempDir(), target)
+	people, err := pg.FindAllRecords("people")
+	if err != nil || len(people) != 3 {
+		t.Fatalf("people: %v %d", err, len(people))
+	}
+	for i, p := range people {
+		if got, want := p.GetString("phone"), fmt.Sprintf("+1 555 000 %04d", i); got != want {
+			t.Fatalf("decrypted phone %q, want %q", got, want)
+		}
+	}
+
+	// the user can sign in and the session is valid on the copy
+	user, err := pg.FindAuthRecordByEmail("users", "member@example.com")
+	if err != nil || !user.ValidatePassword("1234567890") {
+		t.Fatalf("the user did not travel: %v", err)
+	}
+	var sid string
+	if err := pg.DB().Select("id").From(core.CollectionNameSessions).Limit(1).Row(&sid); err != nil {
+		t.Fatal(err)
+	}
+	if err := core.ValidateSession(pg, sid, user.Collection().Id, user.Id); err != nil {
+		t.Fatalf("session: %v", err)
+	}
+
+	// the identity columns work after the copy: new rows come after the copied ones
+	r := core.NewRecord(mustCollection(t, pg, "edge"))
+	r.Set("txt", "after the migration")
+	if err := pg.Save(r); err != nil {
+		t.Fatal(err)
+	}
+	last, err := pg.FindRecordsByFilter("edge", "1=1", "-@rowid", 1, 0)
+	if err != nil || len(last) != 1 || last[0].Id != r.Id {
+		t.Fatalf("a new record must come last in insertion order: %v", err)
+	}
+}
+
+func mustCollection(t testing.TB, app core.App, name string) *core.Collection {
+	t.Helper()
+	c, err := app.FindCollectionByNameOrId(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func TestMigrateDBSkipViews(t *testing.T) {
+	target := newMigrateTarget(t)
+	dir := sqliteFixtureDir(t)
+
+	report, err := MigrateDB(context.Background(), MigrateDBOptions{Dir: dir, TargetURL: target, SkipViews: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.SkippedViews) == 0 {
+		t.Fatal("the fixture has view collections: expected them in the report")
+	}
+
+	pg := openMigrateApp(t, t.TempDir(), target)
+	for _, name := range report.SkippedViews {
+		if _, err := pg.FindCollectionByNameOrId(name); err == nil {
+			t.Errorf("view %s must not be in the target", name)
+		}
+	}
+}
+
+func TestMigrateDBCommand(t *testing.T) {
+	target := newMigrateTarget(t)
+	dir := sqliteFixtureDir(t)
+
+	app := core.NewBaseApp(core.BaseAppConfig{DataDir: dir})
+	command := NewMigrateDBCommand(app)
+
+	var out bytes.Buffer
+	command.SetOut(&out)
+	command.SetErr(&out)
+	command.SetArgs([]string{"--to", target, "--dry-run", "--verbose"})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "dry run: nothing was written") || !strings.Contains(out.String(), "would copy") {
+		t.Fatalf("unexpected dry run output:\n%s", out.String())
+	}
+
+	out.Reset()
+	command = NewMigrateDBCommand(app)
+	command.SetOut(&out)
+	command.SetErr(&out)
+	command.SetArgs([]string{"--to", target, "--batch", "50"})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "verified") || strings.Contains(out.String(), target) {
+		t.Fatalf("unexpected output:\n%s", out.String())
+	}
+
+	// the target is now used: a second run refuses
+	command = NewMigrateDBCommand(app)
+	command.SetOut(&out)
+	command.SetErr(&out)
+	command.SetArgs([]string{"--to", target})
+	if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "not empty") {
+		t.Fatalf("expected a refusal, got %v", err)
+	}
+}
