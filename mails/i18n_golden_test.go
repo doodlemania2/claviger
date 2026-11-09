@@ -71,7 +71,6 @@ func TestEnglishEmailsAreByteIdenticalToTheGolden(t *testing.T) {
 			checkGolden(t, name+".txt", "To: "+m.To[0].Address+"\nSubject: "+m.Subject+"\n\n"+normalizeMail(m.HTML))
 		})
 	}
-
 }
 
 // defaultTemplateUser is a member of a brand new auth collection: the fixture

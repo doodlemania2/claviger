@@ -161,7 +161,7 @@ func TestKeysInUseAreInTheCatalog(t *testing.T) {
 
 		for _, ent := range entries {
 			name := ent.Name()
-			if ent.IsDir() || strings.HasSuffix(name, "_test.go") || !(strings.HasSuffix(name, ".go") || strings.HasSuffix(name, ".js")) {
+			if ent.IsDir() || strings.HasSuffix(name, "_test.go") || (!strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, ".js")) {
 				continue
 			}
 

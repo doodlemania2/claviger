@@ -72,7 +72,8 @@ func TestRecordLanguage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	user, _ = app.FindFirstRecordByData("users", "email", "test@example.com")
+	// an in-memory record: nothing to query after the schema change
+	user = core.NewRecord(users)
 	user.Set("lang", "es")
 
 	if got := core.RecordLanguage(app, user); got != "es" {
