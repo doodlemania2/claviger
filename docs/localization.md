@@ -9,7 +9,7 @@ With nothing configured, an English install renders exactly the text and markup 
 | Surface | Where |
 |---|---|
 | `/passkeys` self-service page | `apis/passkeys_page.go` |
-| OpenID Connect sign-in, consent, signed-out and error pages | `oidc/` |
+| OpenID Connect sign-in, consent, account chooser, device-flow, signed-out and error pages | `oidc/` |
 | Organization pages: invitation accept page, `/orgs/<slug>` admin page | `apis/orgs_pages*` |
 | Auth emails: verification, password reset, email change, one-time password, new-location login alert, passkey reset | `mails/` |
 | The organization invitation email | `mails/invitation.go` |
@@ -38,7 +38,7 @@ For a hosted page, the first of these that names an available language wins:
 
 1. `?lang=xx` in the URL. A valid choice is remembered in a `lang` cookie (HttpOnly, one year, path `/`) so the next page keeps it.
 2. the `lang` cookie.
-3. the preferred language of the account the page is about, when the page knows it (the OIDC consent page, the invitation page for an existing account). It is read from a field of the auth collection, named `lang` by default.
+3. the preferred language of the account the page is about, when the page knows it (the OIDC consent and device approval pages, the invitation page for an existing account). It is read from a field of the auth collection, named `lang` by default.
 4. the `Accept-Language` header, in quality order.
 5. `meta.defaultLanguage` (default `en`).
 

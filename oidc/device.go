@@ -3,7 +3,6 @@ package oidc
 import (
 	"context"
 	"errors"
-	"github.com/doodlemania2/claviger/apis"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	"github.com/doodlemania2/claviger/apis"
 	"github.com/doodlemania2/claviger/core"
 	"github.com/doodlemania2/claviger/tools/types"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
@@ -58,8 +58,8 @@ import (
 //   - Tokens carry the sid and acr of the real sign-in, like every other grant,
 //     so revoking the Claviger session ends them.
 //
-// Every user-visible string of the pages is in deviceText (Go) or STRINGS at the
-// top of deviceJS.
+// Every user-visible string of the pages is in the catalog (oidc.device.*, and
+// js.oidc.* for the script), see docs/localization.md.
 
 const (
 	deviceStatusPending       = "pending"       // created by the device, waiting for a person
@@ -78,37 +78,6 @@ var (
 	devicePollInterval = 5 * time.Second
 	deviceSlowDownStep = 5 * time.Second
 )
-
-var deviceText = struct {
-	Title, Heading, Sub, CodeLabel, Continue                    string
-	ApproveTitle, ApproveHeading, Wants, Warning, Approve, Deny string
-	BadCode, InUse, TooMany                                     string
-	Approved, ApprovedDetail, Denied, DeniedDetail              string
-	Used, Expired, Unavailable, Browser                         string
-}{
-	Title:          "Connect a device",
-	Heading:        "Connect a device",
-	Sub:            "Enter the code shown on your device.",
-	CodeLabel:      "Code",
-	Continue:       "Continue",
-	ApproveTitle:   "Allow access",
-	ApproveHeading: "Allow this device?",
-	Wants:          "on your device wants to access your account",
-	Warning:        "Only continue if you started this on a device you are using right now. If someone else gave you this code, choose Cancel.",
-	Approve:        "Allow",
-	Deny:           "Cancel",
-	BadCode:        "That code was not recognised. Check it and try again.",
-	InUse:          "That code is already being used in another browser. Start again on your device.",
-	TooMany:        "Too many attempts. Wait a few minutes and try again.",
-	Approved:       "Device connected",
-	ApprovedDetail: "You can return to your device now.",
-	Denied:         "Request cancelled",
-	DeniedDetail:   "The device was not given access.",
-	Used:           "This code has already been used.",
-	Expired:        "This code has expired. Start again on your device.",
-	Unavailable:    "This application is not available.",
-	Browser:        "This request was started in another browser. Start again on your device.",
-}
 
 // ---- storage -------------------------------------------------------------
 
@@ -448,21 +417,25 @@ func (m *module) bindDevice(e *core.RequestEvent, row *deviceRow) bool {
 }
 
 func (m *module) deviceCodePage(e *core.RequestEvent, status int, userCode, message string) error {
+	text := apis.NewPageText(e, "")
+
 	d := extData{
-		Page: "device-code", Title: deviceText.Title, Heading: deviceText.Heading, T: deviceText,
+		Page: "device-code", Title: text.T("oidc.device.title"), Heading: text.T("oidc.device.heading"), Text: text,
 		Action: mountPath + "/device", UserCode: userCode, Script: "",
 	}
 
 	if message != "" {
-		d.Message, d.MessageClass = message, "err"
+		d.Message, d.MessageClass = text.T(message), "err"
 	}
 
 	return m.renderExt(e, status, d)
 }
 
 func (m *module) deviceResultPage(e *core.RequestEvent, status int, heading, message, class string) error {
+	text := apis.NewPageText(e, "")
+
 	return m.renderExt(e, status, extData{
-		Page: "device-result", Title: heading, Heading: heading, Message: message, MessageClass: class,
+		Page: "device-result", Title: text.T(heading), Heading: text.T(heading), Message: text.T(message), MessageClass: class, Text: text,
 	})
 }
 
@@ -482,7 +455,7 @@ func (m *module) deviceLookup(e *core.RequestEvent) error {
 	e.Request.Body = http.MaxBytesReader(e.Response, e.Request.Body, 4<<10)
 
 	if err := e.Request.ParseForm(); err != nil {
-		return m.deviceCodePage(e, http.StatusBadRequest, "", deviceText.BadCode)
+		return m.deviceCodePage(e, http.StatusBadRequest, "", "oidc.device.badCode")
 	}
 
 	typed := e.Request.PostForm.Get("user_code")
@@ -495,7 +468,7 @@ func (m *module) deviceLookup(e *core.RequestEvent) error {
 
 	// nothing to protect, and no counters written, until a client allows the flow
 	if m.clientCount() == 0 {
-		return m.deviceCodePage(e, http.StatusBadRequest, shown, deviceText.BadCode)
+		return m.deviceCodePage(e, http.StatusBadRequest, shown, "oidc.device.badCode")
 	}
 
 	set := m.limiters()
@@ -506,14 +479,14 @@ func (m *module) deviceLookup(e *core.RequestEvent) error {
 			m.app.Logger().Debug("OpenID Connect device code entry refused", "reason", "too many wrong codes", "ip", ip)
 			m.retryAfter(e, retry)
 
-			return m.deviceCodePage(e, http.StatusTooManyRequests, "", deviceText.TooMany)
+			return m.deviceCodePage(e, http.StatusTooManyRequests, "", "oidc.device.tooMany")
 		}
 
 		if ok, retry := set.deviceEntry.Allow(ip); !ok {
 			m.app.Logger().Info("OpenID Connect rate limit", "endpoint", "device", "budget", "per IP", "retryAfter", retry.Round(time.Second).String())
 			m.retryAfter(e, retry)
 
-			return m.deviceCodePage(e, http.StatusTooManyRequests, "", deviceText.TooMany)
+			return m.deviceCodePage(e, http.StatusTooManyRequests, "", "oidc.device.tooMany")
 		}
 	}
 
@@ -526,7 +499,7 @@ func (m *module) deviceLookup(e *core.RequestEvent) error {
 			}
 		}
 
-		return m.deviceCodePage(e, http.StatusBadRequest, shown, deviceText.BadCode)
+		return m.deviceCodePage(e, http.StatusBadRequest, shown, "oidc.device.badCode")
 	}
 
 	if !validUserCode(norm) {
@@ -539,7 +512,7 @@ func (m *module) deviceLookup(e *core.RequestEvent) error {
 	}
 
 	if !m.bindDevice(e, row) {
-		return m.deviceCodePage(e, http.StatusForbidden, "", deviceText.InUse)
+		return m.deviceCodePage(e, http.StatusForbidden, "", "oidc.device.inUse")
 	}
 
 	return e.Redirect(http.StatusSeeOther, deviceVerifyURL(row.Id))
@@ -560,21 +533,21 @@ func (m *module) retryAfter(e *core.RequestEvent, retry time.Duration) {
 func (m *module) deviceFlow(e *core.RequestEvent, ref string) (*deviceRow, *Client, *core.Collection, int, string) {
 	row, err := m.store.deviceByRef(ref)
 	if err != nil {
-		return nil, nil, nil, http.StatusBadRequest, deviceText.Expired
+		return nil, nil, nil, http.StatusBadRequest, "oidc.device.expired"
 	}
 
 	if !m.checkDeviceBinding(e, row) {
-		return nil, nil, nil, http.StatusForbidden, deviceText.Browser
+		return nil, nil, nil, http.StatusForbidden, "oidc.device.browser"
 	}
 
 	client, err := m.store.findClient(row.ClientId)
 	if err != nil || !client.AllowDeviceFlow {
-		return nil, nil, nil, http.StatusBadRequest, deviceText.Unavailable
+		return nil, nil, nil, http.StatusBadRequest, "oidc.err.appUnavailable"
 	}
 
 	col, err := client.collection()
 	if err != nil {
-		return nil, nil, nil, http.StatusBadRequest, deviceText.Unavailable
+		return nil, nil, nil, http.StatusBadRequest, "oidc.err.appUnavailable"
 	}
 
 	return row, client, col, 0, ""
@@ -587,14 +560,14 @@ func (m *module) deviceVerify(e *core.RequestEvent) error {
 
 	row, client, col, status, msg := m.deviceFlow(e, ref)
 	if status != 0 {
-		return m.deviceResultPage(e, status, deviceText.Title, msg, "err")
+		return m.deviceResultPage(e, status, "oidc.device.title", msg, "err")
 	}
 
 	switch row.Status {
 	case deviceStatusApproved, deviceStatusConsumed:
-		return m.deviceResultPage(e, http.StatusOK, deviceText.Approved, deviceText.ApprovedDetail, "ok")
+		return m.deviceResultPage(e, http.StatusOK, "oidc.device.approved", "oidc.device.approvedDetail", "ok")
 	case deviceStatusDenied:
-		return m.deviceResultPage(e, http.StatusOK, deviceText.Denied, deviceText.DeniedDetail, "ok")
+		return m.deviceResultPage(e, http.StatusOK, "oidc.device.denied", "oidc.device.deniedDetail", "ok")
 	case deviceStatusAuthenticated:
 		return m.deviceApprovePage(e, row, client)
 	}
@@ -618,19 +591,28 @@ func (m *module) deviceVerify(e *core.RequestEvent) error {
 }
 
 func (m *module) deviceApprovePage(e *core.RequestEvent, row *deviceRow, client *Client) error {
-	d := extData{
-		Page: "device-approve", Title: deviceText.ApproveTitle, Heading: deviceText.ApproveHeading, Ref: row.Id,
-		ClientName: client.Name, Script: mountPath + "/assets/device.js", T: deviceText, Action: mountPath + "/device/decision",
+	account, accountErr := m.app.FindRecordById(row.CollectionRef, row.Subject)
+
+	// the account's own language when it has one
+	lang := ""
+	if accountErr == nil {
+		lang = core.RecordLanguage(m.app, account)
 	}
 
-	if account, err := m.app.FindRecordById(row.CollectionRef, row.Subject); err == nil {
+	text := apis.NewPageText(e, lang)
+
+	d := extData{
+		Page: "device-approve", Title: text.T("oidc.consent.title"), Heading: text.T("oidc.device.approveHeading"), Ref: row.Id,
+		ClientName: client.Name, Script: mountPath + "/assets/device.js", Text: text, Action: mountPath + "/device/decision",
+	}
+
+	if accountErr == nil {
 		d.Account = account.Email()
 		if d.Account == "" {
 			d.Account = displayName(account)
 		}
 	}
 
-	text := apis.NewPageText(e, "")
 	for _, sc := range parseList(row.Scopes) {
 		info := scopeInfo{Label: sc, Detail: text.T("oidc.scope.unknown")}
 		if _, known := scopeDescriptions[sc]; known {
@@ -676,7 +658,7 @@ type deviceBody struct {
 func (m *module) deviceFinish(e *core.RequestEvent) error {
 	var body deviceBody
 	if err := e.BindBody(&body); err != nil {
-		return jsonError(e, http.StatusBadRequest, "Invalid request.")
+		return jsonError(e, http.StatusBadRequest, "oidc.err.invalidRequest")
 	}
 
 	row, client, col, status, msg := m.deviceFlow(e, body.Ref)
@@ -685,7 +667,7 @@ func (m *module) deviceFinish(e *core.RequestEvent) error {
 	}
 
 	if row.Status != deviceStatusPending {
-		return jsonError(e, http.StatusBadRequest, deviceText.Used)
+		return jsonError(e, http.StatusBadRequest, "oidc.device.used")
 	}
 
 	auth, status, msg := m.freshSignIn(e, client, col)
@@ -695,7 +677,7 @@ func (m *module) deviceFinish(e *core.RequestEvent) error {
 
 	target, err := m.deviceAuthenticate(row, e.Auth, auth)
 	if err != nil {
-		return jsonError(e, http.StatusBadRequest, deviceText.Expired)
+		return jsonError(e, http.StatusBadRequest, "oidc.device.expired")
 	}
 
 	// this sign-in is now one of the browser's single sign-on sessions
@@ -708,7 +690,7 @@ func (m *module) deviceFinish(e *core.RequestEvent) error {
 func (m *module) deviceDecision(e *core.RequestEvent) error {
 	var body deviceBody
 	if err := e.BindBody(&body); err != nil {
-		return jsonError(e, http.StatusBadRequest, "Invalid request.")
+		return jsonError(e, http.StatusBadRequest, "oidc.err.invalidRequest")
 	}
 
 	row, _, _, status, msg := m.deviceFlow(e, body.Ref)
@@ -717,12 +699,12 @@ func (m *module) deviceDecision(e *core.RequestEvent) error {
 	}
 
 	if row.Status != deviceStatusAuthenticated {
-		return jsonError(e, http.StatusBadRequest, deviceText.Used)
+		return jsonError(e, http.StatusBadRequest, "oidc.device.used")
 	}
 
 	account, err := m.app.FindRecordById(row.CollectionRef, row.Subject)
 	if err != nil || m.store.accountAlive(row.Sid, row.CollectionRef, row.Subject) != nil || m.store.clientOrgStillOK(row.ClientId, row.CollectionRef, row.Subject) != nil {
-		return jsonError(e, http.StatusUnauthorized, "That sign-in has ended. Start again on your device.")
+		return jsonError(e, http.StatusUnauthorized, "oidc.device.signInEnded")
 	}
 
 	next, action := deviceStatusDenied, "oidc_device_deny"
@@ -734,11 +716,11 @@ func (m *module) deviceDecision(e *core.RequestEvent) error {
 		"UPDATE {{"+core.CollectionNameOAuthDeviceCodes+"}} SET [[status]] = {:next} WHERE [[id]] = {:id} AND [[status]] = {:authn} AND [[expires]] > {:now}",
 		dbx.Params{"next": next, "id": row.Id, "authn": deviceStatusAuthenticated, "now": nowString()})
 	if err != nil {
-		return jsonError(e, http.StatusInternalServerError, "Failed to record the decision.")
+		return jsonError(e, http.StatusInternalServerError, "oidc.err.decisionFailed")
 	}
 
 	if n != 1 {
-		return jsonError(e, http.StatusBadRequest, deviceText.Expired)
+		return jsonError(e, http.StatusBadRequest, "oidc.device.expired")
 	}
 
 	m.store.auditAs(e.Request.Context(), action, account, e.RealIP(), map[string]any{
@@ -776,9 +758,10 @@ func contains(list []string, v string) bool {
 	return false
 }
 
-const deviceJS = `const STRINGS = {
-  failed: "The decision could not be saved.",
-};
+const deviceJS = `// the strings of the page, in the language the server negotiated (the JSON data block in the head)
+let MESSAGES = {};
+try { MESSAGES = JSON.parse(document.getElementById("i18n").textContent); } catch (e) { /* English keys show */ }
+const t = (key) => (Object.prototype.hasOwnProperty.call(MESSAGES, key) ? MESSAGES[key] : key);
 
 const root = document.getElementById("app");
 const ref = root.dataset.request;
@@ -795,7 +778,7 @@ async function decide(allow) {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok || !body.redirect) {
-    statusEl.textContent = body.message || STRINGS.failed;
+    statusEl.textContent = body.message || t("js.oidc.decisionFailed");
     statusEl.hidden = false;
     buttons.forEach((b) => { b.disabled = false; });
     return;
