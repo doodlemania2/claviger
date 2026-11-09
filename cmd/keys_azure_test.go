@@ -32,6 +32,7 @@ func TestKeysCheckAzureKeyVaultVerdicts(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
+	usePostgresOfApp(t, app)
 
 	envKEK := kekB64(t)
 	t.Setenv("CLAVIGER_KEK", envKEK)
@@ -56,7 +57,7 @@ func TestKeysCheckAzureKeyVaultVerdicts(t *testing.T) {
 	if _, err := core.RewrapFieldKeys(context.Background(), app); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := app.DB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute(); err != nil {
+	if err := core.DialectOf(app).Checkpoint(app.DB()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -68,7 +69,7 @@ func TestKeysCheckAzureKeyVaultVerdicts(t *testing.T) {
 		for k, v := range over {
 			m[k] = v
 		}
-		return envFn(m)
+		return dbEnv(app, m)
 	}
 	check := func(getenv func(string) string) (string, error) {
 		return cmd.CheckFieldKeys(context.Background(), app.DataDir(), "", getenv)

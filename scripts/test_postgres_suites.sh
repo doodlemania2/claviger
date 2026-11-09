@@ -34,6 +34,9 @@ go test -count=1 -v -p 2 -timeout 45m -skip "$skip_regex" "$@" $PACKAGES 2>&1 | 
 if grep -q -- '^--- FAIL\|^FAIL\|^panic:' "$log"; then
   echo "::error::Postgres suites failed"
   grep -A6 -- '--- FAIL\|^panic:' "$log" | head -200
+  # parallel subtests print their messages away from their "--- FAIL" line
+  echo "failure messages:"
+  grep -E '^[[:space:]]+[A-Za-z0-9_]+_test\.go:[0-9]+:' "$log" | head -100
   exit 1
 fi
 

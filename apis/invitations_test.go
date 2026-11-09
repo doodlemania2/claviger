@@ -1,6 +1,7 @@
 package apis_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -254,7 +255,7 @@ func TestInvitationsRevoke(t *testing.T) {
 
 				if got := auditEntries(t, app, "targetCollection='_invitations' && action='update' && actorId='"+orgUserID("bob")+"'"); len(got) != 1 {
 					t.Fatalf("expected one audit entry, got %d", len(got))
-				} else if orgAuditMeta(t, got[0])["orgId"] != orgP1 || !strings.Contains(got[0].GetString("after"), `"status":"revoked"`) {
+				} else if orgAuditMeta(t, got[0])["orgId"] != orgP1 || orgAuditJSON(t, got[0], "after")["status"] != "revoked" {
 					t.Fatalf("unexpected audit entry %v", got[0].PublicExport())
 				}
 			}},
@@ -465,4 +466,17 @@ func TestOrgTags(t *testing.T) {
 				}
 			}},
 	})
+}
+
+// orgAuditJSON decodes a JSON field of an audit entry. Postgres returns jsonb with
+// spaces after ':' and ',', so string matching on the raw text is engine-specific.
+func orgAuditJSON(t testing.TB, entry *core.Record, field string) map[string]any {
+	t.Helper()
+
+	m := map[string]any{}
+	if err := json.Unmarshal([]byte(entry.GetString(field)), &m); err != nil {
+		t.Fatalf("decode %s: %v", field, err)
+	}
+
+	return m
 }
