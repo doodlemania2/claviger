@@ -50,7 +50,8 @@ type module struct {
 	mu       sync.Mutex
 	provider *op.Provider
 	handler  http.Handler
-	devKey   [32]byte // crypto key when there is no encryption env (dev mode), per process
+	devKeyMu sync.Mutex // guards devKey; separate from mu, which ready() holds while calling cryptoKey
+	devKey   [32]byte   // crypto key when there is no encryption env (dev mode), per process
 }
 
 // Register wires the provider into the app. It binds the hooks that keep the
@@ -87,8 +88,8 @@ func (m *module) cryptoKey() [32]byte {
 		return sha256.Sum256([]byte("claviger-oidc-crypto-v1\x00" + key))
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.devKeyMu.Lock()
+	defer m.devKeyMu.Unlock()
 
 	if m.devKey == ([32]byte{}) {
 		_, _ = rand.Read(m.devKey[:])
