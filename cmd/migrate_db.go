@@ -541,7 +541,7 @@ func (m *migrateRun) checkTargetState(ctx context.Context, existing []string) (r
 		}
 	}
 
-	if len(existing) > 0 && !(m.opts.Resume && hasMarker) {
+	if len(existing) > 0 && (!m.opts.Resume || !hasMarker) {
 		if m.opts.Resume {
 			return false, fmt.Errorf("--resume: the target has tables (%s) but no migration is in progress there (no %s table); migrate-db needs an empty database",
 				previewNames(existing), migrateMarkerTable)

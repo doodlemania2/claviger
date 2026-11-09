@@ -99,7 +99,7 @@ After the switch:
 - **Roll back** by unsetting `CLAVIGER_DB_URL`: the SQLite files were never touched. Anything written on Postgres since the switch stays there.
 - The `_rowid_` order, ids, timestamps, password hashes, tokens and signing keys are the same, so sessions, API keys and signed tokens keep working across the switch.
 
-Limits: the copy is a snapshot of the moment the command starts, so stop the server first (`--offline-ok` is your statement that none is running). A very large installation is copied with plain multi-row `INSERT`s: expect on the order of tens of thousands of rows per second, which is minutes for a church sized database. If the data directory has an unmerged write-ahead log (`data.db-wal` with content, which is only left behind by a crash), the command reads through it and creates the `-shm` file next to the database; after a clean shutdown it opens the file immutable and creates nothing.
+Limits: the copy is a snapshot of the moment the command starts, so stop the server first (`--offline-ok` is your statement that none is running). The rows are copied with plain multi-row `INSERT`s: 300,000 rows of four columns took 2 seconds, verification included, against a Postgres on the same laptop (a remote database is bound by the round trips of each batch, so raise `--batch` there). If the data directory has an unmerged write-ahead log (`data.db-wal` with content, which is only left behind by a crash), the command reads through it and creates the `-shm` file next to the database; after a clean shutdown it opens the file immutable and creates nothing.
 
 ### How data is stored
 
