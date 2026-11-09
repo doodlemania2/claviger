@@ -149,12 +149,14 @@ func newDefaultSettings() *Settings {
 		isNew: true,
 		settings: settings{
 			Meta: MetaConfig{
-				AccentColor:   "#1055c9",
-				AppName:       "Acme",
-				AppURL:        "http://localhost:8090",
-				HideControls:  false,
-				SenderName:    "Support",
-				SenderAddress: "support@example.com",
+				DefaultLanguage: "en",
+				LanguageField:   "lang",
+				AccentColor:     "#1055c9",
+				AppName:         "Acme",
+				AppURL:          "http://localhost:8090",
+				HideControls:    false,
+				SenderName:      "Support",
+				SenderAddress:   "support@example.com",
 			},
 			Logs: LogsConfig{
 				MaxDays: 5,
@@ -571,6 +573,14 @@ type MetaConfig struct {
 	SenderName    string `form:"senderName" json:"senderName"`
 	SenderAddress string `form:"senderAddress" json:"senderAddress"`
 	HideControls  bool   `form:"hideControls" json:"hideControls"`
+
+	// DefaultLanguage is the language of the hosted pages and the built-in
+	// emails when nothing else chooses one (fork-local, #97). Empty means "en".
+	DefaultLanguage string `form:"defaultLanguage" json:"defaultLanguage"`
+
+	// LanguageField is the name of the auth collection field that holds the
+	// preferred language of a record (fork-local, #97). Empty means "lang".
+	LanguageField string `form:"languageField" json:"languageField"`
 }
 
 // Validate makes MetaConfig validatable by implementing [validation.Validatable] interface.
@@ -582,6 +592,8 @@ func (c MetaConfig) Validate() error {
 		validation.Field(&c.AppURL, validation.Required, is.URL),
 		validation.Field(&c.SenderName, validation.Required, validation.Length(1, 255)),
 		validation.Field(&c.SenderAddress, is.EmailFormat, validation.Required),
+		validation.Field(&c.DefaultLanguage, validation.By(validateLanguageTag)),
+		validation.Field(&c.LanguageField, validation.Match(languageFieldRegex)),
 	)
 }
 

@@ -41,6 +41,11 @@ button[disabled] { opacity: .55; cursor: not-allowed; }
 
 const loginJS = `import { PasskeysClient } from "/api/passkeys-client.js";
 
+// the strings of the page, in the language the server negotiated (the JSON data block in the head)
+let MESSAGES = {};
+try { MESSAGES = JSON.parse(document.getElementById("i18n").textContent); } catch (e) { /* English keys show */ }
+const t = (key) => (Object.prototype.hasOwnProperty.call(MESSAGES, key) ? MESSAGES[key] : key);
+
 const root = document.getElementById("app");
 const requestID = root.dataset.request;
 const collection = root.dataset.collection;
@@ -67,7 +72,7 @@ async function finish(token) {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok || !body.redirect) {
-    fail(body.message || "The sign-in could not be completed.");
+    fail(body.message || t("js.oidc.finishFailed"));
     return;
   }
   window.location.assign(body.redirect);
@@ -97,14 +102,14 @@ const CAPTCHA_SRC = {
 
 function loadCaptchaScript(cfg) {
   const src = CAPTCHA_SRC[cfg.provider] && CAPTCHA_SRC[cfg.provider](cfg);
-  if (!src) return Promise.reject(new Error("Unsupported captcha provider."));
+  if (!src) return Promise.reject(new Error(t("js.captcha.unsupported")));
   if (!captchaScripts[src]) {
     captchaScripts[src] = new Promise((resolve, reject) => {
       const el = document.createElement("script");
       el.src = src;
       el.async = true;
       el.onload = resolve;
-      el.onerror = () => reject(new Error("Could not load the captcha."));
+      el.onerror = () => reject(new Error(t("js.captcha.loadFailed")));
       document.head.appendChild(el);
     });
   }
@@ -131,8 +136,8 @@ async function getCaptchaToken(action) {
       sitekey: cfg.siteKey,
       action: cfg.provider === "turnstile" ? action : undefined,
       callback: (token) => done(resolve, token),
-      "error-callback": () => done(reject, new Error("Captcha failed, please try again.")),
-      "expired-callback": () => done(reject, new Error("Captcha expired, please try again.")),
+      "error-callback": () => done(reject, new Error(t("js.captcha.failed"))),
+      "expired-callback": () => done(reject, new Error(t("js.captcha.expired"))),
     });
   });
 }
@@ -152,7 +157,7 @@ function secondFactor(body) {
     return true;
   }
   if (body && body.mfaId) {
-    fail("This account needs a second sign-in step that this page does not support yet.");
+    fail(t("js.signin.unsupportedFactor"));
     return true;
   }
   return false;
@@ -166,7 +171,7 @@ pw.addEventListener("submit", async (ev) => {
     const captcha = await getCaptchaToken("login");
     if (captcha) headers["X-Captcha-Token"] = captcha;
   } catch (err) {
-    fail(err.message || "The captcha could not be completed.");
+    fail(err.message || t("js.captcha.incomplete"));
     return;
   }
   const r = await post("/auth-with-password", {
@@ -175,8 +180,8 @@ pw.addEventListener("submit", async (ev) => {
   }, headers);
   if (r.status === 200 && r.body.token) return finish(r.body.token);
   if (r.status === 401 && secondFactor(r.body)) return;
-  if (isCaptchaFailure(r)) return fail("The captcha check failed. Try again.");
-  fail(r.status === 429 ? "Too many attempts. Try again later." : "Wrong email or password.");
+  if (isCaptchaFailure(r)) return fail(t("js.captcha.checkFailed"));
+  fail(r.status === 429 ? t("js.tooMany") : t("js.signin.wrongCredentials"));
 });
 
 totp.addEventListener("submit", async (ev) => {
@@ -184,7 +189,7 @@ totp.addEventListener("submit", async (ev) => {
   fail("");
   const r = await post("/auth-with-totp", { mfaId, code: totp.elements.code.value.trim() });
   if (r.status === 200 && r.body.token) return finish(r.body.token);
-  fail(r.status === 429 ? "Too many attempts. Try again later." : "That code was not accepted.");
+  fail(r.status === 429 ? t("js.tooMany") : t("js.signin.codeRejected"));
 });
 
 passkeyBtn.addEventListener("click", async () => {
@@ -193,23 +198,23 @@ passkeyBtn.addEventListener("click", async () => {
   try {
     const identity = pw.elements.identity.value.trim();
     if (!identity) {
-      fail("Enter your email or username first.");
+      fail(t("js.oidc.enterIdentity"));
       return;
     }
     const res = await client.login(identity);
     if (res && res.token) return finish(res.token);
-    if (!secondFactor(res)) fail("The passkey sign-in did not complete.");
+    if (!secondFactor(res)) fail(t("js.signin.passkeyIncomplete"));
   } catch (err) {
     if (err && err.status === 401 && secondFactor(err.response)) return;
     if (err && err.status === 400 && err.response && err.response.data && err.response.data.captchaToken) {
-      fail("The captcha check failed. Try again.");
+      fail(t("js.captcha.checkFailed"));
       return;
     }
     if (err && err.status === 429) {
-      fail("Too many attempts. Try again later.");
+      fail(t("js.tooMany"));
       return;
     }
-    fail(err && /captcha/i.test(err.message || "") ? err.message : "The passkey sign-in did not complete.");
+    fail(err && /captcha/i.test(err.message || "") ? err.message : t("js.signin.passkeyIncomplete"));
   }
 });
 
@@ -229,14 +234,19 @@ passkeyBtn.addEventListener("click", async () => {
         pw.querySelector("button").hidden = true;
       }
     }
-    if (pw.hidden && passkeyBox.hidden) fail("No sign-in method is available for this application.");
+    if (pw.hidden && passkeyBox.hidden) fail(t("js.oidc.noMethod"));
   } catch (err) {
     pw.hidden = false;
   }
 })();
 `
 
-const consentJS = `const root = document.getElementById("app");
+const consentJS = `// the strings of the page, in the language the server negotiated (the JSON data block in the head)
+let MESSAGES = {};
+try { MESSAGES = JSON.parse(document.getElementById("i18n").textContent); } catch (e) { /* English keys show */ }
+const t = (key) => (Object.prototype.hasOwnProperty.call(MESSAGES, key) ? MESSAGES[key] : key);
+
+const root = document.getElementById("app");
 const requestID = root.dataset.request;
 const statusEl = root.querySelector("#status");
 const buttons = root.querySelectorAll("button");
@@ -251,7 +261,7 @@ async function decide(allow) {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok || !body.redirect) {
-    statusEl.textContent = body.message || "The decision could not be saved.";
+    statusEl.textContent = body.message || t("js.oidc.decisionFailed");
     statusEl.hidden = false;
     buttons.forEach((b) => { b.disabled = false; });
     return;

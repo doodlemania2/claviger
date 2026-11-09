@@ -40,7 +40,8 @@ func strictPage(t testing.TB, res *http.Response, body string) {
 	}
 
 	for _, m := range inlineScriptRe.FindAllString(body, -1) {
-		if !strings.Contains(m, " src=") {
+		// a JSON data block (the page strings) is data: browsers never execute it
+		if !strings.Contains(m, " src=") && !strings.Contains(m, `type="application/json"`) {
 			t.Fatalf("inline script %q", m)
 		}
 	}

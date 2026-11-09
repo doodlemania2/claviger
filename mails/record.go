@@ -17,7 +17,7 @@ func SendRecordAuthAlert(app core.App, authRecord *core.Record, info string) err
 
 	info = html.EscapeString(info)
 
-	subject, body, err := resolveEmailTemplate(app, authRecord, authRecord.Collection().AuthAlert.EmailTemplate, map[string]any{
+	subject, body, err := resolveEmailTemplate(app, authRecord, core.EmailKindAuthAlert, authRecord.Collection().AuthAlert.EmailTemplate, map[string]any{
 		core.EmailPlaceholderAlertInfo: info,
 	})
 	if err != nil {
@@ -54,7 +54,7 @@ func SendRecordAuthAlert(app core.App, authRecord *core.Record, info string) err
 func SendRecordOTP(app core.App, authRecord *core.Record, otpId string, pass string) error {
 	mailClient := app.NewMailClient()
 
-	subject, body, err := resolveEmailTemplate(app, authRecord, authRecord.Collection().OTP.EmailTemplate, map[string]any{
+	subject, body, err := resolveEmailTemplate(app, authRecord, core.EmailKindOTP, authRecord.Collection().OTP.EmailTemplate, map[string]any{
 		core.EmailPlaceholderOTPId: otpId,
 		core.EmailPlaceholderOTP:   pass,
 	})
@@ -133,7 +133,7 @@ func SendRecordPasswordReset(app core.App, authRecord *core.Record) error {
 
 	mailClient := app.NewMailClient()
 
-	subject, body, err := resolveEmailTemplate(app, authRecord, authRecord.Collection().ResetPasswordTemplate, map[string]any{
+	subject, body, err := resolveEmailTemplate(app, authRecord, core.EmailKindPasswordReset, authRecord.Collection().ResetPasswordTemplate, map[string]any{
 		core.EmailPlaceholderToken: token,
 	})
 	if err != nil {
@@ -171,7 +171,7 @@ func SendRecordPasskeyReset(app core.App, authRecord *core.Record) error {
 
 	mailClient := app.NewMailClient()
 
-	subject, body, err := resolveEmailTemplate(app, authRecord, authRecord.Collection().PasskeyResetTemplate, map[string]any{
+	subject, body, err := resolveEmailTemplate(app, authRecord, core.EmailKindPasskeyReset, authRecord.Collection().PasskeyResetTemplate, map[string]any{
 		core.EmailPlaceholderToken: token,
 	})
 	if err != nil {
@@ -209,7 +209,7 @@ func SendRecordVerification(app core.App, authRecord *core.Record) error {
 
 	mailClient := app.NewMailClient()
 
-	subject, body, err := resolveEmailTemplate(app, authRecord, authRecord.Collection().VerificationTemplate, map[string]any{
+	subject, body, err := resolveEmailTemplate(app, authRecord, core.EmailKindVerification, authRecord.Collection().VerificationTemplate, map[string]any{
 		core.EmailPlaceholderToken: token,
 	})
 	if err != nil {
@@ -247,7 +247,7 @@ func SendRecordChangeEmail(app core.App, authRecord *core.Record, newEmail strin
 
 	mailClient := app.NewMailClient()
 
-	subject, body, err := resolveEmailTemplate(app, authRecord, authRecord.Collection().ConfirmEmailChangeTemplate, map[string]any{
+	subject, body, err := resolveEmailTemplate(app, authRecord, core.EmailKindEmailChange, authRecord.Collection().ConfirmEmailChangeTemplate, map[string]any{
 		core.EmailPlaceholderToken: token,
 	})
 	if err != nil {
@@ -289,6 +289,7 @@ var nonescapeTypes = []string{
 func resolveEmailTemplate(
 	app core.App,
 	authRecord *core.Record,
+	kind string,
 	emailTemplate core.EmailTemplate,
 	placeholders map[string]any,
 ) (subject string, body string, err error) {
@@ -323,6 +324,9 @@ func resolveEmailTemplate(
 			placeholders[fieldPlacehodler] = val
 		}
 	}
+
+	// fork-local (#97): a template that is still the built-in default is sent in the recipient's language
+	emailTemplate = localizeTemplate(app, authRecord, kind, emailTemplate)
 
 	subject, rawBody := emailTemplate.Resolve(placeholders)
 

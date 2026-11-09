@@ -22,7 +22,7 @@ input { display: block; width: 100%; margin-top: 4px; padding: 10px; font: inher
 textarea { display: block; width: 100%; margin-top: 4px; padding: 10px; font: inherit; color: inherit;
   background: transparent; border: 1px solid var(--line); border-radius: 8px; }
 label.check { font-weight: 400; }
-label.check input { display: inline-block; width: auto; margin: 0 6px 0 0; }
+label.check input { display: inline-block; width: auto; margin: 0; margin-inline-end: 6px; }
 input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 button { width: 100%; margin-top: 16px; padding: 10px 14px; font: inherit; font-weight: 600; cursor: pointer;
   color: var(--accent-fg); background: var(--accent); border: 1px solid var(--accent); border-radius: 8px; }
@@ -42,14 +42,14 @@ header.bar p { margin: 0; }
 h2 { margin: 28px 0 8px; font-size: 1.1rem; }
 .tablewrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: .92rem; }
-th, td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: middle; }
+th, td { text-align: start; padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: middle; }
 th { color: var(--muted); font-weight: 500; border-top: 0; }
 td input, td select { margin: 0; padding: 6px; min-width: 7rem; }
 select { padding: 10px; font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 8px; }
-td button, .inline button { width: auto; margin: 0 4px 0 0; padding: 6px 10px; font-weight: 500; }
+td button, .inline button { width: auto; margin: 0; margin-inline-end: 4px; padding: 6px 10px; font-weight: 500; }
 .inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
 .inline label { margin-top: 0; }
 .inline button { margin-top: 0; }
-.tag { display: inline-block; margin: 0 4px 4px 0; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: .85rem; }
+.tag { display: inline-block; margin: 0 0 4px; margin-inline-end: 4px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: .85rem; }
 .linklike { width: auto; margin: 0; padding: 0; color: var(--accent); background: none; border: 0; font-weight: 500; text-decoration: underline; }
 header.bar button { width: auto; margin: 0; }

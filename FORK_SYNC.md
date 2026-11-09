@@ -278,7 +278,13 @@ Fork-only files for #93: `core/session.go`, `core/ban.go`, `migrations/178000060
 | `cmd/superuser.go` | One line: `superuserTOTPDisableCommand` registered (#90). |
 | `core/collection_query_test.go`, `apis/collection_import_test.go`, `apis/collection_test.go` | System collection counts 18 to 19 and `_totps` in the list (#90). Other batch-3 collections add to these counts too. |
 
+| `core/settings_model.go` (#97) | `MetaConfig.DefaultLanguage` and `LanguageField` (+ `Validate` lines, defaults `en` / `lang` in `newDefaultSettings`). The exact-JSON snapshots in `core/settings_model_test.go` carry `"defaultLanguage":"","languageField":""`. |
+| `mails/record.go` (#97) | `resolveEmailTemplate` takes the email `kind` and starts with `emailTemplate = localizeTemplate(...)`; the six `SendRecord*` callers pass `core.EmailKind*`. A template that is still the English default is replaced by the catalog version in the recipient's language; a customized one is never touched. Upstream template defaults (`core/collection_model_auth_templates.go`) are **not** edited: `core/email_template_defaults.go` exposes them by kind. After a sync, if upstream changes a default template's wording, update `email.*` in `tools/i18n/locales/en.json` (the test `TestEnglishBuiltinsEqualTheStoredDefaults` fails until they match) and the translations. |
+| `plugins/jsvm/internal/types/generated/types.d.ts` (#97) | `MetaConfig` gained the two fields (regenerate with `make jstypes`). |
+
 Fork-only files for #78: `core/backup_verify*.go`, `core/diskfree_*.go`.
+
+Fork-only files for #97 (localization): `tools/i18n/` (catalog engine, `locales/*.json`), `core/i18n.go`, `core/email_template_defaults.go`, `mails/localized.go`, `apis/pages_i18n.go`, golden files in `{apis,oidc,mails}/testdata/i18n_golden/`, `docs/localization.md`. The fork's own hosted pages (`apis/passkeys_page.go`, `apis/orgs_pages*`, `oidc/login.go`, `oidc/assets.go`) and `mails/invitation.go` use the catalog. Sync checks: `go test ./tools/i18n/ ./mails/ -run 'Catalog|Builtin|English|Localized'` and `go test -run 'English|Localized' ./apis/ ./oidc/`. New end-user strings go into `en.json` first, then every other locale (the catalog tests fail on a missing key, a lost `{placeholder}` or changed markup).
 
 Fork-only files for #90 (TOTP): `tools/security/totp.go`, `core/totp_model.go`, `migrations/1780000300_add_totps.go`, `apis/record_auth_totp.go`, `cmd/superuser_totp.go`, `ui/src/settings/security/`. `core/audit_model.go` (fork file) skips the `lastStep` replay counter as noise.
 

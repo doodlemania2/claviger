@@ -316,7 +316,7 @@ func (m *module) tooManyRequests(e *core.RequestEvent, endpoint string, retry ti
 	h.Set("Pragma", "no-cache")
 
 	if endpoint == "authorize" {
-		_ = m.errorPage(e, http.StatusTooManyRequests, "Too many sign-in requests. Wait a minute and try again.")
+		_ = m.errorPage(e, http.StatusTooManyRequests, "oidc.err.tooManyRequests")
 
 		return
 	}

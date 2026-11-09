@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Allow access</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/oidc/assets/oidc.css">
+</head>
+<body>
+<main class="card" id="app" data-page="consent" data-request="ID" data-collection="">
+<h1>Allow access?</h1>
+
+
+
+<p class="sub"><strong>Third Party App</strong> wants to access your account <span class="muted">(test@example.com)</span>.</p>
+<ul class="scopes"><li><strong>Sign you in</strong><span>Confirm who you are to this application.</span></li><li><strong>Your profile</strong><span>Your name and username.</span></li><li><strong>Your email address</strong><span>Your email address and whether it is verified.</span></li><li><strong>Stay signed in</strong><span>Keep access when you are not using the application.</span></li></ul>
+<div class="row">
+<button id="allow" type="button">Allow</button>
+<button id="deny" type="button" class="secondary">Cancel</button>
+</div>
+<p id="status" class="msg err" role="alert" hidden></p>
+
+</main>
+<script type="module" src="/oidc/assets/consent.js"></script>
+</body>
+</html>
