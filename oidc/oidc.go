@@ -237,7 +237,9 @@ func (m *module) serveLibrary(e *core.RequestEvent) error {
 
 	r := m.withSSO(m.withClientAlg(e.Request))
 
-	var w http.ResponseWriter = e.Response
+	var w http.ResponseWriter
+
+	w = e.Response
 
 	if strings.TrimSuffix(r.URL.Path, "/") == mountPath+"/end_session" && ssoCookieValue(r) != "" {
 		// logging out forgets the accounts that signed out: the cookie is

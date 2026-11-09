@@ -47,7 +47,7 @@ func TestCollectionsList(t *testing.T) {
 			ExpectedContent: []string{
 				`"page":1`,
 				`"perPage":30`,
-				`"totalItems":38`,
+				`"totalItems":39`,
 				`"items":[{`,
 				`"name":"` + core.CollectionNameSuperusers + `"`,
 				`"name":"` + core.CollectionNameAuthOrigins + `"`,
@@ -87,7 +87,7 @@ func TestCollectionsList(t *testing.T) {
 			ExpectedContent: []string{
 				`"page":4`,
 				`"perPage":2`,
-				`"totalItems":38`,
+				`"totalItems":39`,
 				`"items":[{`,
 				// newest first: _scimGroups and _scimTokens (#79c) are page 1, _invitations (#79b) and an
 				// org collection (#79a) page 2, the other two org collections page 3 (same migration,
