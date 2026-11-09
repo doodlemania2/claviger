@@ -407,7 +407,7 @@ func renderPasskeysPage(text *PageText) string {
 	})
 }
 
-// passkeysPageHTML is the page template: "@{key}" is replaced by the catalog message in the
+// passkeysPageHTML is the page template: a marker is replaced by the catalog message in the
 // language of the request (see renderPasskeysPage).
 const passkeysPageHTML = `<!DOCTYPE html>
 <html@{lang}>

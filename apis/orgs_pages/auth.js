@@ -12,7 +12,7 @@ const KEY = "claviger_orgs_token";
 let MESSAGES = {};
 try { MESSAGES = JSON.parse(document.getElementById("i18n").textContent); } catch (e) { /* English keys show */ }
 
-// t("js.key", {name: value}) fills the {placeholders} of a message.
+// t(key, {name: value}) fills the {placeholders} of a message.
 export function t(key, args) {
   const msg = Object.prototype.hasOwnProperty.call(MESSAGES, key) ? MESSAGES[key] : key;
   return msg.replace(/\{(\w+)\}/g, (m, k) => (args && k in args ? args[k] : m));

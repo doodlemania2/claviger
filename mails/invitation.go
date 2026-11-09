@@ -83,7 +83,7 @@ func SendOrgInvitation(app core.App, org, inv *core.Record, inviter, token strin
 		core.EmailPlaceholderAppURL:  meta.AppURL,
 		EmailPlaceholderOrgName:      org.GetString("name"),
 		EmailPlaceholderOrgSlug:      org.GetString("slug"),
-		EmailPlaceholderRole:         inv.GetString("role"),
+		EmailPlaceholderRole:         roleLabel(bundle, lang, inv.GetString("role")),
 		EmailPlaceholderInviter:      inviter,
 		EmailPlaceholderInviteURL:    link,
 		EmailPlaceholderExpires:      expires,
@@ -153,4 +153,14 @@ func inviteeLanguage(app core.App, email string) string {
 	}
 
 	return core.RecordLanguage(app, rec)
+}
+
+// roleLabel is the name of an org role in the language, the role itself when
+// the catalog has none.
+func roleLabel(b *i18n.Bundle, lang, role string) string {
+	if v, ok := b.Lookup(lang, "js.role."+role); ok {
+		return v
+	}
+
+	return role
 }
