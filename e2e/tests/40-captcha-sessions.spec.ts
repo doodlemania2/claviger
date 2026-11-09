@@ -40,7 +40,7 @@ test("Sessions and ban: list a user's sessions, ban the account, unban it", asyn
 
     await admin.goto("/_/#/collections?collection=users");
     await admin.getByRole("row", { name: new RegExp(user.email) }).click();
-    await admin.getByRole("button", { name: /more|options/i }).first().click();
+    await admin.getByRole("button", { name: "More options" }).click();
     await admin.getByText("Sessions and ban").click();
 
     const dialog = admin.locator(".modal", { hasText: "Sessions and ban:" });
