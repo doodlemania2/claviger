@@ -30,6 +30,29 @@ async function addVirtualAuthenticator(ctx: BrowserContext, page: Page): Promise
     return { cdp, authenticatorId };
 }
 
+/**
+ * The page starts conditional-UI autofill whenever it shows the sign-in form, and a virtual
+ * authenticator with automatic presence answers that immediately, so right after a sign-out the
+ * page signs itself in and races the test's own clicks. Tests of the manual button path park
+ * conditional requests until the page aborts them, the way a real browser does with no user
+ * gesture on the autofill UI.
+ */
+async function parkConditionalMediation(page: Page) {
+    await page.addInitScript(() => {
+        const get = navigator.credentials.get.bind(navigator.credentials);
+        navigator.credentials.get = (options?: CredentialRequestOptions) => {
+            if (options && (options as any).mediation === "conditional") {
+                return new Promise<Credential | null>((_resolve, reject) => {
+                    const abort = () => reject(new DOMException("aborted", "AbortError"));
+                    if (options.signal?.aborted) return abort();
+                    options.signal?.addEventListener("abort", abort);
+                });
+            }
+            return get(options);
+        };
+    });
+}
+
 test.describe.configure({ mode: "serial" });
 
 test("Passkeys page: register a passkey after a password sign-in, then sign in with it", async ({ browser, problems }) => {
@@ -37,6 +60,7 @@ test("Passkeys page: register a passkey after a password sign-in, then sign in w
     const ctx = await browser.newContext({ baseURL: base });
     const page = await ctx.newPage();
     watch(page, problems);
+    await parkConditionalMediation(page);
     const { cdp, authenticatorId } = await addVirtualAuthenticator(ctx, page);
 
     await page.goto("/passkeys");
@@ -99,6 +123,7 @@ test("Passkeys page: a discoverable credential signs in without typing an identi
     const ctx = await browser.newContext({ baseURL: base });
     const page = await ctx.newPage();
     watch(page, problems);
+    await parkConditionalMediation(page);
     const { cdp, authenticatorId } = await addVirtualAuthenticator(ctx, page);
 
     // seed: register through the page, as a user would
@@ -114,6 +139,29 @@ test("Passkeys page: a discoverable credential signs in without typing an identi
 
     // no identity typed: the button uses the discoverable flow
     await page.locator("#btnLogin").click();
+    await expect(page.locator("#me")).toContainText(user.email);
+    await ctx.close();
+});
+
+test("Passkeys page: sign-in autofill signs in by itself after a sign-out", async ({ browser, problems }) => {
+    const { base, user } = state();
+    const ctx = await browser.newContext({ baseURL: base });
+    const page = await ctx.newPage();
+    watch(page, problems);
+    const { cdp, authenticatorId } = await addVirtualAuthenticator(ctx, page);
+
+    await page.goto("/passkeys");
+    await page.locator("#linkPasswordLogin").click();
+    await page.locator("#pwEmail").fill(user.email);
+    await page.locator("#pwPass").fill(user.password);
+    await page.locator("#btnPwLogin").click();
+    await expect(page.locator("#me")).toContainText(user.email);
+    await page.locator("#btnRegister").click();
+    await expect.poll(async () => (await cdp.send("WebAuthn.getCredentials", { authenticatorId })).credentials.length).toBeGreaterThan(0);
+
+    // no click: the conditional request the page starts is answered by the authenticator
+    await page.locator("#linkLogout").click();
+    await expect(page.locator("#me")).toBeVisible();
     await expect(page.locator("#me")).toContainText(user.email);
     await ctx.close();
 });

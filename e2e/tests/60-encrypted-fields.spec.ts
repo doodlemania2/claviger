@@ -1,10 +1,21 @@
 import { test, expect, state, api } from "../fixtures";
+import type { Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
 function dbValue(sql: string): string {
     // The server holds the database open in WAL mode; a read-only query is fine.
     return execFileSync("sqlite3", ["-readonly", join(state().data, "data.db"), sql], { encoding: "utf8" }).trim();
+}
+
+/**
+ * The record editor opens preloaded from the list row and keeps its form inert until the record
+ * is fetched, then overwrites the form with the fetched copy. Playwright's fill() works on inert
+ * elements, so a fill made before the fetch lands is silently reverted: wait for the editor to
+ * become interactive first, as a person would.
+ */
+async function recordEditorLoaded(page: Page) {
+    await expect(page.locator(".modal-content > .grid:not([inert])")).toBeVisible();
 }
 
 test("Encrypted fields: add both types in the collection editor, create and edit a record", async ({ admin }) => {
@@ -51,6 +62,7 @@ test("Encrypted fields: add both types in the collection editor, create and edit
 
     // ---- edit it in the UI
     await admin.getByRole("row", { name: /first/ }).click();
+    await recordEditorLoaded(admin);
     await expect(admin.getByRole("textbox", { name: "encryptedText", exact: true })).toHaveValue("the pastor's number is 555-0100");
     await admin.getByRole("textbox", { name: "encryptedText", exact: true }).fill("changed");
     await admin.getByRole("button", { name: "Save changes" }).click();
