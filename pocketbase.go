@@ -177,6 +177,9 @@ func (pb *PocketBase) Start() error {
 	pb.RootCmd.AddCommand(cmd.NewServeCommand(pb, !pb.hideStartBanner))
 	pb.RootCmd.AddCommand(cmd.NewKeysCommand(pb)) // fork-local (#75)
 
+	// fork-local (#106, M5)
+	pb.RootCmd.AddCommand(cmd.NewMigrateDBCommand(pb))
+
 	return pb.Execute()
 }
 
@@ -286,6 +289,12 @@ func (pb *PocketBase) skipBootstrap() bool {
 	// replica still owns it, and the maintenance commands first check that no
 	// server does (each of them bootstraps the app itself)
 	if cmd.Parent() != nil && cmd.Parent().Name() == "keys" {
+		return true
+	}
+
+	// fork-local (#106, M5): `migrate-db` reads data.db itself (read only) and
+	// must not bootstrap, and so migrate, the source or the target
+	if cmd.Name() == "migrate-db" {
 		return true
 	}
 

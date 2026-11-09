@@ -336,6 +336,21 @@ After a sync, also run `go test ./tools/search -run 'Golden|PostgresFilterSQL'` 
 
 Upstream test files were touched only for fork-owned behaviour: none of the upstream tests changed (the SQLite specific ones are in `tests/postgres_skip.txt`). Fork test files that wrote SQLite SQL now use `{{table}}` / `[[column]]` placeholders, `core.DialectOf(app).Checkpoint` and `tests.CompactJSON` (JSONB renders `{"a": 1}`). After a sync run `scripts/test_postgres_suites.sh`: a new upstream test that asserts SQLite SQL goes into `tests/postgres_skip.txt` with its reason (or is fixed), never into a silent skip.
 
+**M5 (`claviger migrate-db`) and M6 (CI matrix, skip list).** Fork-only files: `cmd/migrate_db.go`, `cmd/migrate_db_verify.go`, `cmd/migrate_db_test.go`, `scripts/test_migrate_db_smoke.sh`, `scripts/pgdb/` (create or drop a database without psql). Upstream-owned hunks:
+
+| File | Fork change | Re-check on sync |
+| --- | --- | --- |
+| `pocketbase.go` (+9) | `Start()` registers `cmd.NewMigrateDBCommand`; `skipBootstrap()` returns true for `migrate-db` (it opens the SQLite source read only and bootstraps the target itself, so the eager bootstrap must not migrate either). | A rewritten `Start()` or `skipBootstrap()`. |
+| `core/field_{autodate,date,editor,email,file,geo_point,json,number,password,relation,select,text,url}_test.go` (13 files, one line each) | `ColumnType` tests compare against `tests.ColumnType(expected)`, which translates the SQLite definition for Postgres. | An upstream change of a field's column type: update the expected string, and `tools/dialect` for both engines. |
+| `core/collection_query_test.go`, `core/db_test.go`, `plugins/jsvm/binds_test.go` (one line each) | The statement text is compared through `tests.NormalizeQuotes` (Postgres quotes with `"`). | |
+| `core/view_test.go` | The temp view check asks `information_schema.views` on Postgres. | |
+| `tests/app_postgres.go` | `ColumnType` and `NormalizeQuotes` helpers. `adaptFixtureValue` mirrors `adaptSQLiteValue` in `cmd/migrate_db.go` (the `tests` package cannot import `cmd`: its tests import `tests`). | Change both together. |
+| `tests/postgres_skip.txt` | 35 entries down to 16. | A new upstream test that asserts SQLite SQL goes here with its reason. |
+| `.github/workflows/test.yml` | The `postgres` job is a matrix (`pg`: 16.15, plus 17.11 off pull requests) and has the migrate-db smoke step. The service image tags are bumped by hand. | The job name changed to `postgres <version>`: update required status checks if any name `postgres`. |
+| `scripts/pgembedded/main.go` | `EPG_VERSION` (16 or 17). | |
+
+`migrate-db` reads the stored `_collections` rows and the system migration list (`core.SystemMigrations`): after a sync that adds a system migration or changes how `ImportCollections` treats system collections, run `go test ./cmd -run MigrateDB` against a Postgres (`CLAVIGER_TEST_PG_URL`). The `_migrations`, `_params` and `_collections` handling in `copyTable` / `copyMigrations` follows the upstream table layout.
+
 ## CI
 
 | Workflow | File | Runs on |

@@ -25,7 +25,7 @@ func TestPasswordFieldColumnType(t *testing.T) {
 
 	expected := "TEXT DEFAULT '' NOT NULL"
 
-	if v := f.ColumnType(app); v != expected {
+	if v := f.ColumnType(app); v != tests.ColumnType(expected) {
 		t.Fatalf("Expected\n%q\ngot\n%q", expected, v)
 	}
 }

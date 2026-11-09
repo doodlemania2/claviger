@@ -1,4 +1,4 @@
-// Command pgembedded starts a throwaway PostgreSQL 16 (downloaded by
+// Command pgembedded starts a throwaway PostgreSQL 16 (17 with EPG_VERSION=17) (downloaded by
 // embedded-postgres on first use), runs the Postgres test package against it,
 // and stops it again. Usage, from the repository root:
 //
@@ -6,6 +6,7 @@
 //
 // Environment:
 //
+//	EPG_VERSION   16 (default) or 17
 //	EPG_PORT      server port (default 55432; 54329 belongs to other local tooling)
 //	EPG_VERBOSE   print the server log
 //	EPG_BINARIES  directory to cache the downloaded binaries in
@@ -49,8 +50,17 @@ func run() error {
 	}
 	defer os.RemoveAll(tmp)
 
+	version := embeddedpostgres.V16
+	switch v := os.Getenv("EPG_VERSION"); v {
+	case "", "16":
+	case "17":
+		version = embeddedpostgres.V17
+	default:
+		return fmt.Errorf("unsupported EPG_VERSION %q (16 or 17)", v)
+	}
+
 	cfg := embeddedpostgres.DefaultConfig().
-		Version(embeddedpostgres.V16).
+		Version(version).
 		Port(port).
 		Username("pb").Password("pb").Database("pbtest").
 		RuntimePath(filepath.Join(tmp, "rt")).

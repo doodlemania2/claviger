@@ -786,7 +786,7 @@ func TestBindDbx(t *testing.T) {
 
 		v, _ := result.Export().(string)
 
-		if v != s.expected {
+		if tests.NormalizeQuotes(v) != s.expected {
 			t.Fatalf("[%s] Expected \n%s, \ngot \n%s", s.js, s.expected, v)
 		}
 	}

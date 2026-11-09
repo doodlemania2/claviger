@@ -2,9 +2,9 @@
 
 Claviger stores its data in SQLite by default, exactly like PocketBase. Nothing needs to be configured for that.
 
-## PostgreSQL (experimental)
+## PostgreSQL
 
-Status: **milestone 4 of 6** (issue #106). The storage layer sits behind a dialect interface (`tools/dialect`), the app starts on PostgreSQL, the records API works (filters, sorting, expand, view collections), collections import and export and the migration commands work, and every fork feature runs on it. What is missing is the tool that copies an existing SQLite install over (M5), the full CI matrix (M6) and more than one replica (M7). Zip backups do not contain the database (see [Backups](#backups)). It is still marked experimental: try it on a copy, not on production data. The lists below say exactly what is and is not there.
+Status: **supported, single replica** (issue #106, milestones 1 to 6). The storage layer sits behind a dialect interface (`tools/dialect`), the app runs on PostgreSQL 16 and 17, the records API works (filters, sorting, expand, view collections), collections import and export and the migration commands work, every fork feature runs on it, and `claviger migrate-db` copies an existing SQLite install over ([Moving from SQLite to PostgreSQL](#moving-from-sqlite-to-postgresql)). CI runs the Postgres suites on both versions. What is not there is more than one replica (M7, later) and zip backups of the database (see [Backups](#backups)). SQLite stays the default and its behavior is unchanged. The lists below say exactly what is and is not there.
 
 ### Turning it on
 
@@ -51,16 +51,55 @@ CLAVIGER_DB_URL='postgres://user:password@host:5432/dbname?sslmode=require'
 
 The differences from SQLite that you can observe are listed under [Differences from SQLite](#differences-from-sqlite).
 
-### What does not work yet
+### Limits
 
-| Area | Milestone |
+| Area | State |
 | --- | --- |
-| `claviger migrate-db` (copy an existing SQLite install to Postgres) | M5 |
-| Running the whole existing test suite against Postgres in CI, as a matrix with SQLite (the selected suites run today, see [Running the Postgres tests](#running-the-postgres-tests)) | M6 |
-| More than one replica (realtime events, cron, the notify watcher and rate limits are still per process) | M7 |
-| Zip backup and restore of the database | not planned: use `pg_dump` or point-in-time recovery |
+| More than one replica (realtime events, cron, the notify watcher and rate limits are still per process) | M7, later. Run a single replica. |
+| Zip backup and restore of the database | Not planned: use `pg_dump` or point-in-time recovery. |
+| Views written in SQLite SQL, raw SQL in your own migrations | Written for the engine you run on, see [Your own SQL](#your-own-sql). `migrate-db` has `--skip-views` for the first. |
+| The request logs (`auxiliary.db`) | Stay in a local SQLite file, one per replica. |
 
-A skipped test is not a pass: the `postgres` CI job fails if one of the tests skips, except for the documented known gaps (the `known_gap` tests in `tests/pgtests` and the list in `tests/postgres_skip.txt`), which are skipped on purpose and printed with their reason.
+A skipped test is not a pass: the `postgres` CI job fails if one of the tests skips, except for the documented known gaps (the `known_gap` tests in `tests/pgtests` and the 16 tests in `tests/postgres_skip.txt`), which are skipped on purpose and printed with their reason.
+
+### Moving from SQLite to PostgreSQL
+
+`claviger migrate-db` copies the `data.db` of a `pb_data` directory into an **empty** PostgreSQL database. It is a one way, offline copy: the source is opened read only and is never modified, so the SQLite install stays a valid fallback until you decide to delete it.
+
+```sh
+# 1. stop the server (it is the single writer of pb_data), then rehearse:
+claviger migrate-db --dir=/pb_data --to='postgres://user:password@host:5432/claviger?sslmode=require' --dry-run
+
+# 2. copy, verify, report:
+claviger migrate-db --dir=/pb_data --to='postgres://user:password@host:5432/claviger?sslmode=require' --verbose
+
+# 3. start Claviger on the new database
+export CLAVIGER_DB_URL='postgres://user:password@host:5432/claviger?sslmode=require'
+claviger keys check      # only if you use field encryption
+claviger serve --dir=/pb_data
+```
+
+What it does, in order:
+
+1. Refuses to start when the target database has any table (it never merges or overwrites), unless `--resume` continues an interrupted run of this command, and when a server owns the source directory (the single-writer lock or a handover is in progress, the same check as the `keys` commands) unless `--offline-ok`. It also refuses a source that is older than the binary (it lacks system migrations): start the current version on it once, stop it, then migrate.
+2. Builds the schema on the target through the system migrations and imports the collections (structure, rules, indexes in their portable form), exactly like a running app does. The target app uses a temporary data directory; nothing is written next to the source.
+3. Copies the rows of every table in `_rowid_` (insertion) order, `--batch` rows per transaction (default 1000). The values are adapted to the Postgres column types: `0`/`1` become booleans, JSON text becomes `JSONB`, numeric text in a number column becomes a number, anything that is not text in a text column becomes text, and an empty string in a JSON column becomes `NULL`. Dates stay text. This covers the system and fork collections too: audit log, sessions, API keys, webhooks, OIDC, organizations, invitations, TOTP, passkeys, field keys. Encrypted field values and the wrapped data keys (`_fieldKeys`) are copied byte for byte; the records they are bound to keep their ids, so they decrypt on the new database.
+4. Records the migrations of the source (your own included) so they do not run again, then **verifies**: the row count of every table, a checksum over the ids in insertion order, and a sample of rows (up to 20 per table: the first, the last and evenly spaced ones) compared column by column after decoding (booleans, numbers and JSON by value). Any mismatch fails the command with the table and the row, and keeps the progress marker. On success it prints the report (`--verbose` for the per table lines) and drops its progress marker table.
+
+If the command is interrupted, run it again with `--resume`: every batch is one transaction that also advances a progress marker in the target (`_clavigerMigrateDb`), so it continues after the last committed batch. `--resume` refuses when the source changed since the run started.
+
+After the switch:
+
+- **Set `CLAVIGER_DB_URL`** wherever Claviger starts (the container, the unit file). Keep the `pb_data` directory: the storage files (uploads) and `auxiliary.db` (request logs, rate limit counters) stay there. The logs of the old database are not copied; the OTLP log export already ships them elsewhere.
+- **Backups move to `pg_dump` or point-in-time recovery** (see [Backups](#backups)). Zip backups still contain the storage files, not the database. Take a dump of the new database before you delete anything, and keep the dump and the storage files of the same moment together.
+- **Field encryption keys travel with the data** (`_fieldKeys`), but the key-encryption key does not: `CLAVIGER_KEK`, `CLAVIGER_KEK_FILE`, `CLAVIGER_KEK_AZURE_KEY_ID` (or the app encryption key) must stay configured exactly as before. `CLAVIGER_DB_URL=... claviger keys check` opens every data key with it, read only, and fails with `keys check: FAILED` when it cannot.
+- **Settings encryption** (`PB_ENCRYPTION_KEY`, `--encryptionEnv`) is the same too: the stored settings are copied as they are.
+- **View collections** hold SQL. Their queries run as written, so a view written for SQLite usually does not run on Postgres. If the import fails on one, `--skip-views` leaves the view collections out (the report lists them) and you recreate them in PostgreSQL SQL afterwards.
+- **Tables that are not collections** (created by hand with raw SQL) are not copied; the report lists them as `not copied`. So are columns of a collection table that the Postgres table does not have (a warning names them).
+- **Roll back** by unsetting `CLAVIGER_DB_URL`: the SQLite files were never touched. Anything written on Postgres since the switch stays there.
+- The `_rowid_` order, ids, timestamps, password hashes, tokens and signing keys are the same, so sessions, API keys and signed tokens keep working across the switch.
+
+Limits: the copy is a snapshot of the moment the command starts, so stop the server first (`--offline-ok` is your statement that none is running). The rows are copied with plain multi-row `INSERT`s: 300,000 rows of four columns took 2 seconds, verification included, against a Postgres on the same laptop (a remote database is bound by the round trips of each batch, so raise `--batch` there). If the data directory has an unmerged write-ahead log (`data.db-wal` with content, which is only left behind by a crash), the command reads through it and creates the `-shm` file next to the database; after a clean shutdown it opens the file immutable and creates nothing.
 
 ### How data is stored
 
@@ -137,7 +176,8 @@ Claviger does not translate user SQL; translating it would turn this into a hard
 ### Running the Postgres tests
 
 ```sh
-# against a throwaway local Postgres 16 (downloaded on first use, no Docker needed):
+# against a throwaway local Postgres 16 (downloaded on first use, no Docker needed;
+# EPG_VERSION=17 for Postgres 17):
 cd scripts/pgembedded && go run .
 
 # or against a server you already have:
@@ -160,10 +200,11 @@ CLAVIGER_TEST_PG_URL='postgres://user:pass@localhost:5432/postgres?sslmode=disab
 
 The tests that cannot pass on Postgres are listed in `tests/postgres_skip.txt`, one per line with the reason: they assert SQLite SQL text, SQLite column definitions, query a SQLite catalog or expect `data.db` in a backup. The behavior they cover is tested on Postgres in `tests/pgtests`. The list may only shrink; the CI job prints it, and fails on any other skip, on a failure, on a run that did not use Postgres and on a run that passes fewer tests than the minimum.
 
-### Next milestones
+**The migrate-db tests (M5).** `cmd/migrate_db_test.go` runs against a server (`CLAVIGER_TEST_PG_URL`, skipped without one): the full `tests/data` fixture and a database with every fork feature populated are migrated and then compared record by record through the records API on both engines (as the same superuser, so token secrets must have travelled); an interrupted run is resumed twice; a non-empty target, a served source and an old source are refused; the verification is shown to catch a deleted row, an extra row and a changed value; and the source directory is checked to be byte for byte unchanged. `scripts/test_migrate_db_smoke.sh` repeats the essentials with the real binary (`serve` on SQLite, `migrate-db`, `serve` on `CLAVIGER_DB_URL`).
 
-- **M5, `claviger migrate-db`.** The row copy of the test fixture converter (`copyFixtureRows` and `adaptFixtureValue` in `tests/app_postgres.go`) is the prototype: collections first (so the tables, indexes and views are built for Postgres), then the rows of every table in `rowid` order, with SQLite's loose values adapted to the column types (0/1 to boolean, numeric text to double, empty JSON to `NULL`, non-string values in text columns to text). `_params.value` is `TEXT` on Postgres, `_collections` is copied as stored, and the zip backups, `auxiliary.db` and `_migrations` are not copied. Verify with the per-table row counts and the `claviger keys check`.
-- **M6, the CI matrix.** Today one `postgres` job runs `tests/pgtests` and the regular suites through `scripts/test_postgres_suites.sh` (about 4200 passing tests, 3 to 4 minutes on a laptop). M6 turns that into a SQLite/Postgres matrix (also Postgres 17), runs the suites that are not selected yet (`tools/...` do not use a database), and shrinks `tests/postgres_skip.txt`.
+**CI.** The `postgres` job is a matrix over the supported majors, pinned to patch releases (16.15 and 17.11): 16 on every PR and push, 17 on pushes to master and manual runs. Each leg runs `tests/pgtests`, the regular suites (`scripts/test_postgres_suites.sh`, which retries a failed test once and reports it as flaky) and the migrate-db smoke test.
+
+**The skip list.** `tests/postgres_skip.txt` went from 35 tests at M4 to 16 at M6. Tests that only asserted a SQLite spelling were made engine neutral with two small helpers (`tests.ColumnType` and `tests.NormalizeQuotes`, one line per test); the 16 that remain assert SQLite SQL text, SQLite catalogs or SQLite column defaults (two are SQLite-only watcher tests that never touch Postgres), and each names where the Postgres behavior is covered. The list may only shrink.
 
 ### For developers
 
