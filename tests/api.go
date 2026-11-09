@@ -42,6 +42,12 @@ type ApiScenario struct {
 	// to ensure that all fired non-awaited go routines have finished
 	Delay time.Duration
 
+	// WaitFor (fork) is polled after Delay and before any expectation is checked, until
+	// it returns true or 10s have passed. Use it instead of a longer Delay for work that a
+	// handler leaves running in a routine.FireAndForget goroutine: a fixed sleep is a
+	// guess that a slower database (Postgres in CI) proves wrong.
+	WaitFor func(app *TestApp) bool
+
 	// Timeout specifies how long to wait before cancelling the request context.
 	//
 	// A zero or negative value means that there will be no timeout.
@@ -251,6 +257,13 @@ func (scenario *ApiScenario) test(t testing.TB) {
 		// @todo consider removing in favour of synctest.Wait()
 		if scenario.Delay > 0 {
 			time.Sleep(scenario.Delay)
+		}
+
+		if scenario.WaitFor != nil {
+			deadline := time.Now().Add(10 * time.Second)
+			for !scenario.WaitFor(testApp) && time.Now().Before(deadline) {
+				time.Sleep(10 * time.Millisecond)
+			}
 		}
 
 		if len(scenario.ExpectedContent) == 0 && len(scenario.NotExpectedContent) == 0 {
