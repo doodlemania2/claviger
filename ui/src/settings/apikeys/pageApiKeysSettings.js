@@ -144,7 +144,9 @@ export function pageApiKeysSettings() {
 
                             return data.keys.map((key) =>
                                 t.tr(
-                                    { rid: key.id },
+                                    // shablon reuses a row with the same rid as is: the state must be part of it,
+                                    // or a revoked key keeps showing as Active until the page is reloaded
+                                    { rid: key.id + ":" + (key.revoked ? "revoked" : "active") + ":" + (key.lastUsed || "") },
                                     t.td(null, key.name),
                                     t.td(null, t.code(null, "clv_" + key.prefix + "_...")),
                                     t.td({ className: "api-key-scopes" }, (key.scopes || []).join(", ")),

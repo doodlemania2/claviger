@@ -19,6 +19,7 @@ var hiddenFields = map[string][]string{
 	core.CollectionNameOAuthRequests:      {"requestId", "data", "bindingHash", "codeHash"},
 	core.CollectionNameOAuthRefreshTokens: {"tokenHash"},
 	core.CollectionNameOAuthSso:           {"ssoHash"},
+	core.CollectionNameOAuthDeviceCodes:   {"deviceHash", "userCodeHash", "bindingHash"},
 	core.CollectionNameSigningKeys:        {"privateKey"},
 }
 

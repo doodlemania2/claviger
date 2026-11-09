@@ -1,4 +1,4 @@
-import { session, el, api, when, createCaptcha, initSignIn } from "/orgs/assets/auth.js";
+import { session, el, api, when, createCaptcha, initSignIn, t as tx, word } from "/orgs/assets/auth.js";
 
 const root = document.getElementById("app");
 const slug = root.dataset.slug;
@@ -37,7 +37,7 @@ function splitTags(text) {
 }
 
 function roleSelect(current, max) {
-  const sel = el("select", {}, ROLES.filter((r) => RANK[r] <= max || r === current).map((r) => el("option", { value: r }, r)));
+  const sel = el("select", {}, ROLES.filter((r) => RANK[r] <= max || r === current).map((r) => el("option", { value: r }, word("role", r))));
   sel.value = current;
   return sel;
 }
@@ -48,7 +48,7 @@ async function guard(r, okText) {
     return true;
   }
   if (r.status === 401) return signOut(), false;
-  say(r.body.message || "That did not work.");
+  say(r.body.message || tx("js.admin.failed"));
   return false;
 }
 
@@ -63,18 +63,18 @@ async function loadMembers() {
     const editable = canManage && RANK[m.role] <= myRank;
     const who = el("td", {}, m.name || m.email || m.user, m.name && m.email ? el("div", { class: "muted" }, m.email) : null);
     if (!editable) {
-      body.append(el("tr", {}, who, el("td", {}, m.role), el("td", {}, m.status), el("td", {}, (m.tags || []).join(", ")),
-        el("td", {}, canManage && isSelf ? el("button", { class: "secondary", onclick: () => removeMember(m, true) }, "Leave") : null)));
+      body.append(el("tr", {}, who, el("td", {}, word("role", m.role)), el("td", {}, word("status", m.status)), el("td", {}, (m.tags || []).join(", ")),
+        el("td", {}, canManage && isSelf ? el("button", { class: "secondary", onclick: () => removeMember(m, true) }, tx("js.admin.leave")) : null)));
       continue;
     }
     const role = roleSelect(m.role, myRank);
-    const status = el("select", { disabled: isSelf }, el("option", { value: "active" }, "active"), el("option", { value: "suspended" }, "suspended"));
+    const status = el("select", { disabled: isSelf }, el("option", { value: "active" }, word("status", "active")), el("option", { value: "suspended" }, word("status", "suspended")));
     status.value = m.status;
-    const tagInput = el("input", { value: (m.tags || []).join(", "), "aria-label": "Tags" });
+    const tagInput = el("input", { value: (m.tags || []).join(", "), "aria-label": tx("js.admin.tags") });
     body.append(el("tr", {}, who, el("td", {}, role), el("td", {}, status), el("td", {}, tagInput),
       el("td", {},
-        el("button", { onclick: () => saveMember(m, role.value, status.value, splitTags(tagInput.value)) }, "Save"),
-        el("button", { class: "secondary", onclick: () => removeMember(m, isSelf) }, isSelf ? "Leave" : "Remove"))));
+        el("button", { onclick: () => saveMember(m, role.value, status.value, splitTags(tagInput.value)) }, tx("js.admin.save")),
+        el("button", { class: "secondary", onclick: () => removeMember(m, isSelf) }, isSelf ? tx("js.admin.leave") : tx("js.admin.remove")))));
   }
 }
 
@@ -83,15 +83,15 @@ async function saveMember(m, role, status, tagNames) {
   const patch = { tags: tagNames };
   if (role !== m.role) patch.role = role;
   if (status !== m.status) patch.status = status;
-  if (await guard(await call("/members/" + encodeURIComponent(m.id), { method: "PATCH", body: patch }), "Saved.")) {
+  if (await guard(await call("/members/" + encodeURIComponent(m.id), { method: "PATCH", body: patch }), tx("js.admin.saved"))) {
     await Promise.all([loadMembers(), loadTags()]);
   }
 }
 
 async function removeMember(m, self) {
-  if (!confirm(self ? "Leave this organization?" : "Remove this member?")) return;
+  if (!confirm(self ? tx("js.admin.confirmLeave") : tx("js.admin.confirmRemove"))) return;
   say("");
-  if (await guard(await call("/members/" + encodeURIComponent(m.id), { method: "DELETE" }), self ? "" : "Removed.")) {
+  if (await guard(await call("/members/" + encodeURIComponent(m.id), { method: "DELETE" }), self ? "" : tx("js.admin.removed"))) {
     if (self) return signOut();
     await loadMembers();
   }
@@ -106,24 +106,24 @@ async function loadInvitations() {
   for (const inv of r.body.items) {
     const live = inv.status === "pending" || inv.status === "expired";
     const mine = RANK[inv.role] <= myRank;
-    body.append(el("tr", {}, el("td", {}, inv.email), el("td", {}, inv.role), el("td", {}, (inv.tags || []).join(", ")),
-      el("td", {}, inv.status), el("td", {}, inv.status === "accepted" ? when(inv.acceptedAt) : when(inv.expires)), el("td", {}, String(inv.sendCount)),
+    body.append(el("tr", {}, el("td", {}, inv.email), el("td", {}, word("role", inv.role)), el("td", {}, (inv.tags || []).join(", ")),
+      el("td", {}, word("status", inv.status)), el("td", {}, inv.status === "accepted" ? when(inv.acceptedAt) : when(inv.expires)), el("td", {}, String(inv.sendCount)),
       el("td", {},
-        live && mine ? el("button", { onclick: () => resend(inv) }, "Resend") : null,
-        inv.status === "pending" && mine ? el("button", { class: "secondary", onclick: () => revoke(inv) }, "Revoke") : null)));
+        live && mine ? el("button", { onclick: () => resend(inv) }, tx("js.admin.resend")) : null,
+        inv.status === "pending" && mine ? el("button", { class: "secondary", onclick: () => revoke(inv) }, tx("js.admin.revoke")) : null)));
   }
 }
 
 async function resend(inv) {
   say("");
   const r = await call("/invitations/" + encodeURIComponent(inv.id) + "/resend", { method: "POST" });
-  if (await guard(r, r.body.emailSent === false ? "Renewed, but the email could not be sent." : "Sent again.")) await loadInvitations();
+  if (await guard(r, r.body.emailSent === false ? tx("js.admin.renewedNoEmail") : tx("js.admin.sentAgain"))) await loadInvitations();
 }
 
 async function revoke(inv) {
-  if (!confirm("Revoke the invitation for " + inv.email + "?")) return;
+  if (!confirm(tx("js.admin.confirmRevokeInvitation", { email: inv.email }))) return;
   say("");
-  if (await guard(await call("/invitations/" + encodeURIComponent(inv.id), { method: "DELETE" }), "Revoked.")) await loadInvitations();
+  if (await guard(await call("/invitations/" + encodeURIComponent(inv.id), { method: "DELETE" }), tx("js.admin.revoked"))) await loadInvitations();
 }
 
 async function invite(ev) {
@@ -131,7 +131,7 @@ async function invite(ev) {
   say("");
   const f = ev.target.elements;
   const r = await call("/invitations", { method: "POST", body: { email: f.email.value, role: f.role.value, tags: splitTags(f.tags.value) } });
-  if (await guard(r, r.body.emailSent === false ? "Invitation created, but the email could not be sent. Resend it from the list." : "Invitation sent.")) {
+  if (await guard(r, r.body.emailSent === false ? tx("js.admin.invitedNoEmail") : tx("js.admin.invited"))) {
     f.email.value = "";
     f.tags.value = "";
     await Promise.all([loadInvitations(), loadTags()]);
@@ -149,9 +149,9 @@ async function loadScim() {
   root.querySelector("#scimUrl").textContent = r.body.endpoint;
   for (const t of r.body.items) {
     body.append(el("tr", {}, el("td", {}, t.name), el("td", {}, el("code", {}, "scim_" + t.prefix + "_...")),
-      el("td", {}, when(t.created)), el("td", {}, t.lastUsed ? when(t.lastUsed) : "never"), el("td", {}, t.expires ? when(t.expires) : "never"),
-      el("td", {}, t.revoked ? "revoked" : t.active ? "active" : "expired"),
-      el("td", {}, t.active ? el("button", { class: "secondary", onclick: () => revokeScim(t) }, "Revoke") : null)));
+      el("td", {}, when(t.created)), el("td", {}, t.lastUsed ? when(t.lastUsed) : tx("js.admin.never")), el("td", {}, t.expires ? when(t.expires) : tx("js.admin.never")),
+      el("td", {}, word("status", t.revoked ? "revoked" : t.active ? "active" : "expired")),
+      el("td", {}, t.active ? el("button", { class: "secondary", onclick: () => revokeScim(t) }, tx("js.admin.revoke")) : null)));
   }
   const s = await call("/scim-settings");
   if (!s.ok) return guard(s);
@@ -169,16 +169,16 @@ async function createScim(ev) {
   const r = await call("/scim-tokens", { method: "POST", body: { name: input.value } });
   if (await guard(r)) {
     input.value = "";
-    scimTokenText.textContent = "Copy this token now, it is shown only once: " + r.body.token;
+    scimTokenText.textContent = tx("js.admin.copyToken", { token: r.body.token });
     scimTokenText.hidden = false;
     await loadScim();
   }
 }
 
 async function revokeScim(t) {
-  if (!confirm('Revoke the token "' + t.name + '"? The identity provider stops working until it gets a new one.')) return;
+  if (!confirm(tx("js.admin.confirmRevokeToken", { name: t.name }))) return;
   say("");
-  if (await guard(await call("/scim-tokens/" + encodeURIComponent(t.id), { method: "DELETE" }), "Revoked.")) await loadScim();
+  if (await guard(await call("/scim-tokens/" + encodeURIComponent(t.id), { method: "DELETE" }), tx("js.admin.revoked"))) await loadScim();
 }
 
 async function saveScim(ev) {
@@ -189,9 +189,9 @@ async function saveScim(ev) {
   for (const line of f.groupRoles.value.split("\n")) {
     const i = line.lastIndexOf("=");
     if (i > 0) groupRoles[line.slice(0, i).trim()] = line.slice(i + 1).trim();
-    else if (line.trim()) return say('Use "Group name = role" on each line.');
+    else if (line.trim()) return say(tx("js.admin.groupFormat"));
   }
-  await guard(await call("/scim-settings", { method: "PUT", body: { defaultRole: f.defaultRole.value, groupRoles, deactivationBans: f.deactivationBans.checked } }), "Saved.");
+  await guard(await call("/scim-settings", { method: "PUT", body: { defaultRole: f.defaultRole.value, groupRoles, deactivationBans: f.deactivationBans.checked } }), tx("js.admin.saved"));
 }
 
 // ---- tags --------------------------------------------------------------------
@@ -203,25 +203,25 @@ async function loadTags() {
   list.textContent = "";
   for (const t of tags) {
     list.append(el("span", { class: "tag", title: t.description || "" }, t.name, canManage ? " " : null,
-      canManage ? el("button", { class: "linklike", "aria-label": "Delete tag " + t.name, onclick: () => deleteTag(t) }, "x") : null));
+      canManage ? el("button", { class: "linklike", "aria-label": tx("js.admin.deleteTag", { name: t.name }), onclick: () => deleteTag(t) }, "x") : null));
   }
-  if (!tags.length) list.append(el("span", { class: "muted" }, "No tags yet."));
+  if (!tags.length) list.append(el("span", { class: "muted" }, tx("js.admin.noTags")));
 }
 
 async function addTag(ev) {
   ev.preventDefault();
   say("");
   const input = ev.target.elements.name;
-  if (await guard(await call("/tags", { method: "POST", body: { name: input.value } }), "Tag added.")) {
+  if (await guard(await call("/tags", { method: "POST", body: { name: input.value } }), tx("js.admin.tagAdded"))) {
     input.value = "";
     await loadTags();
   }
 }
 
 async function deleteTag(t) {
-  if (!confirm('Delete the tag "' + t.name + '"? It is removed from every member.')) return;
+  if (!confirm(tx("js.admin.confirmDeleteTag", { name: t.name }))) return;
   say("");
-  if (await guard(await call("/tags/" + encodeURIComponent(t.id), { method: "DELETE" }), "Tag deleted.")) {
+  if (await guard(await call("/tags/" + encodeURIComponent(t.id), { method: "DELETE" }), tx("js.admin.tagDeleted"))) {
     await Promise.all([loadTags(), loadMembers(), loadInvitations()]);
   }
 }
@@ -249,7 +249,7 @@ async function enter(token) {
   canManage = myRank >= RANK.admin;
 
   root.querySelector("#orgName").textContent = org.name;
-  root.querySelector("#myRole").textContent = "You are " + (org.role === "admin" || org.role === "owner" ? "an " : "a ") + org.role + ".";
+  root.querySelector("#myRole").textContent = tx("js.admin.youAre." + org.role);
   document.title = org.name;
   for (const s of root.querySelectorAll("[data-manage]")) s.hidden = !canManage;
   root.querySelector("#inviteRole").replaceWith(Object.assign(roleSelect("member", myRank), { id: "inviteRole", name: "role" }));
@@ -275,7 +275,7 @@ root.querySelector("#scimSettings").addEventListener("submit", saveScim);
     root: signinPanel, collection, captcha,
     onToken: async (tok) => {
       session.set(tok);
-      if (!(await enter(tok))) say("Sign-in failed. Try again.");
+      if (!(await enter(tok))) say(tx("js.admin.signInFailed"));
     },
   });
 })();

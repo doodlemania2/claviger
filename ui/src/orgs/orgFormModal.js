@@ -13,6 +13,10 @@ window.app.modals.openOrgForm = function(settings) {
 };
 
 function orgFormModal(settings) {
+    // Unique per modal: a modal that is still closing stays in the DOM until its close
+    // animation ends, and a shared id made the next modal's button submit the old form
+    // (a second "New organization" request, answered 409) when opened quickly.
+    const formId = "org_form_" + app.utils.randomString();
     const values = store(Object.fromEntries(settings.fields.map((f) => [f.id, f.value ?? (f.type == "checkbox" ? false : "")])));
     const state = store({ isSaving: false, error: "" });
 
@@ -30,7 +34,7 @@ function orgFormModal(settings) {
     }
 
     function input(f) {
-        const id = "org_form_" + f.id;
+        const id = formId + "_" + f.id;
         if (f.type == "select") {
             return t.select(
                 { id, onchange: (e) => values[f.id] = e.target.value },
@@ -67,7 +71,7 @@ function orgFormModal(settings) {
             { className: "modal-content" },
             t.form(
                 {
-                    id: "org_form",
+                    id: formId,
                     className: "grid",
                     onsubmit: (e) => {
                         e.preventDefault();
@@ -78,7 +82,7 @@ function orgFormModal(settings) {
                     t.div(
                         { className: "field" },
                         input(f),
-                        t.label({ htmlFor: "org_form_" + f.id }, f.label),
+                        t.label({ htmlFor: formId + "_" + f.id }, f.label),
                         f.hint ? t.div({ className: "field-help" }, f.hint) : null,
                     )
                 ),
@@ -96,7 +100,7 @@ function orgFormModal(settings) {
                     type: "button",
                     className: () => `btn expanded ${state.isSaving ? "loading" : ""}`,
                     disabled: () => state.isSaving,
-                    onclick: () => document.getElementById("org_form")?.requestSubmit(),
+                    onclick: () => document.getElementById(formId)?.requestSubmit(),
                 },
                 t.span({ className: "txt" }, settings.submitLabel || "Save"),
             ),

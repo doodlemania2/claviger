@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -270,15 +271,19 @@ func (m *webhookManager) processDue(ctx context.Context) int {
 	}
 
 	var due []*Record
-	err = m.app.RecordQuery(collection).
-		AndWhere(dbx.NewExp("[[status]] = {:status} AND [[nextAttempt]] <= {:now}", dbx.Params{
-			"status": WebhookDeliveryPending,
-			"now":    m.now().UTC().Format(types.DefaultDateLayout),
-		})).
-		AndWhere(dbx.In("webhook", ids...)).
-		OrderBy("nextAttempt ASC").
-		Limit(webhookConcurrency).
-		All(&due)
+	if IsMultiReplica(m.app) {
+		due, err = m.claimDue(collection, ids)
+	} else {
+		err = m.app.RecordQuery(collection).
+			AndWhere(dbx.NewExp("[[status]] = {:status} AND [[nextAttempt]] <= {:now}", dbx.Params{
+				"status": WebhookDeliveryPending,
+				"now":    m.now().UTC().Format(types.DefaultDateLayout),
+			})).
+			AndWhere(dbx.In("webhook", ids...)).
+			OrderBy("nextAttempt ASC").
+			Limit(webhookConcurrency).
+			All(&due)
+	}
 	if err != nil {
 		m.app.Logger().Warn("Failed to load the due webhook deliveries", "error", err)
 		return 0
@@ -299,6 +304,70 @@ func (m *webhookManager) processDue(ctx context.Context) int {
 	wg.Wait()
 
 	return len(due)
+}
+
+// webhookClaimLease is how long a claimed delivery is hidden from the other
+// replicas. It must outlast one attempt (webhookTimeout plus the write of the
+// outcome): when the replica dies mid attempt the delivery is retried after it.
+const webhookClaimLease = time.Minute
+
+// claimDue is processDue's query for several replicas (#106 M7).
+//
+// The rows are selected FOR UPDATE SKIP LOCKED inside a transaction and moved
+// to nextAttempt = now + lease before it commits. A concurrent replica skips the
+// locked rows and, after the commit, no longer sees them as due, so a delivery
+// is claimed by exactly one replica. The attempt then overwrites nextAttempt
+// with its own outcome.
+//
+// Delivery is therefore at least once across a replica crash (the lease
+// expires and another replica retries, with the same webhook-id header so the
+// receiver can deduplicate) and exactly once otherwise.
+func (m *webhookManager) claimDue(collection *Collection, endpointIds []any) ([]*Record, error) {
+	var claimed []string
+	now := m.now().UTC()
+
+	err := m.app.RunInTransaction(func(txApp App) error {
+		params := dbx.Params{
+			"status": WebhookDeliveryPending,
+			"now":    now.Format(types.DefaultDateLayout),
+			"limit":  webhookConcurrency,
+		}
+		placeholders := make([]string, len(endpointIds))
+		for i, id := range endpointIds {
+			k := "ep" + strconv.Itoa(i)
+			placeholders[i] = "{:" + k + "}"
+			params[k] = id
+		}
+
+		var ids []string
+		err := txApp.DB().NewQuery(
+			"SELECT [[id]] FROM {{" + collection.Name + "}} WHERE [[status]] = {:status} AND [[nextAttempt]] <= {:now}" +
+				" AND [[webhook]] IN (" + strings.Join(placeholders, ",") + ")" +
+				" ORDER BY [[nextAttempt]] ASC LIMIT {:limit} FOR UPDATE SKIP LOCKED",
+		).Bind(params).Column(&ids)
+		if err != nil || len(ids) == 0 {
+			return err
+		}
+
+		lease := now.Add(webhookClaimLease).Format(types.DefaultDateLayout)
+		idArgs := make([]any, len(ids))
+		for i, id := range ids {
+			idArgs[i] = id
+		}
+
+		if _, err := txApp.DB().Update(collection.Name, dbx.Params{"nextAttempt": lease}, dbx.In("id", idArgs...)).Execute(); err != nil {
+			return err
+		}
+
+		claimed = ids
+
+		return nil
+	})
+	if err != nil || len(claimed) == 0 {
+		return nil, err
+	}
+
+	return m.app.FindRecordsByIds(collection, claimed)
 }
 
 // attempt makes one delivery attempt and persists the outcome.

@@ -18,7 +18,7 @@ still works. The suite itself is not in CI, for two reasons that need infrastruc
    suite's built-in automation (`browser` section of the config, HtmlUnit) does not run ES modules, and the hosted
    `/oidc/login` page is a module (`<script type="module">`, no inline script by design). Driving it needs a real
    browser: a small Playwright script that follows the URLs the suite asks a browser to visit and fills the form.
-   That script does not exist yet.
+   The outline of that driver is under "A Playwright driver for the sign-in page" below; it has not been run against a suite yet.
 
 The suite's own build is also heavy (a Maven build of the suite, roughly 10 to 20 minutes and a few GB of images),
 which is why even once those two are solved it belongs behind `workflow_dispatch` on the `tdp-linux` runner, not on
@@ -71,6 +71,138 @@ You need a public https hostname that points at the instance, for example `https
 
 5. **Record the result.** Export the plan's result (the *Download logs* / *Publish* buttons on the plan page)
    and keep the summary in the issue. A passing run is the evidence for the decision on formal certification.
+
+## Public https instance (a temporary hostname through a tunnel)
+
+The suite's JVM must reach the issuer over https with a certificate it trusts. For a manual run the cheapest way is a
+tunnel that terminates TLS with a real certificate and forwards to the instance on `127.0.0.1:8090`. Any of these work;
+none of them is run by CI.
+
+```sh
+# Cloudflare quick tunnel: a random https://<random>.trycloudflare.com host name, no account
+cloudflared tunnel --url http://127.0.0.1:8090
+# or: ngrok http 8090            (prints https://<random>.ngrok-free.app)
+# or: a temporary ingress / reverse proxy on a host you own, with a real certificate
+```
+
+Then start the instance **with that host name as the application URL**, because the issuer is
+`<application URL>/oidc` and must match what the suite fetched:
+
+```sh
+ISSUER_BASE=https://<random>.trycloudflare.com \
+SUITE_BASE=https://www.certification.openid.net \
+ALIAS=claviger \
+scripts/oidc-conformance-instance.sh
+```
+
+Checks before creating the plan: `curl -s https://<random>.trycloudflare.com/oidc/.well-known/openid-configuration`
+returns `"issuer":"https://<random>.trycloudflare.com/oidc"`, and opening
+`https://<random>.trycloudflare.com/oidc/authorize?...` in a browser lands on the hosted sign-in page. A quick tunnel's
+host name changes on every start, so a run is one session: do not restart the tunnel mid-plan (the clients' redirect URIs
+point at the suite, not at the tunnel, but the issuer does). The tunnel makes the instance public for the duration:
+the test user's password is random and per run, and the instance holds no real data; stop both when done.
+
+## Exact plan and config (suite release v5.3.4, checked 2026-11-09)
+
+Read from the suite repository (`https://gitlab.com/openid/conformance-suite`, tag `release-v5.3.4`,
+`.gitlab-ci/run-tests.sh`, `scripts/run-test-plan.py`). Re-check against the tag you deploy; names and variants change.
+
+- Plan: `oidcc-basic-certification-test-plan`
+- Variants: `server_metadata=discovery`, `client_registration=static_client`
+- As the command line passes it: `oidcc-basic-certification-test-plan[server_metadata=discovery][client_registration=static_client]`
+- Related plans that do **not** apply to Claviger by design: `oidcc-implicit-*` and `oidcc-hybrid-*` (no implicit or hybrid
+  flow), `oidcc-formpost-*` (no `form_post`). `oidcc-config-certification-test-plan` (discovery document checks, no
+  variants) is cheap and worth running too. Dynamic client registration (`client_registration=dynamic_client`) is not
+  offered.
+
+Config JSON for the plan (this is what `scripts/oidc-conformance-instance.sh` writes to `suite-config.json`; the values
+are placeholders). There is **no `browser` block**, on purpose: the suite's built-in browser automation (HtmlUnit,
+configured by that block) does not run ES modules, see below.
+
+```json
+{
+  "alias": "claviger",
+  "description": "Claviger Basic OP",
+  "server": {
+    "discoveryUrl": "https://<host>/oidc/.well-known/openid-configuration"
+  },
+  "client": { "client_id": "<client id 1>", "client_secret": "<client secret 1>" },
+  "client2": { "client_id": "<client id 2>", "client_secret": "<client secret 2>" },
+  "login": { "email": "conformance-user@example.com", "password": "<random per run>" }
+}
+```
+
+The `login` block is not read by the suite; it carries the credentials for the Playwright driver below. Redirect URIs
+registered on both clients: `https://<suite host>/test/a/claviger/callback` and the same with
+`?dummy1=lorem&dummy2=ipsum`.
+
+From the suite checkout, the plan can be scheduled with `scripts/run-test-plan.py` (it needs `CONFORMANCE_SERVER` and,
+for the hosted suite, `CONFORMANCE_TOKEN`; `--export-dir` saves the results). Its only automation of the sign-in is the
+`browser` config block, so a run from the script without a driver stops at the first test that needs a sign-in. Use the
+suite's web UI plus the driver, or extend the script.
+
+## A Playwright driver for the sign-in page
+
+The suite shows, for every running test, the URLs a browser has to visit. The driver replaces the human: it visits them
+in Chromium, signs in on `/oidc/login`, and lets the redirects return to the suite.
+
+**Status: design, not run against a suite.** The Claviger half (the sign-in) is the same sequence the repository's own
+e2e spec runs (`e2e/tests/70-oidc.spec.ts`). The suite half (how the driver learns the URLs) must be checked against the
+suite version: the points marked *to verify* are from reading the API names, not from a run.
+
+Outline:
+
+1. Create the plan in the suite UI (or `POST /api/plan?planName=...&variant=...` with the config), and note its id.
+2. For each module, start it (`POST /api/runner/{moduleId}` *to verify*) and poll `GET /api/info/{moduleId}` until the
+   status is `WAITING` and the `browser` section lists URLs to visit (*to verify the field names*; the suite's own UI
+   reads the same data).
+3. For each URL: new browser context (so the module starts with no single sign-on cookie, except where the module
+   needs one: `oidcc-prompt-none-*`, `oidcc-max-age-*`, `oidcc-ensure-registered-*` re-use the first visit's context, see
+   the test descriptions), `page.goto(url)`.
+4. If the page becomes `/oidc/login?authRequestID=...`: fill and submit. The form is revealed by a module script, so
+   wait for the field, do not assume it is in the HTML:
+
+   ```ts
+   await page.getByLabel("Email or username").fill(login.email);
+   await page.getByLabel("Password").fill(login.password);
+   await page.getByRole("button", { name: "Sign in", exact: true }).click();
+   ```
+
+5. Wait for the browser to arrive on the suite's callback (`/test/a/<alias>/callback...`); the suite page that loads
+   there reports the result back (for the implicit-style fragment pages it runs a script, which is why a real browser is
+   the point of this driver). A test that expects the OP to show no page (`prompt=none`) ends on the callback with an
+   `error`; one that expects an error page (a refused `request` object) ends on Claviger's error page: both are fine, the
+   suite judges the outcome, the driver only has to finish navigating and capture a screenshot.
+6. Poll `GET /api/info/{moduleId}` until the status is `FINISHED`; collect `result` (`PASSED`, `WARNING`, `FAILED`,
+   `REVIEW`, `SKIPPED`), screenshot the failures, go to the next module. Put the results in an
+   `expected-failures` file (see the CI section) as they are triaged.
+
+Some modules need a human or a different shape of visit (the "Review" ones ask for a screenshot to be uploaded to the
+suite: the driver's screenshot is what to upload, by hand). A module that never reaches `WAITING` within the suite's
+time-out is a failure of the instance to answer, not of the driver.
+
+## Results template
+
+```
+OpenID conformance run
+Date:                       Tester:
+Claviger version/commit:
+Suite: hosted [ ]  local [ ]   version/tag:
+Issuer (redacted):          Tunnel/host kind:
+Plan: oidcc-basic-certification-test-plan[server_metadata=discovery][client_registration=static_client]
+Also run: oidcc-config-certification-test-plan [ ]
+Sign-in driven by: human [ ]  Playwright driver [ ]  (driver commit:)
+
+Totals:   passed __   warning __   failed __   review __   skipped __
+Failures and warnings, one per line (module, suite message, triage: Claviger bug / test expectation / known gap):
+  
+Known gaps hit (request objects, claims parameter, acr_values, form_post, ...):
+Modules needing a manual screenshot (uploaded: yes/no):
+Bugs filed (issue links):
+Plan result exported (Download logs / Publish): yes [ ]  location:
+Decision input for formal certification:
+Clean-up: tunnel stopped [ ]  instance and data dir removed [ ]  suite plan kept/deleted [ ]
+```
 
 ## What to expect
 

@@ -1,7 +1,9 @@
 package apis
 
 import (
+	"html/template"
 	"net/http"
+	"regexp"
 
 	"github.com/doodlemania2/claviger/core"
 	"github.com/doodlemania2/claviger/tools/hook"
@@ -50,7 +52,7 @@ func bindPasskeysPage(app core.App) {
 				// minimal inline styles. img-src includes data: for the favicon.
 				header.Set("Content-Security-Policy", passkeysPageCSP(e.App.Settings().Captcha))
 				e.Response.WriteHeader(http.StatusOK)
-				_, err := e.Response.Write([]byte(passkeysPageHTML))
+				_, err := e.Response.Write([]byte(renderPasskeysPage(NewPageText(e, ""))))
 				return err
 			})
 
@@ -383,11 +385,35 @@ export function withPasskeys(pb) {
 export default { withPasskeys, PasskeysClient, helpers };
 `
 
+var passkeysMarkerRe = regexp.MustCompile(`@\{([A-Za-z0-9_.]+)\}`)
+
+// renderPasskeysPage fills the page template with the messages of the language.
+// Messages are HTML-escaped; the English result is byte-identical to the
+// page before localization (apart from the JSON data block with the script strings).
+func renderPasskeysPage(text *PageText) string {
+	return passkeysMarkerRe.ReplaceAllStringFunc(passkeysPageHTML, func(m string) string {
+		key := m[2 : len(m)-1]
+
+		switch key {
+		case "lang":
+			return text.LangAttr()
+		case "datablock":
+			return string(text.DataBlock())
+		case "passkeys.signedInAsHtml":
+			return string(text.HTML(key, text.Args("who", template.HTML(`<strong id="me"></strong>`))))
+		}
+
+		return template.HTMLEscapeString(text.T(key))
+	})
+}
+
+// passkeysPageHTML is the page template: a marker is replaced by the catalog message in the
+// language of the request (see renderPasskeysPage).
 const passkeysPageHTML = `<!DOCTYPE html>
-<html lang="en">
+<html@{lang}>
 <head>
 <meta charset="utf-8">
-<title>Passkeys</title>
+<title>@{passkeys.title}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root { color-scheme: light dark; }
@@ -412,60 +438,68 @@ const passkeysPageHTML = `<!DOCTYPE html>
   ul.creds li .meta small { display: block; opacity: 0.6; }
   hr { border: none; border-top: 1px solid #8884; margin: 2em 0; }
 </style>
-</head>
+@{datablock}</head>
 <body>
 
-<h1>Passkeys</h1>
-<p class="muted">Sign in with — or register — a passkey on this device.</p>
+<h1>@{passkeys.title}</h1>
+<p class="muted">@{passkeys.intro}</p>
 
 <div id="msg"></div>
 
 <section id="anon">
-  <h2 style="font-size:1.1em;">Sign in with a passkey</h2>
-  <label>Email or username
+  <h2 style="font-size:1.1em;">@{js.passkeySignIn}</h2>
+  <label>@{js.identityLabel}
     <input type="text" id="identity" autocomplete="username webauthn" autofocus>
   </label>
   <div id="captchaBox" hidden></div>
-  <button id="btnLogin">Sign in with passkey</button>
+  <button id="btnLogin">@{passkeys.signInButton}</button>
   <p class="muted" id="pwHint" style="margin-top:1.5em;">
-    No passkey yet? <a href="#" id="linkPasswordLogin">Sign in with password to register one.</a>
+    @{passkeys.noPasskey} <a href="#" id="linkPasswordLogin">@{passkeys.noPasskeyLink}</a>
   </p>
 
   <div id="recovery" hidden>
     <p class="muted" style="margin-top:1.5em;">
-      Lost your passkey, or setting up for the first time?
-      <a href="#" id="linkRecovery">Email me a link to set one up.</a>
+      @{passkeys.lostPrompt}
+      <a href="#" id="linkRecovery">@{passkeys.lostLink}</a>
     </p>
     <div id="recoveryForm" hidden>
-      <label>Email
+      <label>@{orgs.email}
         <input type="email" id="recoveryEmail" autocomplete="email">
       </label>
-      <button id="btnRecovery">Send link</button>
+      <button id="btnRecovery">@{passkeys.sendLink}</button>
     </div>
   </div>
 
   <div id="pwForm" hidden>
     <hr>
-    <h2 style="font-size:1.1em;">Sign in with password</h2>
-    <label>Email
+    <h2 style="font-size:1.1em;">@{passkeys.passwordHeading}</h2>
+    <label>@{orgs.email}
       <input type="email" id="pwEmail" autocomplete="username">
     </label>
-    <label>Password
+    <label>@{js.passwordLabel}
       <input type="password" id="pwPass" autocomplete="current-password">
     </label>
-    <button id="btnPwLogin">Sign in</button>
+    <button id="btnPwLogin">@{js.signIn}</button>
   </div>
 </section>
 
 <section id="authed" hidden>
-  <p>Signed in as <strong id="me"></strong>. <a href="#" id="linkLogout">Sign out</a></p>
-  <button id="btnRegister">Register a new passkey on this device</button>
-  <h3 style="font-size:1em; margin-top:2em;">Your passkeys</h3>
+  <p>@{passkeys.signedInAsHtml} <a href="#" id="linkLogout">@{orgs.signOut}</a></p>
+  <button id="btnRegister">@{passkeys.register}</button>
+  <h3 style="font-size:1em; margin-top:2em;">@{passkeys.yourPasskeys}</h3>
   <ul class="creds" id="creds"></ul>
 </section>
 
 <script type="module">
 import { PasskeysClient } from "/api/passkeys-client.js";
+
+// the strings of the page, in the language the server negotiated (see the JSON data block in the head)
+let MESSAGES = {};
+try { MESSAGES = JSON.parse(document.getElementById("i18n").textContent); } catch (e) { /* English keys show */ }
+const t = (key, args) => {
+  const msg = Object.prototype.hasOwnProperty.call(MESSAGES, key) ? MESSAGES[key] : key;
+  return msg.replace(/\{(\w+)\}/g, (m, k) => (args && k in args ? args[k] : m));
+};
 
 const COLLECTION = new URLSearchParams(location.search).get("collection") || "users";
 const STORAGE_KEY = "pb_passkeys_auth_" + COLLECTION;
@@ -499,13 +533,13 @@ const CAPTCHA_SRC = {
 };
 function loadCaptchaScript(cfg) {
   const src = CAPTCHA_SRC[cfg.provider] && CAPTCHA_SRC[cfg.provider](cfg);
-  if (!src) return Promise.reject(new Error("Unsupported captcha provider."));
+  if (!src) return Promise.reject(new Error(t("js.captcha.unsupported")));
   if (!captchaScripts[src]) {
     captchaScripts[src] = new Promise((resolve, reject) => {
       const el = document.createElement("script");
       el.src = src; el.async = true;
       el.onload = resolve;
-      el.onerror = () => reject(new Error("Could not load the captcha."));
+      el.onerror = () => reject(new Error(t("js.captcha.loadFailed")));
       document.head.appendChild(el);
     });
   }
@@ -532,8 +566,8 @@ async function getCaptchaToken(action) {
       sitekey: cfg.siteKey,
       action: cfg.provider === "turnstile" ? action : undefined,
       callback: (token) => done(resolve, token),
-      "error-callback": () => done(reject, new Error("Captcha failed, please try again.")),
-      "expired-callback": () => done(reject, new Error("Captcha expired, please try again.")),
+      "error-callback": () => done(reject, new Error(t("js.captcha.failed"))),
+      "expired-callback": () => done(reject, new Error(t("js.captcha.expired"))),
     });
   });
 }
@@ -568,7 +602,7 @@ async function startAutofill() {
     autofillAbort = null;
     saveAuth({ token: result.token, record: result.record });
     render();
-    showMsg("Signed in.", "ok");
+    showMsg(t("js.passkeys.signedIn"), "ok");
   } catch (e) {
     autofillAbort = null;
     if (e && e.name === "AbortError") return;
@@ -601,9 +635,9 @@ async function sendRecovery() {
   showMsg("");
   try {
     await client().requestReset($("recoveryEmail").value);
-    showMsg("If that address has an account, a link is on its way.", "ok");
+    showMsg(t("js.passkeys.linkOnItsWay"), "ok");
   } catch (e) {
-    showMsg("Could not send the link: " + e.message, "err");
+    showMsg(t("js.passkeys.sendFailed", { error: e.message }), "err");
   }
 }
 
@@ -616,7 +650,7 @@ async function loginWithPasskey() {
     render();
     showMsg("Signed in.", "ok");
   } catch (e) {
-    showMsg("Login failed: " + e.message, "err");
+    showMsg(t("js.passkeys.loginFailed", { error: e.message }), "err");
   }
 }
 
@@ -635,21 +669,21 @@ async function passwordLogin() {
     if (!res.ok) throw new Error(body.message || ("HTTP " + res.status));
     saveAuth({ token: body.token, record: body.record });
     render();
-    showMsg("Signed in. You can now register a passkey.", "ok");
+    showMsg(t("js.passkeys.signedInRegister"), "ok");
   } catch (e) {
-    showMsg("Password login failed: " + e.message, "err");
+    showMsg(t("js.passkeys.passwordFailed", { error: e.message }), "err");
   }
 }
 
 async function registerPasskey() {
   showMsg("");
   try {
-    const friendly = prompt("Name this passkey (e.g. \"MacBook Touch ID\")") || "";
+    const friendly = prompt(t("js.passkeys.namePrompt")) || "";
     await client().register(friendly);
-    showMsg("Passkey registered.", "ok");
+    showMsg(t("js.passkeys.registered"), "ok");
     loadCredentials();
   } catch (e) {
-    showMsg("Registration failed: " + e.message, "err");
+    showMsg(t("js.passkeys.registerFailed", { error: e.message }), "err");
   }
 }
 
@@ -662,7 +696,7 @@ async function loadCredentials() {
     if (!items.length) {
       const li = document.createElement("li");
       li.className = "muted";
-      li.textContent = "No registered passkeys yet.";
+      li.textContent = t("js.passkeys.none");
       ul.appendChild(li);
       return;
     }
@@ -671,33 +705,33 @@ async function loadCredentials() {
       const meta = document.createElement("div");
       meta.className = "meta";
       const name = document.createElement("div");
-      name.textContent = c.name || "Unnamed passkey";
+      name.textContent = c.name || t("js.passkeys.unnamed");
       const sub = document.createElement("small");
-      sub.textContent = (c.created ? "Registered: " + c.created : "") +
-        (c.lastUsed ? " · Last used: " + c.lastUsed : " · Not used yet") +
-        (c.signCount !== undefined ? " · Uses: " + c.signCount : "");
+      sub.textContent = (c.created ? t("js.passkeys.created", { date: c.created }) : "") +
+        (c.lastUsed ? " · " + t("js.passkeys.lastUsed", { date: c.lastUsed }) : " · " + t("js.passkeys.neverUsed")) +
+        (c.signCount !== undefined ? " · " + t("js.passkeys.uses", { count: c.signCount }) : "");
       meta.appendChild(name);
       meta.appendChild(sub);
 
       const renameBtn = document.createElement("button");
       renameBtn.className = "secondary";
-      renameBtn.textContent = "Rename";
+      renameBtn.textContent = t("js.passkeys.rename");
       renameBtn.style.marginTop = "0";
       renameBtn.onclick = async () => {
-        const newName = prompt("New name:", c.name || "");
+        const newName = prompt(t("js.passkeys.newName"), c.name || "");
         if (!newName) return;
         try { await client().rename(c.id, newName); loadCredentials(); }
-        catch (e) { showMsg("Rename failed: " + e.message, "err"); }
+        catch (e) { showMsg(t("js.passkeys.renameFailed", { error: e.message }), "err"); }
       };
 
       const delBtn = document.createElement("button");
       delBtn.className = "secondary";
-      delBtn.textContent = "Delete";
+      delBtn.textContent = t("js.passkeys.delete");
       delBtn.style.marginTop = "0";
       delBtn.onclick = async () => {
-        if (!confirm("Delete this passkey?")) return;
+        if (!confirm(t("js.passkeys.confirmDelete"))) return;
         try { await client().remove(c.id); loadCredentials(); }
-        catch (e) { showMsg("Delete failed: " + e.message, "err"); }
+        catch (e) { showMsg(t("js.passkeys.deleteFailed", { error: e.message }), "err"); }
       };
 
       li.appendChild(meta);
@@ -706,7 +740,7 @@ async function loadCredentials() {
       ul.appendChild(li);
     }
   } catch (e) {
-    showMsg("Failed to load credentials: " + e.message, "err");
+    showMsg(t("js.passkeys.loadFailed", { error: e.message }), "err");
   }
 }
 
@@ -732,7 +766,7 @@ $("linkRecovery").addEventListener("click", (e) => { e.preventDefault(); $("reco
 $("btnRecovery").addEventListener("click", sendRecovery);
 
 if (!window.PublicKeyCredential) {
-  showMsg("This browser does not support WebAuthn / passkeys.", "err");
+  showMsg(t("js.passkeys.unsupported"), "err");
 }
 render();
 if (!loadAuth()) setupMethods();

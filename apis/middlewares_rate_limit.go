@@ -259,6 +259,9 @@ func newPersistentRateLimiter(persist *rateLimitStore, name string, maxAllowed i
 	rt := newRateLimiter(maxAllowed, intervalInSec, minDeleteIntervalInSec)
 	rt.name = name
 	rt.persist = persist
+	if persist != nil {
+		rt.shared = sharedRateLimitsFor(persist.app, name) // several replicas (#106 M7)
+	}
 
 	return rt
 }
@@ -269,6 +272,10 @@ type rateLimiter struct {
 	// fork (#91): optional persistence of the counters (see rate_limit_store.go)
 	name    string
 	persist *rateLimitStore
+
+	// fork (#106 M7): when set, the counter of every key lives in PostgreSQL and
+	// is shared by the replicas (nil on a single replica)
+	shared *sharedRateLimits
 
 	maxAllowed        int
 	interval          int64
@@ -288,6 +295,13 @@ func (rt *rateLimiter) getClient(key string) (*rateClient, bool) {
 }
 
 func (rt *rateLimiter) isAllowed(key string) bool {
+	if rt.shared != nil {
+		if allowed, ok := rt.shared.hit(rt.name, key, rt.maxAllowed, rt.interval); ok {
+			return allowed
+		}
+		// the database could not be asked: count on this replica
+	}
+
 	// lock only reads to minimize locks contention
 	rt.RLock()
 	client, ok := rt.clients[key]

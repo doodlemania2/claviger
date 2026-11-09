@@ -26,6 +26,11 @@ const (
 	// sign-in page: a hashed random cookie value bound to a Claviger session.
 	CollectionNameOAuthSso = "_oauthSso"
 
+	// CollectionNameOAuthDeviceCodes holds the pending device authorizations
+	// (RFC 8628): the hashed device_code and user_code, and the state of the
+	// approval (#96). Created by migrations/1780001300_add_oidc_device.go.
+	CollectionNameOAuthDeviceCodes = "_oauthDeviceCodes"
+
 	// CollectionNameSigningKeys holds the (encrypted) token signing keys.
 	CollectionNameSigningKeys = "_signingKeys"
 )

@@ -78,6 +78,16 @@ export function pageCaptchaSettings() {
                 captcha.secretKey = data.secretKey;
             }
 
+            // Turning the captcha off: the server refuses "Off" while an action still requires
+            // a captcha (an unexplained "Invalid value" on actions), and the action switches are
+            // hidden once the provider is Off, so the user could not clear them. Clear them here.
+            if (!captcha.provider) {
+                for (const key of Object.keys(captcha.actions || {})) {
+                    captcha.actions[key] = false;
+                }
+                captcha.failClosed = false;
+            }
+
             init(await app.pb.settings.update({ captcha }));
 
             app.toasts.success("Successfully saved captcha settings.");

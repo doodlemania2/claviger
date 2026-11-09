@@ -12,6 +12,7 @@ import (
 
 	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/doodlemania2/claviger/tools/keys"
+	"github.com/doodlemania2/claviger/tools/replica"
 	"github.com/doodlemania2/claviger/tools/types"
 )
 
@@ -101,11 +102,32 @@ type fieldTarget struct {
 
 func (t fieldTarget) label() string { return t.collection.Name + "." + t.field.GetName() }
 
-func lockFieldKeyOp() (func(), error) {
+func lockFieldKeyOp(app App) (func(), error) {
 	if !fieldKeyOpMu.TryLock() {
 		return nil, ErrFieldKeyOpRunning
 	}
-	return fieldKeyOpMu.Unlock, nil
+
+	// several replicas (#106 M7): one operation at a time across all of them,
+	// and the others reload the keys when it ends (also after a partial run)
+	bus := ReplicaBusOf(app)
+	if bus == nil {
+		return fieldKeyOpMu.Unlock, nil
+	}
+
+	release, ok, err := replica.TryLock(context.Background(), bus.DB(), "fieldkeyop")
+	if err != nil || !ok {
+		fieldKeyOpMu.Unlock()
+		if err != nil {
+			return nil, err
+		}
+		return nil, ErrFieldKeyOpRunning
+	}
+
+	return func() {
+		PublishReplicaEvent(app, ReplicaEventFieldKeys, nil)
+		release()
+		fieldKeyOpMu.Unlock()
+	}, nil
 }
 
 func resolveFieldTargets(app App, collection, field string) ([]fieldTarget, error) {
@@ -265,7 +287,7 @@ type FieldKeyRotateResult struct {
 // Rows holding unencrypted legacy values are not touched (see
 // [ConvertFieldValues]).
 func RotateFieldKeys(ctx context.Context, app App, opts FieldKeyOptions) (*FieldKeyRotateResult, error) {
-	unlock, err := lockFieldKeyOp()
+	unlock, err := lockFieldKeyOp(app)
 	if err != nil {
 		return nil, err
 	}
@@ -576,7 +598,7 @@ type FieldKeyRewrapResult struct {
 // names the missing KEK id. All the keys are re-wrapped in one transaction and
 // each result is unwrapped again and compared before the commit.
 func RewrapFieldKeys(ctx context.Context, app App) (*FieldKeyRewrapResult, error) {
-	unlock, err := lockFieldKeyOp()
+	unlock, err := lockFieldKeyOp(app)
 	if err != nil {
 		return nil, err
 	}
@@ -711,7 +733,7 @@ type FieldKeyConvertResult struct {
 // run is idempotent and resumable (rows already encrypted are not in the work
 // set). It does not turn strict mode on; see [SetFieldKeysStrict].
 func ConvertFieldValues(ctx context.Context, app App, opts FieldKeyOptions) (*FieldKeyConvertResult, error) {
-	unlock, err := lockFieldKeyOp()
+	unlock, err := lockFieldKeyOp(app)
 	if err != nil {
 		return nil, err
 	}
@@ -845,7 +867,7 @@ func convertFieldTarget(ctx context.Context, app App, t fieldTarget, opts *Field
 // is stored with the field's data key (column strictMode of _fieldKeys), not
 // in the field options, and survives key rotation.
 func SetFieldKeysStrict(ctx context.Context, app App, collection, field string, strict bool) error {
-	unlock, err := lockFieldKeyOp()
+	unlock, err := lockFieldKeyOp(app)
 	if err != nil {
 		return err
 	}
@@ -924,7 +946,7 @@ type FieldKeyPruneResult struct {
 // prune still holds them, which is also why a backup can only be restored
 // together with the rows of its own time.
 func PruneFieldKeys(ctx context.Context, app App, opts FieldKeyOptions) (*FieldKeyPruneResult, error) {
-	unlock, err := lockFieldKeyOp()
+	unlock, err := lockFieldKeyOp(app)
 	if err != nil {
 		return nil, err
 	}

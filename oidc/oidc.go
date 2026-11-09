@@ -142,6 +142,12 @@ func (m *module) ready() (http.Handler, string) {
 		GrantTypeRefreshToken:    true,
 		SupportedClaims:          SupportedClaims,
 		SupportedScopes:          []string{oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail, oidc.ScopeOfflineAccess, ScopeOrgs},
+		DeviceAuthorization: op.DeviceAuthorizationConfig{
+			Lifetime:     deviceLifetime,
+			PollInterval: devicePollInterval,
+			UserFormPath: mountPath + "/device",
+			UserCode:     op.UserCodeBase20, // XXXX-XXXX, consonants only: no 0/O, 1/I/l, no words
+		},
 	}, m.store, func(bool) (op.IssuerFromRequest, error) {
 		return func(*http.Request) string { return m.issuer() }, nil
 	}, opts...)
@@ -200,7 +206,7 @@ func (m *module) bindRoutes(se *core.ServeEvent) {
 	callback := func(e *core.RequestEvent) error {
 		req, err := m.store.requestByID(e.Request.FormValue("id"))
 		if err != nil || !m.checkBinding(e, req) {
-			return m.errorPage(e, http.StatusBadRequest, "This sign-in could not be resumed. Return to the app and start again.")
+			return m.errorPage(e, http.StatusBadRequest, "oidc.err.cannotResume")
 		}
 
 		return m.serveLibrary(e)
@@ -231,19 +237,30 @@ func (m *module) serveLibrary(e *core.RequestEvent) error {
 
 	r := m.withSSO(m.withClientAlg(e.Request))
 
+	var w http.ResponseWriter
+
+	w = e.Response
+
 	if strings.TrimSuffix(r.URL.Path, "/") == mountPath+"/end_session" && ssoCookieValue(r) != "" {
-		// logging out of the sign-in page forgets the browser's session
-		m.clearSSOCookie(e)
+		// logging out forgets the accounts that signed out: the cookie is
+		// rewritten (or cleared when none is left) as the response goes out
+		w = &pruneWriter{ResponseWriter: w, prune: func() { m.pruneSSOCookie(e.Response, r) }}
 	}
 
 	if after == nil {
-		handler.ServeHTTP(e.Response, r)
+		handler.ServeHTTP(w, r)
 
 		return nil
 	}
 
-	rec := &statusRecorder{ResponseWriter: e.Response}
-	handler.ServeHTTP(rec, r)
+	rec := &statusRecorder{ResponseWriter: w}
+
+	if m.deviceNeedsClientAuth(r) {
+		writeInvalidClient(rec)
+	} else {
+		handler.ServeHTTP(rec, r)
+	}
+
 	after(rec.status)
 
 	return nil
@@ -309,7 +326,10 @@ func (b *bufferedResponse) WriteHeader(code int)        { b.code = code }
 
 // serveDiscovery serves the library's discovery document minus the things
 // this provider does not do: the implicit flow (the library advertises it
-// unconditionally), id_token response types and the device flow.
+// unconditionally) and id_token response types. The device authorization grant
+// (#96) is advertised whenever the provider runs, because discovery is global
+// and a client opts in individually (allowDeviceFlow); a client without the
+// flag is refused at the device_authorization endpoint with unauthorized_client.
 func (m *module) serveDiscovery(e *core.RequestEvent) error {
 	handler, why := m.ready()
 	if handler == nil {
@@ -325,12 +345,11 @@ func (m *module) serveDiscovery(e *core.RequestEvent) error {
 	}
 
 	doc["response_types_supported"] = []string{"code"}
-	doc["grant_types_supported"] = []string{"authorization_code", "refresh_token"}
+	doc["grant_types_supported"] = []string{"authorization_code", "refresh_token", string(oidc.GrantTypeDeviceCode)}
 	doc["id_token_signing_alg_values_supported"] = []string{"RS256", "ES256"}
 	doc["claims_parameter_supported"] = false
 	doc["request_uri_parameter_supported"] = false
 
-	delete(doc, "device_authorization_endpoint")
 	delete(doc, "check_session_iframe")
 
 	e.Response.Header().Set("Cache-Control", "public, max-age=300")

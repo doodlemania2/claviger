@@ -1,0 +1,13 @@
+{
+  "name": "claviger-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Browser end-to-end tests for the Claviger admin UI and hosted pages",
+  "scripts": {
+    "test": "playwright test",
+    "install-browser": "playwright install --with-deps chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2"
+  }
+}

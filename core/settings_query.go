@@ -38,7 +38,18 @@ func (app *BaseApp) ReloadSettings() error {
 	if param.Id == "" {
 		// force insert in case the param entry was deleted manually after application start
 		app.Settings().MarkAsNew()
-		return app.Save(app.Settings())
+		saveErr := app.Save(app.Settings())
+
+		// several replicas (#106 M7): on the very first start of an empty
+		// database two of them insert the defaults at the same time and one
+		// loses on the primary key. The winner's row is the settings.
+		if saveErr == nil || !IsMultiReplica(app) {
+			return saveErr
+		}
+		if err := app.ModelQuery(param).Model(paramsKeySettings, param); err != nil || param.Id == "" {
+			return saveErr
+		}
+		app.Settings().MarkAsNotNew()
 	}
 
 	event := new(SettingsReloadEvent)

@@ -102,6 +102,11 @@ func TestRecordRequestOTP(t *testing.T) {
 			URL:    "/api/collections/users/request-otp",
 			Body:   strings.NewReader(`{"email":"test@example.com"}`),
 			Delay:  100 * time.Millisecond,
+			// the email send and the follow-up sentTo update run in a FireAndForget
+			// routine after the response; wait for its last write instead of guessing
+			WaitFor: func(app *tests.TestApp) bool {
+				return app.EventCallsSnapshot()["OnRecordAfterUpdateSuccess"] >= 1
+			},
 			BeforeTestFunc: func(t testing.TB, app *tests.TestApp, e *core.ServeEvent) {
 				user, err := app.FindAuthRecordByEmail("users", "test@example.com")
 				if err != nil {
@@ -158,18 +163,8 @@ func TestRecordRequestOTP(t *testing.T) {
 					t.Fatalf("Expected 1 email, got %d", app.TestMailer.TotalSend())
 				}
 
-				// ensure that sentTo is set
-				// (fork: poll briefly - the send and the sentTo update run in a
-				// FireAndForget routine, which can finish after the mail count on Postgres)
-				var otps []*core.Record
-				var err error
-				for i := 0; i < 20; i++ {
-					otps, err = app.FindRecordsByFilter(core.CollectionNameOTPs, "sentTo='test@example.com'", "", 0, 0)
-					if err == nil && len(otps) == 1 {
-						break
-					}
-					time.Sleep(100 * time.Millisecond)
-				}
+				// ensure that sentTo is set (WaitFor above guarantees the routine is done)
+				otps, err := app.FindRecordsByFilter(core.CollectionNameOTPs, "sentTo='test@example.com'", "", 0, 0)
 				if err != nil || len(otps) != 1 {
 					t.Fatalf("Expected to find 1 OTP with sentTo %q, found %d", "test@example.com", len(otps))
 				}

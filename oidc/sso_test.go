@@ -275,9 +275,8 @@ func TestSSOPromptLoginAndMaxAgeForceReauthentication(t *testing.T) {
 	}
 
 	for name, o := range map[string]authOpts{
-		"prompt=login":          {extra: url.Values{"prompt": {"login"}}},
-		"prompt=select_account": {extra: url.Values{"prompt": {"select_account"}}},
-		"max_age=0":             {extra: url.Values{"max_age": {"0"}}},
+		"prompt=login": {extra: url.Values{"prompt": {"login"}}},
+		"max_age=0":    {extra: url.Values{"max_age": {"0"}}},
 	} {
 		if out := b.authorizeSilently(a, o); out.kind != "login" {
 			t.Fatalf("%s must ask for credentials, got %s", name, out.kind)

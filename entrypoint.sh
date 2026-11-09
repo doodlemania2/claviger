@@ -53,6 +53,24 @@ HANDOVER_POLL=${PB_HANDOVER_POLL:-2}
 # that is deliberate, see start_handover_watcher and the zombie guard.
 INSTANCE_ID="${PB_INSTANCE_ID:-$(hostname 2>/dev/null || echo unknown)}"
 
+# Several replicas on PostgreSQL (#106 M7). The handover exists because two
+# replicas must never write one SQLite file on the shared volume. With the data
+# database on PostgreSQL and CLAVIGER_MULTI_REPLICA on, replicas are meant to
+# overlap during a rollout (the database coordinates them), and the volume only
+# holds a per-replica auxiliary.db, so there is nothing to hand over and a
+# blocking wait would only slow every rollout. Anything else, including a
+# single replica on PostgreSQL, keeps the handover exactly as it was.
+multi_replica_on_postgres() {
+    case "${CLAVIGER_DB_URL:-}" in
+        postgres://*|postgresql://*) ;;
+        *) return 1 ;;
+    esac
+    case "${CLAVIGER_MULTI_REPLICA:-}" in
+        1|t|T|true|TRUE|True) return 0 ;;
+    esac
+    return 1
+}
+
 # ---------------------------------------------------------------------------
 # Durable handover events (#54)
 # ---------------------------------------------------------------------------
@@ -285,6 +303,9 @@ request_handover() {
 # Poll for a handover request from a replica that is not us, and hand the main
 # shell a USR1 so it releases /pb_data.
 start_handover_watcher() {
+    if multi_replica_on_postgres; then
+        return 0
+    fi
     (
         ignored=""
         while :; do
@@ -314,6 +335,11 @@ start_handover_watcher() {
 }
 
 acquire_single_writer() {
+    if multi_replica_on_postgres; then
+        echo "[entrypoint] multi-replica mode on PostgreSQL: skipping the single-writer handover."
+        return 0
+    fi
+
     if [ "$HANDOVER_TIMEOUT" = "0" ]; then
         echo "[entrypoint] WARN: PB_HANDOVER_TIMEOUT=0 — single-writer handover disabled."
         echo "[entrypoint]       Two replicas sharing /pb_data will corrupt SQLite."

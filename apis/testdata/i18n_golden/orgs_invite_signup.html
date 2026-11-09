@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Join Parish One</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/orgs/assets/hosted.css">
+</head>
+<body>
+<main class="card" id="app" data-page="invite" data-token="tok-newbie-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" data-collection="users" data-email="newbie@orgs.test" data-has-account="false">
+<h1>Join Parish One</h1>
+<p class="sub">You are invited as <strong>member</strong> with <strong>newbie@orgs.test</strong>.</p>
+<p id="istatus" class="msg err" role="alert" hidden></p>
+<div id="captchaBox" hidden></div>
+
+<section id="signedIn" hidden>
+<p>Signed in as <strong id="who"></strong>.</p>
+<button id="accept" type="button">Accept the invitation</button>
+<button id="verifyBtn" type="button" class="secondary" hidden>Send me a verification email</button>
+<p><button id="signout" type="button" class="linklike">Use another account</button></p>
+</section>
+
+<section id="signin" hidden>
+<h2>Sign in</h2>
+<form id="pw" hidden>
+<label>Email or username<input name="identity" autocomplete="username webauthn" required></label>
+<label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+<button type="submit">Sign in</button>
+</form>
+<form id="totp" hidden>
+<label>Authenticator code or backup code<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<button type="submit">Verify</button>
+</form>
+<div id="otpBox" hidden>
+<div class="or"><span>or</span></div>
+<button id="otpSend" type="button" class="secondary">Email me a sign-in code</button>
+<form id="otpForm" hidden>
+<label>Code from the email<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<button type="submit">Sign in</button>
+</form>
+</div>
+<div id="passkeyBox" hidden>
+<div class="or"><span>or</span></div>
+<button id="passkey" type="button" class="secondary">Sign in with a passkey</button>
+</div>
+<p id="status" class="msg err" role="alert" hidden></p>
+<p class="muted">No account yet? <button id="toSignUp" type="button" class="linklike">Create one</button></p>
+</section>
+
+<section id="signup" hidden>
+<form id="signupForm">
+<label>Email<input name="email" type="email" value="newbie@orgs.test" readonly></label>
+<label>Name<input name="name" autocomplete="name"></label>
+<label>Password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+<label>Repeat the password<input name="passwordConfirm" type="password" autocomplete="new-password" minlength="8" required></label>
+<button type="submit">Create the account and join</button>
+</form>
+<p class="muted">Already have an account? <button id="toSignIn" type="button" class="linklike">Sign in</button></p>
+</section>
+
+<section id="done" hidden>
+<p class="msg ok" id="doneText" role="status"></p>
+<p><a id="doneLink" href="/orgs/">Open the organization page</a></p>
+</section>
+</main>
+<script type="module" src="/orgs/assets/invite.js"></script>
+</body></html>

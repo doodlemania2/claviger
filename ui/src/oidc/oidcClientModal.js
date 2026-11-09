@@ -19,6 +19,8 @@ window.app.modals.openOidcClientSecret = function(clientId, secret) {
 const lines = (text) => text.split(/[\s,]+/).map((v) => v.trim()).filter(Boolean);
 
 function oidcClientModal(client, settings) {
+    // unique per modal: see orgFormModal.js (a closing modal keeps its ids in the DOM for a moment)
+    const formId = "form_" + app.utils.randomString();
     const isNew = !client?.id;
 
     const data = store({
@@ -28,6 +30,7 @@ function oidcClientModal(client, settings) {
         authCollection: client?.authCollection || "users",
         public: !!client?.public,
         firstParty: !!client?.firstParty,
+        allowDeviceFlow: !!client?.allowDeviceFlow,
         requirePkce: client ? !!client.requirePkce : true,
         redirectUris: (client?.redirectUris || []).join("\n"),
         postLogoutUris: (client?.postLogoutUris || []).join("\n"),
@@ -57,6 +60,7 @@ function oidcClientModal(client, settings) {
             name: data.name.trim(),
             authCollection: data.authCollection,
             firstParty: data.firstParty,
+            allowDeviceFlow: data.allowDeviceFlow,
             requirePkce: data.public ? true : data.requirePkce,
             redirectUris: lines(data.redirectUris),
             postLogoutUris: lines(data.postLogoutUris),
@@ -162,7 +166,7 @@ function oidcClientModal(client, settings) {
 
             return t.form(
                 {
-                    id: "oidc_client_form",
+                    id: formId,
                     className: "grid",
                     onsubmit: (e) => {
                         e.preventDefault();
@@ -234,6 +238,12 @@ function oidcClientModal(client, settings) {
                     : null,
                 toggleField("firstParty", "First party", "firstParty", "Skips the consent screen. Only for applications you run."),
                 toggleField("requirePkce", "Require PKCE", "requirePkce", "Always on for public clients.", false),
+                toggleField(
+                    "allowDeviceFlow",
+                    "Allow the device flow",
+                    "allowDeviceFlow",
+                    "Lets a CLI, TV or kiosk sign in with a short code entered on another device (RFC 8628). The person always approves on the verification page.",
+                ),
                 field(
                     "accessTokenType",
                     "Access tokens",
@@ -287,7 +297,7 @@ function oidcClientModal(client, settings) {
                     hidden: () => !!data.secret,
                     className: () => `btn expanded ${data.isSaving ? "loading" : ""}`,
                     disabled: () => data.isSaving,
-                    onclick: () => document.getElementById("oidc_client_form")?.requestSubmit(),
+                    onclick: () => document.getElementById(formId)?.requestSubmit(),
                 },
                 t.span({ className: "txt" }, isNew ? "Create" : "Save"),
             ),
