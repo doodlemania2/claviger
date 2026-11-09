@@ -19,6 +19,8 @@ window.app.modals.openOidcClientSecret = function(clientId, secret) {
 const lines = (text) => text.split(/[\s,]+/).map((v) => v.trim()).filter(Boolean);
 
 function oidcClientModal(client, settings) {
+    // unique per modal: see orgFormModal.js (a closing modal keeps its ids in the DOM for a moment)
+    const formId = "form_" + app.utils.randomString();
     const isNew = !client?.id;
 
     const data = store({
@@ -162,7 +164,7 @@ function oidcClientModal(client, settings) {
 
             return t.form(
                 {
-                    id: "oidc_client_form",
+                    id: formId,
                     className: "grid",
                     onsubmit: (e) => {
                         e.preventDefault();
@@ -287,7 +289,7 @@ function oidcClientModal(client, settings) {
                     hidden: () => !!data.secret,
                     className: () => `btn expanded ${data.isSaving ? "loading" : ""}`,
                     disabled: () => data.isSaving,
-                    onclick: () => document.getElementById("oidc_client_form")?.requestSubmit(),
+                    onclick: () => document.getElementById(formId)?.requestSubmit(),
                 },
                 t.span({ className: "txt" }, isNew ? "Create" : "Save"),
             ),

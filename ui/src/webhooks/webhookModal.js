@@ -11,6 +11,8 @@ window.app.modals.openWebhookModal = function(endpoint, settings = {}) {
 };
 
 function webhookModal(endpoint, settings) {
+    // unique per modal: see orgFormModal.js (a closing modal keeps its ids in the DOM for a moment)
+    const formId = "form_" + app.utils.randomString();
     const isNew = !endpoint?.id;
 
     const data = store({
@@ -101,7 +103,7 @@ function webhookModal(endpoint, settings) {
 
             return t.form(
                 {
-                    id: "webhook_form",
+                    id: formId,
                     className: "grid",
                     onsubmit: (e) => {
                         e.preventDefault();
@@ -167,7 +169,7 @@ function webhookModal(endpoint, settings) {
                     hidden: () => !!data.secret,
                     className: () => `btn expanded ${data.isSaving ? "loading" : ""}`,
                     disabled: () => data.isSaving,
-                    onclick: () => document.getElementById("webhook_form")?.requestSubmit(),
+                    onclick: () => document.getElementById(formId)?.requestSubmit(),
                 },
                 t.span({ className: "txt" }, isNew ? "Create" : "Save"),
             ),
