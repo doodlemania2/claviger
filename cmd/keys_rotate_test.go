@@ -29,6 +29,15 @@ func runKeys(t testing.TB, app core.App, args ...string) (string, error) {
 	return out.String(), err
 }
 
+// usePostgresOfApp points the commands, which open the database by themselves
+// from the environment, to the Postgres database of the test app (no-op on SQLite).
+func usePostgresOfApp(t testing.TB, app *tests.TestApp) {
+	t.Helper()
+	if u := app.PostgresURL(); u != "" {
+		t.Setenv(core.DBURLEnv, u)
+	}
+}
+
 func keysApp(t *testing.T) (*tests.TestApp, *core.Collection) {
 	t.Helper()
 	t.Setenv("CLAVIGER_KEK", kekB64(t))
@@ -40,6 +49,7 @@ func keysApp(t *testing.T) (*tests.TestApp, *core.Collection) {
 		t.Fatal(err)
 	}
 	t.Cleanup(app.Cleanup)
+	usePostgresOfApp(t, app)
 
 	col := core.NewBaseCollection("cliPeople")
 	col.Fields.Add(&core.TextField{Name: "name"}, &core.EncryptedTextField{Name: "phone"})
@@ -154,7 +164,7 @@ func TestKeysCommandsEndToEnd(t *testing.T) {
 
 	// legacy value -> convert -> strict
 	rows, _ := app.FindAllRecords(col)
-	if _, err := app.DB().NewQuery("UPDATE cliPeople SET phone='legacy' WHERE id={:id}").Bind(dbx.Params{"id": rows[0].Id}).Execute(); err != nil {
+	if _, err := app.DB().NewQuery("UPDATE {{cliPeople}} SET phone='legacy' WHERE id={:id}").Bind(dbx.Params{"id": rows[0].Id}).Execute(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runKeys(t, app, "strict", "--collection", "cliPeople", "--field", "phone"); err == nil || !strings.Contains(err.Error(), "keys convert") {

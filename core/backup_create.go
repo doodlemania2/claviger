@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/filesystem"
 	"github.com/doodlemania2/claviger/tools/hook"
 	"github.com/doodlemania2/claviger/tools/security"
@@ -208,33 +209,51 @@ func createZip(be *BackupEvent, tempZipPath string) error {
 
 	// copy data.db
 	// ---------------------------------------------------------------
-	dataStartTime := time.Now()
-	tempDataDBPath := filepath.Join(localTempDir, dataDBFilename)
+	if d := dialectOf(be.App); d.Name() != dialect.SQLiteName {
+		// fork (#106): the data lives in the database server, which a zip
+		// backup does not copy (pg_dump or the provider's point-in-time
+		// recovery do). The storage files and the local auxiliary database
+		// still go in, and the manifest says that the database is not there.
+		be.App.onFilesystemDelete().Unbind(tempFilesHookId)
 
-	_, err = be.App.ConcurrentDB().NewQuery("VACUUM INTO {:path}").Bind(dbx.Params{"path": tempDataDBPath}).Execute()
-	if err != nil {
-		return err
-	}
+		manifest.DataDatabase = d.Name()
+		manifest.Note = "This archive does not contain the app data database (it is " + d.Name() +
+			"). Back it up with pg_dump or your provider's point-in-time recovery. " +
+			"The archive holds the storage files and the local auxiliary (logs) database only."
 
-	// eagerly stop listening for deleted files since we already have what we needed
-	be.App.onFilesystemDelete().Unbind(tempFilesHookId)
+		be.App.Logger().Info(
+			logPrefix+"the data database is "+d.Name()+": skipped in the zip archive (use pg_dump or point-in-time recovery)",
+			slog.Bool(OTelAlwaysAttr, true),
+		)
+	} else {
+		dataStartTime := time.Now()
+		tempDataDBPath := filepath.Join(localTempDir, dataDBFilename)
 
-	be.App.Logger().Debug(
-		logPrefix+dataDBFilename+" copy completed",
-		slog.Float64("execTime", float64(time.Since(dataStartTime))/float64(time.Millisecond)),
-	)
+		_, err = be.App.ConcurrentDB().NewQuery("VACUUM INTO {:path}").Bind(dbx.Params{"path": tempDataDBPath}).Execute()
+		if err != nil {
+			return err
+		}
 
-	err = zipper.copyFileToZip(tempDataDBPath, dataDBFilename)
-	if err != nil {
+		// eagerly stop listening for deleted files since we already have what we needed
+		be.App.onFilesystemDelete().Unbind(tempFilesHookId)
+
+		be.App.Logger().Debug(
+			logPrefix+dataDBFilename+" copy completed",
+			slog.Float64("execTime", float64(time.Since(dataStartTime))/float64(time.Millisecond)),
+		)
+
+		err = zipper.copyFileToZip(tempDataDBPath, dataDBFilename)
+		if err != nil {
+			_ = os.Remove(tempDataDBPath)
+			return err
+		}
+		manifest.addDatabase(be.App, dataDBFilename, tempDataDBPath)
 		_ = os.Remove(tempDataDBPath)
-		return err
-	}
-	manifest.addDatabase(be.App, dataDBFilename, tempDataDBPath)
-	_ = os.Remove(tempDataDBPath)
 
-	excluded.Set(normalizePathExclude(dataDBFilename), struct{}{})
-	excluded.Set(normalizePathExclude(dataDBFilename+"-wal"), struct{}{})
-	excluded.Set(normalizePathExclude(dataDBFilename+"-shm"), struct{}{})
+		excluded.Set(normalizePathExclude(dataDBFilename), struct{}{})
+		excluded.Set(normalizePathExclude(dataDBFilename+"-wal"), struct{}{})
+		excluded.Set(normalizePathExclude(dataDBFilename+"-shm"), struct{}{})
+	}
 
 	// init to-be-created files tracker
 	// ---------------------------------------------------------------
@@ -284,7 +303,7 @@ func createZip(be *BackupEvent, tempZipPath string) error {
 	// previous VACUUM INTO are transferred and don't accumulate
 	// (errors are ignore because some drivers may not support the wal_checkpoint pragma)
 	// ---------------------------------------------------------------
-	_, _ = be.App.NonconcurrentDB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute()
+	_ = dialectOf(be.App).Checkpoint(be.App.NonconcurrentDB())
 	_, _ = be.App.AuxNonconcurrentDB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute()
 
 	// copy the rest of the pb_data

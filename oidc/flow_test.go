@@ -709,7 +709,7 @@ func TestExpiredAuthRequest(t *testing.T) {
 	token := b.signInToken(reqID)
 
 	past := time.Now().Add(-time.Minute).UTC().Format("2006-01-02 15:04:05.000Z")
-	if _, err := e.app.NonconcurrentDB().NewQuery("UPDATE _oauthRequests SET expires = '" + past + "'").Execute(); err != nil {
+	if _, err := e.app.NonconcurrentDB().NewQuery("UPDATE {{_oauthRequests}} SET [[expires]] = '" + past + "'").Execute(); err != nil {
 		t.Fatal(err)
 	}
 

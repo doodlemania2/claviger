@@ -57,7 +57,7 @@ func activeKey(t testing.TB, app core.App, col *core.Collection, fieldName strin
 func countOnKey(t testing.TB, app core.App, col *core.Collection, column, keyId string) int {
 	t.Helper()
 	var n int
-	err := app.DB().NewQuery("SELECT COUNT(*) FROM " + col.Name + " WHERE " + column + " LIKE {:p}").
+	err := app.DB().NewQuery("SELECT COUNT(*) FROM {{" + col.Name + "}} WHERE [[" + column + "]] LIKE {:p}").
 		Bind(dbx.Params{"p": "enc:v1:" + keyId + ":%"}).Row(&n)
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func countOnKey(t testing.TB, app core.App, col *core.Collection, column, keyId 
 func countEncrypted(t testing.TB, app core.App, col *core.Collection, column string) int {
 	t.Helper()
 	var n int
-	if err := app.DB().NewQuery("SELECT COUNT(*) FROM " + col.Name + " WHERE " + column + " LIKE 'enc:v1:%'").Row(&n); err != nil {
+	if err := app.DB().NewQuery("SELECT COUNT(*) FROM {{" + col.Name + "}} WHERE [[" + column + "]] LIKE 'enc:v1:%'").Row(&n); err != nil {
 		t.Fatal(err)
 	}
 	return n
@@ -173,7 +173,7 @@ func TestRotateFieldKeysReencryptsEveryRow(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("expected one rotation audit entry, got %d", len(entries))
 	}
-	meta := entries[0].GetString("meta")
+	meta := tests.CompactJSON(entries[0].GetString("meta"))
 	if strings.Contains(meta, "555") || !strings.Contains(meta, newKey.KeyId) || !strings.Contains(meta, `"status":"ok"`) {
 		t.Fatalf("unexpected audit meta: %s", meta)
 	}
@@ -315,12 +315,13 @@ func TestRotateFieldKeysRowsSavedDuringRotationEndOnTheNewKey(t *testing.T) {
 	col := newEncryptedCollection(t, app)
 	want := seedPeople(t, app, col, 60)
 
-	// a record loaded BEFORE the rotation (it carries the old ciphertext in its stash)
+	// a record loaded BEFORE the rotation (it carries the old ciphertext in its stash).
+	// Take the lowest id: the hook below rewrites the highest one, and saving a stale
+	// copy of that same row afterwards would (correctly) write its old value back.
 	var staleId string
 	for id, p := range want {
-		if p != "" {
+		if p != "" && (staleId == "" || id < staleId) {
 			staleId = id
-			break
 		}
 	}
 	stale, err := app.FindRecordById(col, staleId)
@@ -464,7 +465,7 @@ func TestRotateFieldKeysFailsOnUndecryptableRowWithoutLosingTheOthers(t *testing
 			break
 		}
 	}
-	if _, err := app.DB().NewQuery("UPDATE " + col.Name + " SET phone=(SELECT phone FROM " + col.Name + " WHERE id={:a}) WHERE id={:b}").
+	if _, err := app.DB().NewQuery("UPDATE {{" + col.Name + "}} SET phone=(SELECT phone FROM {{" + col.Name + "}} WHERE id={:a}) WHERE id={:b}").
 		Bind(dbx.Params{"a": a, "b": b}).Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -481,7 +482,7 @@ func TestRotateFieldKeysFailsOnUndecryptableRowWithoutLosingTheOthers(t *testing
 
 	// the failed run is audited as failed
 	entries := auditEntriesFor(t, app, core.AuditActionFieldKeyRotate)
-	if len(entries) != 1 || !strings.Contains(entries[0].GetString("meta"), `"status":"failed"`) {
+	if len(entries) != 1 || !strings.Contains(tests.CompactJSON(entries[0].GetString("meta")), `"status":"failed"`) {
 		t.Fatalf("expected one failed audit entry: %v", entries)
 	}
 
@@ -628,7 +629,7 @@ func TestRewrapFieldKeysWithoutTouchingData(t *testing.T) {
 		t.Fatalf("expected 2 rewrap entries, got %d", len(entries))
 	}
 	for _, e := range entries {
-		if s := e.GetString("meta"); strings.Contains(s, kekA) || strings.Contains(s, kekB) || strings.Contains(s, keysAfter[0].Wrapped) {
+		if s := tests.CompactJSON(e.GetString("meta")); strings.Contains(s, kekA) || strings.Contains(s, kekB) || strings.Contains(s, keysAfter[0].Wrapped) {
 			t.Fatalf("audit meta leaks key material: %s", s)
 		}
 	}
@@ -681,7 +682,7 @@ func TestRewrapFieldKeysFailsClosedWithoutThePreviousKEK(t *testing.T) {
 		t.Fatal("nothing may change when a KEK is missing")
 	}
 	entries := auditEntriesFor(t, app, core.AuditActionFieldKeyRewrap)
-	if len(entries) != 1 || !strings.Contains(entries[0].GetString("meta"), `"status":"failed"`) {
+	if len(entries) != 1 || !strings.Contains(tests.CompactJSON(entries[0].GetString("meta")), `"status":"failed"`) {
 		t.Fatal("the refused run must be audited as failed")
 	}
 	_ = want
@@ -739,7 +740,7 @@ func TestConvertFieldValuesAndStrictMode(t *testing.T) {
 	legacy := map[string]string{}
 	for id, p := range want {
 		if p != "" && len(legacy) < 12 {
-			if _, err := app.DB().NewQuery("UPDATE " + col.Name + " SET phone={:v} WHERE id={:id}").
+			if _, err := app.DB().NewQuery("UPDATE {{" + col.Name + "}} SET phone={:v} WHERE id={:id}").
 				Bind(dbx.Params{"v": p, "id": id}).Execute(); err != nil {
 				t.Fatal(err)
 			}
@@ -793,7 +794,7 @@ func TestConvertFieldValuesAndStrictMode(t *testing.T) {
 			break
 		}
 	}
-	if _, err := app.DB().NewQuery("UPDATE " + col.Name + " SET phone='sneaky plaintext' WHERE id={:id}").Bind(dbx.Params{"id": victim}).Execute(); err != nil {
+	if _, err := app.DB().NewQuery("UPDATE {{" + col.Name + "}} SET phone='sneaky plaintext' WHERE id={:id}").Bind(dbx.Params{"id": victim}).Execute(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := app.FindRecordById(col, victim); err == nil || !strings.Contains(err.Error(), "strict mode") {
@@ -804,7 +805,7 @@ func TestConvertFieldValuesAndStrictMode(t *testing.T) {
 	}
 
 	// the flag survives a DEK rotation and a restart
-	if _, err := app.DB().NewQuery("UPDATE " + col.Name + " SET phone='' WHERE id={:id}").Bind(dbx.Params{"id": victim}).Execute(); err != nil {
+	if _, err := app.DB().NewQuery("UPDATE {{" + col.Name + "}} SET phone='' WHERE id={:id}").Bind(dbx.Params{"id": victim}).Execute(); err != nil {
 		t.Fatal(err)
 	}
 	want[victim] = ""
@@ -820,7 +821,7 @@ func TestConvertFieldValuesAndStrictMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer app2.Cleanup()
-	if _, err := app2.DB().NewQuery("UPDATE " + col.Name + " SET phone='again' WHERE id={:id}").Bind(dbx.Params{"id": victim}).Execute(); err != nil {
+	if _, err := app2.DB().NewQuery("UPDATE {{" + col.Name + "}} SET phone='again' WHERE id={:id}").Bind(dbx.Params{"id": victim}).Execute(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := app2.FindRecordById(col, victim); err == nil || !strings.Contains(err.Error(), "strict mode") {
@@ -851,7 +852,7 @@ func TestConvertEncryptedJSONLegacyValues(t *testing.T) {
 	r2 := saveJSONRecord(t, app, col, "B", "x")
 
 	for id, v := range map[string]string{r.Id: `{"legacy":true}`, r2.Id: `not json at all`} {
-		if _, err := app.DB().NewQuery("UPDATE " + col.Name + " SET profile={:v} WHERE id={:id}").Bind(dbx.Params{"v": v, "id": id}).Execute(); err != nil {
+		if _, err := app.DB().NewQuery("UPDATE {{" + col.Name + "}} SET profile={:v} WHERE id={:id}").Bind(dbx.Params{"v": v, "id": id}).Execute(); err != nil {
 			t.Fatal(err)
 		}
 	}

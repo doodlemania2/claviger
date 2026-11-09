@@ -35,10 +35,17 @@ func LoadFromEnv(getenv func(string) string, appKeyEnv string) (KeySource, error
 func loadPrimary(getenv func(string) string, appKeyEnv string) (KeySource, error) {
 	direct := strings.TrimSpace(getenv(EnvKEK))
 	file := strings.TrimSpace(getenv(EnvKEKFile))
+	azure := azureKeyIDFromEnv(getenv, EnvKEKAzureKeyID)
 
 	switch {
 	case direct != "" && file != "":
 		return nil, fmt.Errorf("both %s and %s are set; set only one", EnvKEK, EnvKEKFile)
+
+	case azure != "" && (direct != "" || file != ""):
+		return nil, fmt.Errorf("%s cannot be combined with %s or %s; set only one key source", EnvKEKAzureKeyID, EnvKEK, EnvKEKFile)
+
+	case azure != "":
+		return newAzureSource("azure-key-vault", azure, getenv)
 
 	case direct != "":
 		kek, err := decodeKEK(direct)
@@ -55,7 +62,7 @@ func loadPrimary(getenv func(string) string, appKeyEnv string) (KeySource, error
 		return src, err
 	}
 
-	hint := EnvKEK + " or " + EnvKEKFile
+	hint := EnvKEK + ", " + EnvKEKFile + " or " + EnvKEKAzureKeyID
 	if appKeyEnv != "" {
 		hint += " (or the app encryption key in " + appKeyEnv + ")"
 	}

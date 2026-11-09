@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tests"
 	"github.com/doodlemania2/claviger/tools/auth"
 	"golang.org/x/oauth2"
 )
@@ -59,7 +60,7 @@ func requireSelf(t testing.TB, entries []*core.Record, action, target, actorId s
 	t.Helper()
 	e := requireEntry(t, entries, action, target)
 	if e.GetString("actorId") != actorId || e.GetString("actorType") != core.AuditActorTypeRecord ||
-		e.GetString("actorCollection") != "users" || !strings.Contains(e.GetString("meta"), `"self":true`) {
+		e.GetString("actorCollection") != "users" || !strings.Contains(tests.CompactJSON(e.GetString("meta")), `"self":true`) {
 		t.Fatalf("Expected a self actor %s, got %s", actorId, e.PublicExport())
 	}
 }

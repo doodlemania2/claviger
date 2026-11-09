@@ -9,6 +9,7 @@ import (
 
 	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tests"
 	"github.com/doodlemania2/claviger/tools/security"
 	"github.com/doodlemania2/claviger/tools/types"
 )
@@ -461,7 +462,7 @@ func TestSessionLastSeenThrottled(t *testing.T) {
 	sid := sidOf(t, token)
 
 	setLastSeen := func(d time.Duration) {
-		if _, err := env.app.NonconcurrentDB().NewQuery("UPDATE _sessions SET lastSeen={:t} WHERE id={:id}").
+		if _, err := env.app.NonconcurrentDB().NewQuery("UPDATE {{_sessions}} SET [[lastSeen]]={:t} WHERE id={:id}").
 			Bind(dbx.Params{"t": types.NowDateTime().Add(d).String(), "id": sid}).Execute(); err != nil {
 			t.Fatal(err)
 		}
@@ -583,8 +584,8 @@ func TestSessionForCustomAuthResponse(t *testing.T) {
 	if e.GetString("actorId") != sessSuperId || e.GetString("targetId") != sessUserId || e.GetString("actorType") != "superuser" {
 		t.Fatalf("entry: %v", e.PublicExport())
 	}
-	if !strings.Contains(e.GetString("meta"), "checking ticket 42") {
-		t.Fatalf("meta: %s", e.GetString("meta"))
+	if !strings.Contains(tests.CompactJSON(e.GetString("meta")), "checking ticket 42") {
+		t.Fatalf("meta: %s", tests.CompactJSON(e.GetString("meta")))
 	}
 }
 

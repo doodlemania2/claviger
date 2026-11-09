@@ -11,6 +11,7 @@ import (
 	"runtime"
 
 	"github.com/doodlemania2/claviger/tools/archive"
+	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/osutils"
 	"github.com/doodlemania2/claviger/tools/security"
 )
@@ -65,6 +66,12 @@ func (app *BaseApp) RestoreBackup(ctx context.Context, name string) error {
 	return app.OnBackupRestore().Trigger(event, func(e *BackupEvent) error {
 		if runtime.GOOS == "windows" {
 			return errors.New("restore is not supported on Windows")
+		}
+
+		// fork (#106): a zip restore replaces data.db, which a Postgres install does not have
+		if d := dialectOf(e.App); d.Name() != dialect.SQLiteName {
+			return errors.New("restoring a zip backup is not available when the database is " + d.Name() +
+				": restore the database with pg_restore or your provider's point-in-time recovery, and copy the storage files back")
 		}
 
 		// make sure that the special temp directory exists

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/doodlemania2/claviger/core"
@@ -48,10 +49,11 @@ func keysCheckCommand(app core.App) *cobra.Command {
 		Use:   "check",
 		Short: "Checks that the configured key-encryption key can open the field keys",
 		Long: "Checks, without starting the app and without writing anything, that the configured\n" +
-			"key-encryption key (CLAVIGER_KEK, CLAVIGER_KEK_FILE or the app encryption key)\n" +
+			"key-encryption key (CLAVIGER_KEK, CLAVIGER_KEK_FILE, CLAVIGER_KEK_AZURE_KEY_ID or the app encryption key)\n" +
 			"can unwrap the data keys of the encrypted fields in <dir>/data.db.\n\n" +
 			"Exit status 0: the keys are fine, there are no encrypted fields, or the database\n" +
-			"could not be inspected (the check fails open on infrastructure problems).\n" +
+			"could not be inspected, or the key service (Azure Key Vault) could not be reached\n" +
+			"(the check fails open on infrastructure problems).\n" +
 			"Exit status 1: the key is definitely missing or wrong.\n\n" +
 			"entrypoint.sh runs it before asking the previous replica to hand over the data\n" +
 			"directory, so a wrong key stops a rollout instead of an outage.",
@@ -85,8 +87,11 @@ type fieldKeysCheckRow struct {
 // still in the WAL.
 //
 // It returns a non-nil error only when the key is definitely missing or
-// wrong. Every problem with inspecting the database (no file, not readable,
-// a torn read, a timeout) is reported in msg and returns a nil error.
+// wrong (including a key service that answered and refused: bad credentials,
+// no permission, key not found, unwrap failure). Every problem with inspecting
+// the database (no file, not readable, a torn read, a timeout) and every
+// indeterminate failure of a remote key service (timeout, network error,
+// throttling, 5xx) is reported in msg and returns a nil error.
 func CheckFieldKeys(ctx context.Context, dataDir, appKeyEnv string, getenv func(string) string) (msg string, err error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -103,7 +108,7 @@ func CheckFieldKeys(ctx context.Context, dataDir, appKeyEnv string, getenv func(
 
 	done := make(chan result, 1)
 	go func() {
-		rows, live, skip := readFieldKeys(ctx, filepath.Join(dataDir, "data.db"))
+		rows, live, skip := readFieldKeys(ctx, filepath.Join(dataDir, "data.db"), strings.TrimSpace(getenv(core.DBURLEnv)))
 		done <- result{rows, live, skip}
 	}()
 
@@ -129,7 +134,30 @@ func CheckFieldKeys(ctx context.Context, dataDir, appKeyEnv string, getenv func(
 		return "OK (no encrypted fields)", nil
 	}
 
-	src, srcErr := keys.LoadWithOld(getenv, appKeyEnv)
+	// loading a remote source (Key Vault) makes network calls: bound it
+	type loaded struct {
+		src keys.KeySource
+		err error
+	}
+	loadDone := make(chan loaded, 1)
+	go func() {
+		src, err := keys.LoadWithOld(getenv, appKeyEnv)
+		loadDone <- loaded{src, err}
+	}()
+
+	var src keys.KeySource
+	var srcErr error
+	select {
+	case l := <-loadDone:
+		src, srcErr = l.src, l.err
+	case <-ctx.Done():
+		return "skipped (timed out reaching the key-encryption key service; the app will check the keys itself when it starts)", nil
+	}
+
+	if srcErr != nil && keys.IsIndeterminate(srcErr) {
+		return "skipped (could not reach the key-encryption key service: " + srcErr.Error() + "; the app will check the keys itself when it starts)", nil
+	}
+
 	if srcErr != nil {
 		return "", fmt.Errorf("%s: %d encrypted field key(s) exist but the key-encryption key is unusable: %w", KeysCheckFailedPrefix, len(liveRows), srcErr)
 	}
@@ -141,6 +169,9 @@ func CheckFieldKeys(ctx context.Context, dataDir, appKeyEnv string, getenv func(
 		}
 
 		if _, unwrapErr := src.Unwrap(ctx, row.kekId, wrapped); unwrapErr != nil {
+			if keys.IsIndeterminate(unwrapErr) || (ctx.Err() != nil) {
+				return "skipped (could not reach the key-encryption key service: " + unwrapErr.Error() + "; the app will check the keys itself when it starts)", nil
+			}
 			return "", fmt.Errorf("%s: cannot open the data key of encrypted field %s with the %s key source (key id %s; the data was wrapped under %s): %w",
 				KeysCheckFailedPrefix, res.live[row.collectionRef+"|"+row.fieldRef], src.Name(), src.KeyID(), row.kekId, unwrapErr)
 		}
@@ -152,35 +183,62 @@ func CheckFieldKeys(ctx context.Context, dataDir, appKeyEnv string, getenv func(
 // readFieldKeys returns the stored data keys and the set of live encrypted
 // fields ("collectionId|fieldId" -> "collection.field"). skip is non-empty
 // when the database could not be inspected, or holds nothing to check.
-func readFieldKeys(ctx context.Context, dbPath string) (rows []fieldKeysCheckRow, live map[string]string, skip string) {
-	abs, err := filepath.Abs(dbPath)
-	if err != nil {
-		return nil, nil, "cannot resolve the database path"
+func readFieldKeys(ctx context.Context, dbPath, postgresURL string) (rows []fieldKeysCheckRow, live map[string]string, skip string) {
+	var (
+		db       *sql.DB
+		err      error
+		hasTable int
+	)
+
+	hasTableQuery := "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?"
+	keysQuery := "SELECT collectionRef, fieldRef, keyId, kekId, wrapped FROM " + core.CollectionNameFieldKeys
+
+	if postgresURL != "" {
+		// fork (#106): the data lives in Postgres. The connection is opened
+		// read-only, and the pre-feature table check uses the catalog.
+		db, err = sql.Open("pgx", postgresURL)
+		if err != nil {
+			return nil, nil, "cannot open the database: " + redactURL(err, postgresURL)
+		}
+		defer db.Close()
+
+		db.SetMaxOpenConns(1)
+
+		if _, err := db.ExecContext(ctx, "SET default_transaction_read_only = on"); err != nil {
+			return nil, nil, "cannot read the database: " + redactURL(err, postgresURL)
+		}
+
+		hasTableQuery = "SELECT count(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = $1"
+		keysQuery = `SELECT "collectionRef", "fieldRef", "keyId", "kekId", "wrapped" FROM "` + core.CollectionNameFieldKeys + `"`
+	} else {
+		abs, err := filepath.Abs(dbPath)
+		if err != nil {
+			return nil, nil, "cannot resolve the database path"
+		}
+
+		if _, err := os.Stat(abs); err != nil {
+			return nil, nil, "no database at " + abs + " yet"
+		}
+
+		u := url.URL{Scheme: "file", Path: abs, RawQuery: "mode=ro&immutable=1"}
+
+		db, err = sql.Open("sqlite", u.String())
+		if err != nil {
+			return nil, nil, "cannot open the database: " + err.Error()
+		}
+		defer db.Close()
+
+		db.SetMaxOpenConns(1)
 	}
 
-	if _, err := os.Stat(abs); err != nil {
-		return nil, nil, "no database at " + abs + " yet"
-	}
-
-	u := url.URL{Scheme: "file", Path: abs, RawQuery: "mode=ro&immutable=1"}
-
-	db, err := sql.Open("sqlite", u.String())
-	if err != nil {
-		return nil, nil, "cannot open the database: " + err.Error()
-	}
-	defer db.Close()
-
-	db.SetMaxOpenConns(1)
-
-	var hasTable int
-	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", core.CollectionNameFieldKeys).Scan(&hasTable); err != nil {
-		return nil, nil, "cannot read the database: " + err.Error()
+	if err := db.QueryRowContext(ctx, hasTableQuery, core.CollectionNameFieldKeys).Scan(&hasTable); err != nil {
+		return nil, nil, "cannot read the database: " + redactURL(err, postgresURL)
 	}
 	if hasTable == 0 {
 		return nil, map[string]string{}, "" // pre-feature database: nothing to check
 	}
 
-	rs, err := db.QueryContext(ctx, "SELECT collectionRef, fieldRef, keyId, kekId, wrapped FROM "+core.CollectionNameFieldKeys)
+	rs, err := db.QueryContext(ctx, keysQuery)
 	if err != nil {
 		return nil, nil, "cannot read the field keys: " + err.Error()
 	}
@@ -235,4 +293,13 @@ func readFieldKeys(ctx context.Context, dbPath string) (rows []fieldKeysCheckRow
 	}
 
 	return rows, live, ""
+}
+
+// redactURL keeps a connection URL (it carries the password) out of an error message.
+func redactURL(err error, url string) string {
+	if url == "" {
+		return err.Error()
+	}
+
+	return strings.ReplaceAll(err.Error(), url, "<redacted>")
 }

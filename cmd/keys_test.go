@@ -30,6 +30,19 @@ func envFn(m map[string]string) func(string) string {
 	return func(k string) string { return m[k] }
 }
 
+// dbEnv is envFn plus the Postgres URL of the test app (the way a deployment
+// selects the database), if it runs on Postgres.
+func dbEnv(app *tests.TestApp, m map[string]string) func(string) string {
+	merged := map[string]string{}
+	for k, v := range m {
+		merged[k] = v
+	}
+	if u := app.PostgresURL(); u != "" {
+		merged[core.DBURLEnv] = u
+	}
+	return envFn(merged)
+}
+
 func dirDigest(t testing.TB, dir string) string {
 	t.Helper()
 	h := sha256.New()
@@ -54,12 +67,13 @@ func TestKeysCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
+	usePostgresOfApp(t, app)
 
 	// a database without encrypted fields
-	if _, err := app.DB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute(); err != nil {
+	if err := core.DialectOf(app).Checkpoint(app.DB()); err != nil {
 		t.Fatal(err)
 	}
-	msg, err := cmd.CheckFieldKeys(context.Background(), app.DataDir(), "", envFn(nil))
+	msg, err := cmd.CheckFieldKeys(context.Background(), app.DataDir(), "", dbEnv(app, nil))
 	if err != nil || !strings.Contains(msg, "no encrypted fields") {
 		t.Fatalf("no encrypted fields: %q, %v", msg, err)
 	}
@@ -69,7 +83,7 @@ func TestKeysCheck(t *testing.T) {
 	if err := app.Save(col); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := app.DB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute(); err != nil {
+	if err := core.DialectOf(app).Checkpoint(app.DB()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -89,7 +103,7 @@ func TestKeysCheck(t *testing.T) {
 	}
 	for _, s := range scenarios {
 		t.Run(s.name, func(t *testing.T) {
-			msg, err := cmd.CheckFieldKeys(context.Background(), app.DataDir(), "PB_ENCRYPTION_KEY", envFn(s.env))
+			msg, err := cmd.CheckFieldKeys(context.Background(), app.DataDir(), "PB_ENCRYPTION_KEY", dbEnv(app, s.env))
 			if s.wantErr == "" {
 				if err != nil || !strings.Contains(msg, s.wantMsg) {
 					t.Fatalf("got %q, %v", msg, err)

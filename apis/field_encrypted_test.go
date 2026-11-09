@@ -137,7 +137,7 @@ func TestEncryptedFieldAPI(t *testing.T) {
 				if len(entries) != 1 {
 					t.Fatalf("expected 1 audit entry, got %d", len(entries))
 				}
-				if s := entries[0].GetString("after"); strings.Contains(s, "555") || strings.Contains(s, "987") {
+				if s := tests.CompactJSON(entries[0].GetString("after")); strings.Contains(s, "555") || strings.Contains(s, "987") {
 					t.Fatalf("audit entry leaks the plaintext: %s", s)
 				}
 			},
@@ -288,7 +288,7 @@ func TestEncryptedJSONFieldAPI(t *testing.T) {
 					t.Fatalf("expected ciphertext in the database, got %q / %q", p, s)
 				}
 				entries, _ := app.FindAllRecords(core.CollectionNameAuditLog, dbx.HashExp{"targetId": "encjson0000002x"})
-				if len(entries) != 1 || strings.Contains(entries[0].GetString("after"), "555") {
+				if len(entries) != 1 || strings.Contains(tests.CompactJSON(entries[0].GetString("after")), "555") {
 					t.Fatalf("audit entry missing or leaking: %v", entries)
 				}
 			},

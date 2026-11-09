@@ -246,3 +246,9 @@ func jsonColumn(typ, defaultValue string) string {
 
 	return typ + " DEFAULT '" + strings.ReplaceAll(defaultValue, "'", "''") + "' NOT NULL"
 }
+
+func (sqliteDialect) DropSuffix() string { return "" }
+
+func (sqliteDialect) DetachDependentViews(db dbx.Builder, view string) (func() error, error) {
+	return func() error { return nil }, nil
+}

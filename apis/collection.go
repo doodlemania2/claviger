@@ -34,7 +34,7 @@ func bindCollectionApi(app core.App, rg *router.RouterGroup[*core.RequestEvent])
 func collectionsList(e *core.RequestEvent) error {
 	fieldResolver := search.NewSimpleFieldResolver(
 		"id", "created", "updated", "name", "system", "type",
-	)
+	).WithDialect(core.DialectOf(e.App), new(core.Collection).TableName()) // fork (#106)
 
 	collections := []*core.Collection{}
 

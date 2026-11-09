@@ -27,6 +27,9 @@ type TestApp struct {
 	EventCalls map[string]int
 
 	TestMailer *TestMailer
+
+	// fork: drops the Postgres test database (see app_postgres.go)
+	pgCleanup func()
 }
 
 // Cleanup resets the test application state and removes the test
@@ -47,6 +50,10 @@ func (t *TestApp) Cleanup() {
 
 	if t.DataDir() != "" {
 		os.RemoveAll(t.DataDir())
+	}
+
+	if t.pgCleanup != nil {
+		t.pgCleanup()
 	}
 }
 
@@ -104,6 +111,7 @@ func NewTestApp(optTestDataDir ...string) (*TestApp, error) {
 //
 // It is the caller's responsibility to call app.Cleanup() when the app is no longer needed.
 func NewTestAppWithConfig(config core.BaseAppConfig) (*TestApp, error) {
+	srcDataDir := config.DataDir
 	if config.DataDir == "" {
 		// fallback to the default test data directory
 		_, currentFile, _, _ := runtime.Caller(0)
@@ -117,6 +125,11 @@ func NewTestAppWithConfig(config core.BaseAppConfig) (*TestApp, error) {
 
 	// replace with the clone
 	config.DataDir = tempDir
+
+	pgCleanup, err := preparePostgres(&config, srcDataDir, tempDir) // fork: CLAVIGER_TEST_DB=postgres
+	if err != nil {
+		return nil, err
+	}
 
 	app := core.NewBaseApp(config)
 
@@ -146,6 +159,7 @@ func NewTestAppWithConfig(config core.BaseAppConfig) (*TestApp, error) {
 		BaseApp:    app,
 		EventCalls: make(map[string]int),
 		TestMailer: &TestMailer{},
+		pgCleanup:  pgCleanup,
 	}
 
 	t.OnBootstrap().Bind(&hook.Handler[*core.BootstrapEvent]{

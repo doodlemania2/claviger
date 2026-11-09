@@ -22,8 +22,9 @@ import (
 // "dangerousViewName" argument must come only from trusted input!
 func (app *BaseApp) DeleteView(dangerousViewName string) error {
 	_, err := app.DB().NewQuery(fmt.Sprintf(
-		"DROP VIEW IF EXISTS {{%s}}",
+		"DROP VIEW IF EXISTS {{%s}}%s",
 		dangerousViewName,
+		dialectOf(app).DropSuffix(), // fork (#106)
 	)).Execute()
 
 	return err
@@ -35,8 +36,14 @@ func (app *BaseApp) DeleteView(dangerousViewName string) error {
 // its arguments must come only from trusted input!
 func (app *BaseApp) SaveView(dangerousViewName string, dangerousSelectQuery string) error {
 	return app.RunInTransaction(func(txApp App) error {
+		// fork (#106): the views that select from this one are recreated after it
+		restoreViews, err := dialectOf(txApp).DetachDependentViews(txApp.DB(), dangerousViewName)
+		if err != nil {
+			return err
+		}
+
 		// delete old view (if exists)
-		err := txApp.DeleteView(dangerousViewName)
+		err = txApp.DeleteView(dangerousViewName)
 		if err != nil {
 			return err
 		}
@@ -66,7 +73,7 @@ func (app *BaseApp) SaveView(dangerousViewName string, dangerousSelectQuery stri
 			return err
 		}
 
-		return nil
+		return restoreViews()
 	})
 }
 

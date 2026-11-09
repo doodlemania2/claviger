@@ -111,7 +111,7 @@ func (f *EncryptedTextField) SetHidden(hidden bool) { f.Hidden = hidden }
 //
 // Plain TEXT on purpose: the stored value is an opaque string.
 func (f *EncryptedTextField) ColumnType(app App) string {
-	return "TEXT DEFAULT '' NOT NULL"
+	return dialectOf(app).TextColumn()
 }
 
 // PrepareValue implements [Field.PrepareValue] interface method.

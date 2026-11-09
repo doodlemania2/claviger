@@ -115,7 +115,7 @@ func TestEncryptedJSONAADBindingAndPastedCiphertext(t *testing.T) {
 	b := saveJSONRecord(t, app, col, "B", map[string]any{"k": "b"})
 
 	stolen := rawColumn(t, app, col, a.Id, "profile")
-	if _, err := app.DB().NewQuery("UPDATE " + col.Name + " SET profile={:v} WHERE id={:id}").
+	if _, err := app.DB().NewQuery("UPDATE {{" + col.Name + "}} SET profile={:v} WHERE id={:id}").
 		Bind(dbx.Params{"v": stolen, "id": b.Id}).Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestEncryptedJSONLegacyPlaintextAndColumnType(t *testing.T) {
 	r := saveJSONRecord(t, app, col, "A", map[string]any{"a": 1})
 
 	// a value written before the column became encrypted
-	if _, err := app.DB().NewQuery("UPDATE " + col.Name + ` SET profile='{"legacy":true}' WHERE id={:id}`).
+	if _, err := app.DB().NewQuery("UPDATE {{" + col.Name + "}}" + ` SET profile='{"legacy":true}' WHERE id={:id}`).
 		Bind(dbx.Params{"id": r.Id}).Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +260,12 @@ func TestEncryptedJSONLegacyPlaintextAndColumnType(t *testing.T) {
 	}
 
 	var colType string
-	_ = app.DB().NewQuery("SELECT type FROM pragma_table_info('" + col.Name + "') WHERE name='profile'").Row(&colType)
+	info, _ := app.TableInfo(col.Name)
+	for _, c := range info {
+		if c.Name == "profile" {
+			colType = c.Type
+		}
+	}
 	if strings.Contains(strings.ToUpper(colType), "JSON") {
 		t.Fatalf("the column must be plain TEXT, got %q", colType)
 	}

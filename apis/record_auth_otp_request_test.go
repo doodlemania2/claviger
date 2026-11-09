@@ -159,7 +159,17 @@ func TestRecordRequestOTP(t *testing.T) {
 				}
 
 				// ensure that sentTo is set
-				otps, err := app.FindRecordsByFilter(core.CollectionNameOTPs, "sentTo='test@example.com'", "", 0, 0)
+				// (fork: poll briefly - the send and the sentTo update run in a
+				// FireAndForget routine, which can finish after the mail count on Postgres)
+				var otps []*core.Record
+				var err error
+				for i := 0; i < 20; i++ {
+					otps, err = app.FindRecordsByFilter(core.CollectionNameOTPs, "sentTo='test@example.com'", "", 0, 0)
+					if err == nil && len(otps) == 1 {
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
+				}
 				if err != nil || len(otps) != 1 {
 					t.Fatalf("Expected to find 1 OTP with sentTo %q, found %d", "test@example.com", len(otps))
 				}
