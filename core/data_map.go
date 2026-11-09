@@ -102,7 +102,18 @@ func RegisterDataMapEntry(app App, entry DataMapEntry) error {
 	record.Set("note", entry.Note)
 	record.Set("builtin", true)
 
-	return app.Save(record)
+	// Written without hooks: the rows come from code, not from a person, so
+	// they must not produce audit entries (and the webhook and replica hooks
+	// that follow them) while a migration is still running. The autodate
+	// fields are set by hand for the same reason.
+	now := types.NowDateTime()
+	if record.IsNew() {
+		record.Id = GenerateDefaultRandomId()
+		record.Set("created", now)
+	}
+	record.Set("updated", now)
+
+	return app.UnsafeWithoutHooks().Save(record)
 }
 
 func nonNilStrings(v []string) []string {

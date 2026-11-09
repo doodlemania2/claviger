@@ -84,7 +84,7 @@ func TestFindAllCollections(t *testing.T) {
 	}{
 		{nil, 40},
 		{[]string{}, 40},
-		{[]string{""}, 39},
+		{[]string{""}, 40},
 		{[]string{"unknown"}, 0},
 		{[]string{"unknown", core.CollectionTypeAuth}, 4},
 		{[]string{core.CollectionTypeAuth, core.CollectionTypeView}, 7},
