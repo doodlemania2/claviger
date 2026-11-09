@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/osutils"
 	"github.com/fatih/color"
 	"github.com/spf13/cast"
@@ -259,7 +260,21 @@ func (r *MigrationsRunner) initMigrationsTable() error {
 		dialectOf(r.app).Int64Type(),
 	)
 
-	_, err := r.app.DB().NewQuery(rawQuery).Execute()
+	var err error
+	if d := dialectOf(r.app); d.Name() == dialect.PostgresName {
+		// fork (#106 M7): CREATE TABLE IF NOT EXISTS is not atomic on Postgres.
+		// Replicas that start together can both pass the existence check and
+		// one dies on a duplicate key in pg_type. Take the migrations lock.
+		err = r.app.RunInTransaction(func(txApp App) error {
+			if err := d.LockMigrations(txApp.DB()); err != nil {
+				return err
+			}
+			_, err := txApp.DB().NewQuery(rawQuery).Execute()
+			return err
+		})
+	} else {
+		_, err = r.app.DB().NewQuery(rawQuery).Execute()
+	}
 
 	if err == nil {
 		r.inited = true

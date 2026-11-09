@@ -461,6 +461,7 @@ func (app *BaseApp) registerWebhookHooks() {
 			return err
 		}
 		m.reload()
+		PublishReplicaEvent(app, ReplicaEventWebhooks, nil) // fork-local (#106 M7)
 		return nil
 	}
 	for _, h := range []func(...string) *hook.TaggedHook[*ModelEvent]{

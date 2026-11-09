@@ -82,11 +82,20 @@ type sessionCacheEntry struct {
 type sessionCache struct {
 	mu sync.RWMutex
 	m  map[string]sessionCacheEntry
+
+	// fork-only (#106 M7): tells the other replicas, set in multi replica mode
+	publish func(sid string)
 }
 
 func getSessionCache(app App) *sessionCache {
 	return app.Store().GetOrSet(sessionCacheStoreKey, func() any {
-		return &sessionCache{m: map[string]sessionCacheEntry{}}
+		c := &sessionCache{m: map[string]sessionCacheEntry{}}
+		if IsMultiReplica(app) {
+			c.publish = func(sid string) {
+				PublishReplicaEvent(app, ReplicaEventSession, map[string]string{"sid": sid})
+			}
+		}
+		return c
 	}).(*sessionCache)
 }
 
@@ -106,13 +115,29 @@ func (c *sessionCache) set(sid string, v sessionCacheEntry) {
 	c.mu.Unlock()
 }
 
+// remove drops the entry here and on the other replicas.
 func (c *sessionCache) remove(sid string) {
+	c.removeLocal(sid)
+	if c.publish != nil {
+		c.publish(sid)
+	}
+}
+
+// clear drops every entry here and on the other replicas.
+func (c *sessionCache) clear() {
+	c.clearLocal()
+	if c.publish != nil {
+		c.publish("")
+	}
+}
+
+func (c *sessionCache) removeLocal(sid string) {
 	c.mu.Lock()
 	delete(c.m, sid)
 	c.mu.Unlock()
 }
 
-func (c *sessionCache) clear() {
+func (c *sessionCache) clearLocal() {
 	c.mu.Lock()
 	c.m = map[string]sessionCacheEntry{}
 	c.mu.Unlock()
@@ -217,7 +242,7 @@ func ValidateSession(app App, sid, collectionId, recordId string) error {
 		Limit(1).
 		One(&row)
 	if err != nil {
-		cache.remove(sid)
+		cache.removeLocal(sid) // not published: a junk sid must not flood the bus
 		return ErrInvalidSession
 	}
 
@@ -226,7 +251,7 @@ func ValidateSession(app App, sid, collectionId, recordId string) error {
 		row.RecordRef != recordId ||
 		row.Expires.IsZero() ||
 		!row.Expires.Time().After(now) {
-		cache.remove(sid)
+		cache.removeLocal(sid) // not published: a junk sid must not flood the bus
 		return ErrInvalidSession
 	}
 
