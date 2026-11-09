@@ -15979,6 +15979,16 @@ namespace core {
   senderName: string
   senderAddress: string
   hideControls: boolean
+  /**
+   * DefaultLanguage is the language of the hosted pages and the built-in
+   * emails when nothing else chooses one (fork-local, #97). Empty means "en".
+   */
+  defaultLanguage: string
+  /**
+   * LanguageField is the name of the auth collection field that holds the
+   * preferred language of a record (fork-local, #97). Empty means "lang".
+   */
+  languageField: string
  }
  interface MetaConfig {
   /**
