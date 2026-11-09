@@ -1013,23 +1013,10 @@ func TestRealtimeRecordResolve(t *testing.T) {
 
 	testRecordId := core.GenerateDefaultRandomId()
 
-	client0 := subscriptions.NewDefaultClient()
-	client0.Subscribe(testCollectionName + "/*")
-	client0.Discard()
-	// ---
-	client1 := subscriptions.NewDefaultClient()
-	client1.Subscribe(testCollectionName + "/*")
-	// ---
-	client2 := subscriptions.NewDefaultClient()
-	client2.Subscribe(testCollectionName + "/" + testRecordId)
-	// ---
-	client3 := subscriptions.NewDefaultClient()
-	client3.Subscribe("demo1/*")
-
 	scenarios := []struct {
 		name     string
 		op       func(testApp core.App) error
-		expected map[string][]string // clientId -> [events]
+		expected map[string][]string // client name (client1, client2) -> [events]
 	}{
 		{
 			"core.Record",
@@ -1063,8 +1050,8 @@ func TestRealtimeRecordResolve(t *testing.T) {
 				return nil
 			},
 			map[string][]string{
-				client1.Id(): {"create", "update", "delete"},
-				client2.Id(): {"create", "update", "delete"},
+				"client1": {"create", "update", "delete"},
+				"client2": {"create", "update", "delete"},
 			},
 		},
 		{
@@ -1104,8 +1091,8 @@ func TestRealtimeRecordResolve(t *testing.T) {
 				return nil
 			},
 			map[string][]string{
-				client1.Id(): {"create", "update", "delete"},
-				client2.Id(): {"create", "update", "delete"},
+				"client1": {"create", "update", "delete"},
+				"client2": {"create", "update", "delete"},
 			},
 		},
 		{
@@ -1136,8 +1123,8 @@ func TestRealtimeRecordResolve(t *testing.T) {
 				return nil
 			},
 			map[string][]string{
-				client1.Id(): {"create", "update", "delete"},
-				client2.Id(): {"create", "update", "delete"},
+				"client1": {"create", "update", "delete"},
+				"client2": {"create", "update", "delete"},
 			},
 		},
 	}
@@ -1160,16 +1147,44 @@ func TestRealtimeRecordResolve(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			// Fresh clients for every scenario. They used to be shared: an event that
+			// arrived after a scenario's listening window ended stayed in the client's
+			// buffered channel and was counted by the next scenario ("expected 3, got 4"),
+			// while on a slower database the 250ms window closed before the third event of
+			// the scenario itself ("expected 3, got 2").
+			client0 := subscriptions.NewDefaultClient()
+			client0.Subscribe(testCollectionName + "/*")
+			client0.Discard()
+			client1 := subscriptions.NewDefaultClient()
+			client1.Subscribe(testCollectionName + "/*")
+			client2 := subscriptions.NewDefaultClient()
+			client2.Subscribe(testCollectionName + "/" + testRecordId)
+			client3 := subscriptions.NewDefaultClient()
+			client3.Subscribe("demo1/*")
+
 			testApp.SubscriptionsBroker().Register(client0)
 			testApp.SubscriptionsBroker().Register(client1)
 			testApp.SubscriptionsBroker().Register(client2)
 			testApp.SubscriptionsBroker().Register(client3)
 
-			var wg sync.WaitGroup
-
-			var notifications = map[string][]string{}
+			names := map[string]string{
+				client0.Id(): "client0",
+				client1.Id(): "client1",
+				client2.Id(): "client2",
+				client3.Id(): "client3",
+			}
 
 			var mu sync.Mutex
+			notifications := map[string][]string{}
+			total := func() (n int) {
+				mu.Lock()
+				defer mu.Unlock()
+				for _, v := range notifications {
+					n += len(v)
+				}
+				return n
+			}
+
 			notify := func(clientId string, eventData []byte) {
 				data := struct {
 					Action string `json:"action"`
@@ -1179,18 +1194,19 @@ func TestRealtimeRecordResolve(t *testing.T) {
 				mu.Lock()
 				defer mu.Unlock()
 
-				if notifications[clientId] == nil {
-					notifications[clientId] = []string{}
-				}
-				notifications[clientId] = append(notifications[clientId], data.Action)
+				name := names[clientId]
+				notifications[name] = append(notifications[name], data.Action)
 			}
 
-			wg.Add(1)
+			expectedTotal := 0
+			for _, events := range s.expected {
+				expectedTotal += len(events)
+			}
+
+			done := make(chan struct{})
+			listenerStopped := make(chan struct{})
 			go func() {
-				defer wg.Done()
-
-				timeout := time.After(250 * time.Millisecond)
-
+				defer close(listenerStopped)
 				for {
 					select {
 					case e, ok := <-client0.Channel():
@@ -1209,7 +1225,7 @@ func TestRealtimeRecordResolve(t *testing.T) {
 						if ok {
 							notify(client3.Id(), e.Data)
 						}
-					case <-timeout:
+					case <-done:
 						return
 					}
 				}
@@ -1220,7 +1236,14 @@ func TestRealtimeRecordResolve(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			wg.Wait()
+			// Wait for the expected events, not for a fixed time (up to 10s), then for a
+			// short quiet period so that an unexpected extra event is still caught.
+			for deadline := time.Now().Add(10 * time.Second); total() < expectedTotal && time.Now().Before(deadline); {
+				time.Sleep(5 * time.Millisecond)
+			}
+			time.Sleep(100 * time.Millisecond)
+			close(done)
+			<-listenerStopped
 
 			if len(s.expected) != len(notifications) {
 				t.Fatalf("Expected %d notified clients, got %d:\n%v", len(s.expected), len(notifications), notifications)
