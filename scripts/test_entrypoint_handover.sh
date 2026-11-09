@@ -241,6 +241,38 @@ wait_until 10 serving "$D" "$A" && pass "A serving" || fail "A never started"
 grep -q "is not a valid email; skipping superuser bootstrap" "$D/.console.$A" && pass "bootstrap skipped with a warning" || fail "no skip warning: $(tail -3 "$D/.console.$A")"
 cleanup_scenario
 
+echo "T11: multi-replica on PostgreSQL (#106 M7) — no handover, replicas overlap on purpose"
+D="$WORK/t11"; mkdir -p "$D"; PIDS=""
+MR="CLAVIGER_DB_URL=postgres://u:p@127.0.0.1:1/db CLAVIGER_MULTI_REPLICA=true"
+# shellcheck disable=SC2086 # MR is a list of VAR=VAL words
+pa=$(start_replica "$D" "$A" "$NEW" $MR); PIDS="$PIDS $pa"
+wait_until 10 serving "$D" "$A" && pass "A serving" || fail "A never started"
+t0=$(date +%s)
+# shellcheck disable=SC2086
+pb=$(start_replica "$D" "$B" "$NEW" $MR); PIDS="$PIDS $pb"
+wait_until 10 serving "$D" "$B" && pass "B serving after $(( $(date +%s) - t0 ))s (no wait for A)" || fail "B never started: $(tail -3 "$D/.console.$B")"
+sleep 3
+serving "$D" "$A" && pass "A kept serving next to B" || fail "A was asked to leave"
+grep -q "skipping the single-writer handover" "$D/.console.$B" && pass "skip logged" || fail "no skip message: $(tail -3 "$D/.console.$B")"
+for f in .pb_handover .pb_handover_ack .pb_owner .pb_released .pb_singlewriter.lock; do
+    [ -e "$D/$f" ] && fail "handover state $f was created" || true
+done
+[ -e "$D/.pb_handover" ] || pass "no handover files"
+cleanup_scenario
+
+echo "T12: a single replica on PostgreSQL (multi-replica off) still hands over"
+D="$WORK/t12"; mkdir -p "$D"; PIDS=""
+PG="CLAVIGER_DB_URL=postgres://u:p@127.0.0.1:1/db CLAVIGER_MULTI_REPLICA=false"
+# shellcheck disable=SC2086
+pa=$(start_replica "$D" "$A" "$NEW" $PG); PIDS="$PIDS $pa"
+wait_until 10 serving "$D" "$A" || fail "A never started"
+# shellcheck disable=SC2086
+pb=$(start_replica "$D" "$B" "$NEW" $PG); PIDS="$PIDS $pb"
+wait_until 30 serving "$D" "$B" && pass "B serving" || fail "B never started"
+serving "$D" "$A" && fail "A still serving (the handover was skipped)" || pass "A stopped: handover unchanged"
+no_overlap "$D"
+cleanup_scenario
+
 echo
 if [ "$FAILS" -eq 0 ]; then
     echo "PASS (work dir $WORK)"

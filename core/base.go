@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/doodlemania2/claviger/tools/hook"
 	"github.com/doodlemania2/claviger/tools/logger"
 	"github.com/doodlemania2/claviger/tools/mailer"
+	"github.com/doodlemania2/claviger/tools/replica"
 	"github.com/doodlemania2/claviger/tools/routine"
 	"github.com/doodlemania2/claviger/tools/store"
 	"github.com/doodlemania2/claviger/tools/subscriptions"
@@ -75,6 +77,16 @@ type BaseAppConfig struct {
 	// AuxDBConnect (fork-only) optionally overrides DBConnect for the
 	// auxiliary.db (logs). When unset DBConnect is used for both databases.
 	AuxDBConnect DBConnectFunc
+
+	// DBURL (fork-only, #106 M7) is the PostgreSQL connection URL of the data
+	// database. It is set from CLAVIGER_DB_URL and is only needed by the
+	// multi replica mode, which opens a dedicated LISTEN connection with it.
+	DBURL string
+
+	// MultiReplica (fork-only, #106 M7) turns on the coordination of several
+	// replicas on one PostgreSQL database. It is also turned on by
+	// CLAVIGER_MULTI_REPLICA=true and refuses to start on SQLite.
+	MultiReplica bool
 }
 
 // ensures that the BaseApp implements the App interface.
@@ -93,6 +105,9 @@ type BaseApp struct {
 	nonconcurrentDB     dbx.Builder
 	auxConcurrentDB     dbx.Builder
 	auxNonconcurrentDB  dbx.Builder
+	replicaBus          *replica.Bus  // fork-only (#106 M7), nil unless multi replica
+	replicaReady        *atomic.Bool  // fork-only (#106 M7): Bootstrap finished
+	replicaGate         *sync.RWMutex // fork-only (#106 M7): held (read) while an event handler runs
 
 	// app event hooks
 	onBootstrap      *hook.Hook[*BootstrapEvent]
@@ -226,6 +241,8 @@ func NewBaseApp(config BaseAppConfig) *BaseApp {
 		store:               store.New[string, any](nil),
 		cron:                cron.New(),
 		subscriptionsBroker: subscriptions.NewBroker(),
+		replicaReady:        new(atomic.Bool),
+		replicaGate:         new(sync.RWMutex),
 		config:              &config,
 	}
 
@@ -236,6 +253,7 @@ func NewBaseApp(config BaseAppConfig) *BaseApp {
 	if app.config.DBConnect == nil {
 		app.config.DBConnect = DefaultDBConnect
 	}
+	applyEnvMultiReplica(app.config) // fork: CLAVIGER_MULTI_REPLICA
 	if app.config.DataMaxOpenConns <= 0 {
 		app.config.DataMaxOpenConns = DefaultDataMaxOpenConns
 	}
@@ -453,6 +471,10 @@ func (app *BaseApp) Bootstrap() error {
 			return err
 		}
 
+		if err := app.initReplicaBus(); err != nil { // fork-only (#106 M7)
+			return err
+		}
+
 		if err := app.RunSystemMigrations(); err != nil {
 			return err
 		}
@@ -467,6 +489,8 @@ func (app *BaseApp) Bootstrap() error {
 
 		// try to cleanup the pb_data temp directory (if any)
 		_ = os.RemoveAll(filepath.Join(app.DataDir(), LocalTempDirName))
+
+		app.replicaBootstrapped() // fork-only (#106 M7)
 
 		return nil
 	})
@@ -1506,6 +1530,7 @@ func (app *BaseApp) registerBaseHooks() {
 	app.registerOTPHooks()
 	app.registerAuthOriginHooks()
 	app.registerNotifyWatcherHooks()
+	app.registerMultiReplicaHooks() // fork-local (#106 M7)
 	app.registerWebAuthnCredentialHooks()
 	app.registerTOTPHooks()
 	app.registerAuditHooks()

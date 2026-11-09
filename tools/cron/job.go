@@ -1,12 +1,16 @@
 package cron
 
-import "encoding/json/v2"
+import (
+	"encoding/json/v2"
+	"time"
+)
 
 // Job defines a single registered cron job.
 type Job struct {
 	fn       func()
 	schedule *Schedule
 	id       string
+	cron     *Cron // fork-only (#106 M7), for the run guard
 }
 
 // Id returns the cron job id.
@@ -21,9 +25,18 @@ func (j *Job) Expression() string {
 
 // Run runs the cron job function.
 func (j *Job) Run() {
-	if j.fn != nil {
-		j.fn()
+	if j.fn == nil {
+		return
 	}
+
+	if j.cron != nil {
+		if guard := j.cron.runGuard(); guard != nil {
+			guard(j.id, time.Time{}, j.fn)
+			return
+		}
+	}
+
+	j.fn()
 }
 
 // MarshalJSON implements [json.Marshaler] and export the current

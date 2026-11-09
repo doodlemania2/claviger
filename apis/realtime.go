@@ -38,6 +38,7 @@ func bindRealtimeApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 	sub.POST("", realtimeSetSubscriptions)
 
 	bindRealtimeEvents(app)
+	bindRealtimeReplica(app) // fork-local (#106 M7)
 }
 
 func realtimeConnect(e *core.RequestEvent) error {

@@ -27,6 +27,32 @@ type Cron struct {
 	jobs       []*Job
 	interval   time.Duration
 	mux        sync.RWMutex
+
+	// fork-only (#106 M7): optional decision of where a due job runs
+	guard RunGuard
+}
+
+// RunGuard wraps the execution of a due job (fork-only, #106 M7).
+//
+// It is called instead of running the job directly and decides whether the job
+// runs in this process, by calling run (or not). slot is the tick that made
+// the job due, and zero for a manual run. With several replicas on one database
+// the guard lets exactly one replica run each tick.
+type RunGuard func(jobId string, slot time.Time, run func())
+
+// SetRunGuard installs (or, with nil, removes) the [RunGuard].
+func (c *Cron) SetRunGuard(g RunGuard) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
+	c.guard = g
+}
+
+func (c *Cron) runGuard() RunGuard {
+	c.mux.RLock()
+	defer c.mux.RUnlock()
+
+	return c.guard
 }
 
 // New create a new Cron struct with default tick interval of 1 minute
@@ -103,6 +129,7 @@ func (c *Cron) Add(jobId string, cronExpr string, fn func()) error {
 		id:       jobId,
 		fn:       fn,
 		schedule: schedule,
+		cron:     c,
 	})
 
 	return nil
@@ -224,7 +251,12 @@ func (c *Cron) runDue(t time.Time) {
 
 	for _, j := range c.jobs {
 		if j.schedule.IsDue(moment) {
-			routine.FireAndForget(j.Run)
+			if guard := c.guard; guard != nil {
+				slot := t
+				routine.FireAndForget(func() { guard(j.id, slot, j.fn) })
+			} else {
+				routine.FireAndForget(j.Run)
+			}
 		}
 	}
 }

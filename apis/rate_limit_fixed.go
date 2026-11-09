@@ -68,6 +68,12 @@ func (l *FixedWindowLimiter) Allow(key string) (bool, time.Duration) {
 // Blocked reports whether the key's budget is already spent, without
 // consuming anything.
 func (l *FixedWindowLimiter) Blocked(key string) (bool, time.Duration) {
+	if sh := l.rt.shared; sh != nil {
+		if blocked, retry, ok := sh.blocked(l.rt.name, key, l.rt.maxAllowed); ok {
+			return blocked, retry
+		}
+	}
+
 	l.rt.RLock()
 	client := l.rt.clients[key]
 	l.rt.RUnlock()

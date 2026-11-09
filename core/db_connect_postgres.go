@@ -73,6 +73,7 @@ func applyEnvDBConfig(config *BaseAppConfig) {
 	}
 
 	config.DBConnect = PostgresDBConnect(url)
+	config.DBURL = url
 
 	if config.AuxDBConnect == nil {
 		config.AuxDBConnect = DefaultDBConnect
