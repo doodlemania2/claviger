@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/doodlemania2/claviger/core"
@@ -63,7 +62,7 @@ func TestEnglishEmailsAreByteIdenticalToTheGolden(t *testing.T) {
 			app, _ := tests.NewTestApp()
 			defer app.Cleanup()
 
-			user, _ := app.FindFirstRecordByData("users", "email", "test@example.com")
+			user := defaultTemplateUser(t, app)
 			if err := fn(app, user); err != nil {
 				t.Fatal(err)
 			}
@@ -73,5 +72,25 @@ func TestEnglishEmailsAreByteIdenticalToTheGolden(t *testing.T) {
 		})
 	}
 
-	_ = strings.TrimSpace
+}
+
+// defaultTemplateUser is a member of a brand new auth collection: the fixture
+// "users" collection carries customized templates, a new one the built-in defaults.
+func defaultTemplateUser(t testing.TB, app core.App) *core.Record {
+	t.Helper()
+
+	col := core.NewAuthCollection("members")
+	col.Fields.Add(&core.TextField{Name: "name"})
+	if err := app.Save(col); err != nil {
+		t.Fatal(err)
+	}
+
+	user := core.NewRecord(col)
+	user.SetEmail("member@example.com")
+	user.SetPassword("1234567890")
+	if err := app.Save(user); err != nil {
+		t.Fatal(err)
+	}
+
+	return user
 }

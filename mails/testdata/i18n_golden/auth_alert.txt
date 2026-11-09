@@ -1,4 +1,4 @@
-To: test@example.com
+To: member@example.com
 Subject: Login from a new location
 
 
@@ -74,11 +74,11 @@ Subject: Login from a new location
     </style>
 </head>
 <body>
-    <p>Hello test1{RECORD:tokenKey},</p>
+    <p>Hello,</p>
 <p>We noticed a login to your acme_test account from a new location:</p>
 <p><em>Chrome on Linux</em></p>
-<p>If this was you, you may disregard this email.</p>
 <p><strong>If this wasn't you, you should immediately change your acme_test account password to revoke access from all other locations.</strong></p>
+<p>If this was you, you may disregard this email.</p>
 <p>
   Thanks,<br/>
   acme_test team

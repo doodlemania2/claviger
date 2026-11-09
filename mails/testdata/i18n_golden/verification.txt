@@ -1,4 +1,4 @@
-To: test@example.com
+To: member@example.com
 Subject: Verify your acme_test email
 
 
@@ -74,12 +74,13 @@ Subject: Verify your acme_test email
     </style>
 </head>
 <body>
-    <p>Hello test1{RECORD:tokenKey},</p>
+    <p>Hello,</p>
 <p>Thank you for joining us at acme_test.</p>
 <p>Click on the button below to verify your email address.</p>
 <p>
   <a class="btn" href="http://localhost:8090/_/#/auth/confirm-verification/JWT" target="_blank" rel="noopener">Verify</a>
 </p>
+<p><i>If you didn't recently register, please ignore this email.</i></p>
 <p>
   Thanks,<br/>
   acme_test team

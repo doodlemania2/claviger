@@ -1,4 +1,4 @@
-To: test@example.com
+To: member@example.com
 Subject: OTP for acme_test
 
 
@@ -74,7 +74,7 @@ Subject: OTP for acme_test
     </style>
 </head>
 <body>
-    <p>Hello test1{RECORD:tokenKey},</p>
+    <p>Hello,</p>
 <p>Your one-time password is: <strong>123456</strong></p>
 <p><i>If you didn't ask for the one-time password, you can ignore this email.</i></p>
 <p>

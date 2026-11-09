@@ -74,12 +74,12 @@ Subject: Confirm your acme_test new email address
     </style>
 </head>
 <body>
-    <p>Hello test1{RECORD:tokenKey},</p>
+    <p>Hello,</p>
 <p>Click on the button below to confirm your new email address.</p>
 <p>
   <a class="btn" href="http://localhost:8090/_/#/auth/confirm-email-change/JWT" target="_blank" rel="noopener">Confirm new email</a>
 </p>
-<p><i>If you didn't ask to change your email address, you can ignore this email.</i></p>
+<p><i>If you didn't ask to change your email address, please ignore this email.</i></p>
 <p>
   Thanks,<br/>
   acme_test team
