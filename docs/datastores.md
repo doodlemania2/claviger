@@ -4,7 +4,7 @@ Claviger stores its data in SQLite by default, exactly like PocketBase. Nothing 
 
 ## PostgreSQL
 
-Status: **supported, single replica** (issue #106, milestones 1 to 6). The storage layer sits behind a dialect interface (`tools/dialect`), the app runs on PostgreSQL 16 and 17, the records API works (filters, sorting, expand, view collections), collections import and export and the migration commands work, every fork feature runs on it, and `claviger migrate-db` copies an existing SQLite install over ([Moving from SQLite to PostgreSQL](#moving-from-sqlite-to-postgresql)). CI runs the Postgres suites on both versions. What is not there is more than one replica (M7, later) and zip backups of the database (see [Backups](#backups)). SQLite stays the default and its behavior is unchanged. The lists below say exactly what is and is not there.
+Status: **supported, one replica or several** (issue #106, milestones 1 to 7). The storage layer sits behind a dialect interface (`tools/dialect`), the app runs on PostgreSQL 16 and 17, the records API works (filters, sorting, expand, view collections), collections import and export and the migration commands work, every fork feature runs on it, and `claviger migrate-db` copies an existing SQLite install over ([Moving from SQLite to PostgreSQL](#moving-from-sqlite-to-postgresql)). CI runs the Postgres suites on both versions. More than one replica is opt-in ([Several replicas](#several-replicas)). What is not there is zip backups of the database (see [Backups](#backups)). SQLite stays the default and its behavior is unchanged. The lists below say exactly what is and is not there.
 
 ### Turning it on
 
@@ -43,7 +43,7 @@ CLAVIGER_DB_URL='postgres://user:password@host:5432/dbname?sslmode=require'
 | API keys | Create, authenticate, `lastUsed` updates, revoke. |
 | TOTP | Enrolment, the `lastStep` replay protection, backup codes. |
 | Webhooks | Outbox, delivery attempts, retries and failure counters, export. |
-| Rate limits | The counters live in the local SQLite `auxiliary.db` (not the data database), so they are unchanged. They are per replica, like the logs. |
+| Rate limits | The counters live in the local SQLite `auxiliary.db` (not the data database), so they are unchanged. With one replica that is all there is to it. With [several replicas](#several-replicas) the limits that guard credentials are shared through the database and the rest stay per replica. |
 | Field encryption | Encrypted text and JSON fields, `_fieldKeys`, key rotation (with its compare-and-swap row updates and resume), rewrap, convert and strict mode, and `claviger keys check` / `status` / `rotate` / `rewrap` / `convert` / `strict` / `prune`. |
 | OIDC provider | All `_oauth*` collections, authorization code flow, refresh token rotation and reuse detection, SSO, key rotation and the JWKS. |
 | Organizations and roles | The rule cookbook of [orgs.md](orgs.md) (membership and role rules) runs against Postgres. |
@@ -55,12 +55,82 @@ The differences from SQLite that you can observe are listed under [Differences f
 
 | Area | State |
 | --- | --- |
-| More than one replica (realtime events, cron, the notify watcher and rate limits are still per process) | M7, later. Run a single replica. |
+| More than one replica | Opt-in and Postgres only: [Several replicas](#several-replicas). Without `CLAVIGER_MULTI_REPLICA=true`, run a single replica. |
 | Zip backup and restore of the database | Not planned: use `pg_dump` or point-in-time recovery. |
 | Views written in SQLite SQL, raw SQL in your own migrations | Written for the engine you run on, see [Your own SQL](#your-own-sql). `migrate-db` has `--skip-views` for the first. |
 | The request logs (`auxiliary.db`) | Stay in a local SQLite file, one per replica. |
 
 A skipped test is not a pass: the `postgres` CI job fails if one of the tests skips, except for the documented known gaps (the `known_gap` tests in `tests/pgtests` and the 16 tests in `tests/postgres_skip.txt`), which are skipped on purpose and printed with their reason.
+
+### Several replicas
+
+Status: **supported on PostgreSQL, opt-in.** SQLite stays a single replica with the `entrypoint.sh` handover, exactly as before. Nothing in this section applies to it.
+
+#### Turning it on
+
+```sh
+CLAVIGER_DB_URL='postgres://...'
+CLAVIGER_MULTI_REPLICA=true
+```
+
+- It is **refused at startup** (with a message that names the variable) unless the data database is PostgreSQL. There is no way to run several replicas on a SQLite file.
+- Every replica must run the same version, the same `pb_hooks`/`pb_migrations`, the same encryption environment variable (it is also what the [OIDC provider](oidc.md) derives its cookie and code keys from: without it each replica invents its own dev key, and a login begun on one replica cannot finish on another) and the same key-encryption key (`CLAVIGER_KEK*`, see [field encryption](field-encryption.md)), and share the same file storage. Local disk storage (`pb_data/storage`) does not work with several replicas: configure S3.
+- Claviger creates four small tables on first start, under an advisory lock, so replicas that start together do not collide: `_claviger_event_payloads`, `_claviger_cron_runs`, `_claviger_rate_limits`, `_claviger_ceremonies`. A deployment that does not turn the mode on never has them. They are scratch space (rows live minutes to days) and are not part of a backup.
+- Each replica uses its normal connection pool plus **one dedicated connection** for `LISTEN` (it cannot be pooled), and borrows a connection for the duration of a cron job. Size `max_connections` for `replicas x (pool + 2)`. A pooler such as PgBouncer must be in session mode for the `CLAVIGER_DB_URL` (or bypassed for the listener); in transaction mode `LISTEN` does not work.
+- `auxiliary.db` (request logs) stays a local SQLite file **per replica**, on the container's own disk. The handover of `entrypoint.sh` is skipped when `CLAVIGER_DB_URL` is a Postgres URL and `CLAVIGER_MULTI_REPLICA` is on, because replicas are meant to overlap during a rollout. A single replica on Postgres keeps the handover.
+
+#### What is coordinated, and how
+
+| What was per process | Now | Guarantee |
+| --- | --- | --- |
+| Realtime subscriptions (`tools/subscriptions`) | Every record change is published on the replica bus (`LISTEN/NOTIFY`, one channel). Each other replica runs it through the regular broadcast code against **its own clients**, so the rules, the filter and the auth of every subscription are evaluated on the receiving replica. Create and update carry only the collection and the record id (the receiver reads the record). A delete carries the field values (not password hashes, not encrypted fields), because the row is gone: the receiver puts the row back inside a transaction that it always rolls back, evaluates the rules there, and sends. Nothing is committed and no hook runs. Payloads over 6,500 bytes are stored in `_claviger_event_payloads` and only their id is notified. | Typically a few milliseconds from commit to the client of another replica. **At most once**: `NOTIFY` is not stored. Events that happen while a replica's listener is disconnected are lost to its clients (the replica reconnects with backoff and resyncs its caches; see below). Per sender order is kept. Clients should refetch after the SSE stream reconnects, as with one replica. |
+| OAuth2 popup flow | The redirect from the provider may reach a replica that does not hold the client's realtime connection. It is forwarded over the bus and the replica that has the client delivers it (with the same client IP check). The answer of the redirect page is optimistic: it cannot know whether the other replica accepted. | Works with or without affinity. |
+| Auth record changes of connected clients (token key change, deletion, auth collection secret change) | Published as part of the realtime events, so the clients of every replica lose or refresh their auth. | As above. |
+| Cron jobs (logs cleanup excepted, see below), including your `cronAdd` jobs | Each tick of each job is taken with a Postgres advisory lock (`pg_try_advisory_lock`, held on a dedicated connection for the run) and recorded in `_claviger_cron_runs` by (job, minute). The replica that gets the lock first and inserts the marker runs the job; the others skip. The marker keeps a replica whose clock is a second late from running the tick again after the first finished. A manual "run now" takes the lock too, so it never overlaps a run on another replica. | **At most once per tick across all replicas.** If the replica dies inside the job, that tick is not retried (the next schedule runs it). The job runs on whichever replica wins, not always the same one. |
+| Webhook delivery worker | Every replica polls, and claims due deliveries in one transaction with `SELECT ... FOR UPDATE SKIP LOCKED`, moving `nextAttempt` forward by a one minute lease before it commits. | **Exactly once while replicas live**: no two replicas claim the same delivery. If a replica dies mid attempt, its lease expires and another replica retries it (at least once; the `webhook-id` header is the same, so receivers can deduplicate, as the Standard Webhooks spec says). |
+| Settings and collections caches | Upstream reloads them from the `.pb_notify` file watcher, which only sees one machine. The replica that saves publishes an event and the others reload (debounced by 50 ms). | Visible on the other replicas in about 100 ms. Realtime events and API calls that arrive during that window use the previous rules. A replica that was disconnected reloads after it reconnects. |
+| Session cache (30 s) | A revoke, an expiry change or an admin edit publishes the session id (or "all"); the others drop the entry. | Effective on the other replicas as soon as the event arrives, and in any case within `core.SessionCacheTTL` (30 s) if an event was lost. Junk session ids are not published. |
+| Field encryption keys (data key cache) | Every key operation (rotate, rewrap, convert, strict, prune) takes a database-wide lock, so only one runs in the whole deployment, and publishes a reload when it ends (also after a partial run). Saving a collection reloads them too. | The other replicas can open and write with a rotated key within about 100 ms. A replica that sees a key id it does not know fails that read (`the data key of the encrypted field is not loaded`) until the reload arrives. |
+| Webhook endpoints (cache) | Published when an endpoint changes; the others reload and start or stop their worker. | As the settings cache. |
+| WebAuthn/passkey ceremonies (begin and finish) | The pending ceremony session is stored in `_claviger_ceremonies` (as well as in memory for the per-replica caps) and consumed there, so begin and finish can land on different replicas and a token is used once. | Sticky sessions are not needed for passkeys. |
+| Rate limits that guard credentials | The counters are one atomic `INSERT ... ON CONFLICT` per request in `_claviger_rate_limits`, with the same fixed window as before. Shared: any limiter whose rule name contains `auth`, `otp`, `totp`, `password`, `passkey`, `webauthn`, `verification`, `login`, `token`, `reset` or `email-change`, the always-on WebAuthn login throttle, the OIDC endpoint budgets, the API key failure limit, the TOTP and OTP limits. If the database cannot be asked, the request is counted on the replica instead (a limiter must not take sign-in down with the database). | The limit is the limit of the deployment, not of each replica. A settings reload no longer resets these counters. |
+| Migrations | Already serialized by an advisory lock. `initMigrationsTable` (`CREATE TABLE IF NOT EXISTS`, which is not atomic on Postgres) and the insert of the default settings on the first start of an empty database are now race safe too. | Any number of replicas can start at once. |
+
+#### What stays per replica, and why
+
+| What | Why it is acceptable |
+| --- | --- |
+| Request logs (`auxiliary.db`) and the cron job `__pbLogsCleanup__` / `__pbDBOptimize__` | The files are local. Ship them with OTLP if you need one place. The two jobs clean local files, so they run on every replica. |
+| Rate limits that do not guard a credential (the generic API budget: reads, writes, file downloads) | Counting every request in the database would add a round trip to each of them. With N replicas the effective limit is up to N times the configured one. Put a limit at your load balancer if you need a strict global ceiling. |
+| Realtime connections and their subscriptions | A connection lives on the replica that accepted it (see affinity below). |
+| Password reset, verification and passkey reset "resend" cooldowns | An in-memory 2 minute guard against double clicks. Another replica may send once more. The rate limits above still apply. |
+| Apple Sign-In first-login name | Apple sends the user's name once, to the redirect. It is kept in memory of the replica that finishes the OAuth2 call; if the final call lands elsewhere the name is empty. |
+| The status of a running field key job in the dashboard | Shown by the replica that started it. The lock that prevents two jobs is global. |
+| Per-replica caps (WebAuthn pending sessions per purpose) | Memory protection, not a security limit. |
+| `pb_hooks` state (JS globals), timers, anything your own hooks keep in memory | Same as any scaled-out app: keep state in the database. |
+| Zip backups | Not supported on Postgres (see [Backups](#backups)). |
+
+#### Deployment notes
+
+- **Affinity for `/api/realtime` only.** The SSE connection and the `POST /api/realtime` that sets its subscriptions must reach the same replica, because the client id exists only there. Everything else (REST, auth, passkeys, OAuth2 redirects, OIDC) works behind a plain round-robin load balancer. Use the sticky sessions of your platform (cookie or source IP hash) for `/api/realtime`, for example `stickySessions: affinity: sticky` on Azure Container Apps. A `POST` that lands on another replica answers 404 (missing client id) and the JavaScript SDK reconnects. If a replica restarts, its SSE streams close and the SDK reconnects and resubscribes on another one.
+- **Rolling updates.** Replicas overlap; there is no handover. Do not mix versions that disagree on the event payloads: unknown event kinds are ignored, so an old replica misses new notifications until it is replaced, and the caches fall back to their TTLs.
+- **Health checks.** `/api/health` answers from the replica you reach and does not wait for the event listener. A replica whose listener is down keeps serving; it logs `Multi replica event channel connection failed` with a retry delay and resyncs when it comes back.
+- **Clocks.** Keep replica clocks within a second or so (NTP). The cron slot is the tick time rounded to the minute.
+- **Sessions and tokens.** JWTs are verified with the collection secrets from the database, so any replica accepts a token issued by another.
+- **Uploads.** S3 (or any shared storage). The `pb_data/storage` folder is local.
+- **Security of the bus.** Anyone who can `LISTEN` on the database can read the notifications, which carry record ids and, for deletes, field values (never password hashes or encrypted values). That is no more than a role with `SELECT` can read. Do not grant it to other applications.
+
+#### Tests
+
+The multi replica suite starts two to four apps on one database in one process, each behind its own HTTP server:
+
+```sh
+cd scripts/pgembedded
+go run . -count=1 -run 'MultiReplica|TestBus|TestRunExclusive|TestRateHit|TestCeremony|TestEnsureSchema' \
+  ./tests/pgtests/... ./core ./tools/replica/...
+```
+
+It covers cross-replica realtime (create, update, delete, hidden records, rules with auth), OAuth2 forwarding, collection/settings/session invalidation, cron single execution (and the local jobs), webhook claiming (exactly once, with the negative control that the same test fails without the claim), the shared auth rate limit, concurrent start of four replicas, a killed listener (reconnect and resync), large payloads, ordering, and the refusal on SQLite. `scripts/test_entrypoint_handover.sh` has the entrypoint scenarios (T11 overlap without handover, T12 a single Postgres replica still hands over). CI runs it in the `postgres` job.
 
 ### Moving from SQLite to PostgreSQL
 

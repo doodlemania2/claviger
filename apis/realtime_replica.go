@@ -162,9 +162,9 @@ func bindRealtimeReplica(app core.App) {
 		Priority: -98,
 	})
 
-	bus.On(replicaEventRealtime, func(m replica.Message) { handleRemoteRealtime(app, m) })
-	bus.On(replicaEventRealtimeAuth, func(m replica.Message) { handleRemoteRealtimeAuth(app, m) })
-	bus.On(replicaEventOAuth2, func(m replica.Message) { handleRemoteOAuth2(app, m) })
+	bus.On(replicaEventRealtime, func(m replica.Message) { core.ReplicaGuard(app, func() { handleRemoteRealtime(app, m) }) })
+	bus.On(replicaEventRealtimeAuth, func(m replica.Message) { core.ReplicaGuard(app, func() { handleRemoteRealtimeAuth(app, m) }) })
+	bus.On(replicaEventOAuth2, func(m replica.Message) { core.ReplicaGuard(app, func() { handleRemoteOAuth2(app, m) }) })
 }
 
 // realtimeReplicaFields returns the field values a remote replica needs to

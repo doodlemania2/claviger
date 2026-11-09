@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -104,7 +105,9 @@ type BaseApp struct {
 	nonconcurrentDB     dbx.Builder
 	auxConcurrentDB     dbx.Builder
 	auxNonconcurrentDB  dbx.Builder
-	replicaBus          *replica.Bus // fork-only (#106 M7), nil unless multi replica
+	replicaBus          *replica.Bus  // fork-only (#106 M7), nil unless multi replica
+	replicaReady        *atomic.Bool  // fork-only (#106 M7): Bootstrap finished
+	replicaGate         *sync.RWMutex // fork-only (#106 M7): held (read) while an event handler runs
 
 	// app event hooks
 	onBootstrap      *hook.Hook[*BootstrapEvent]
@@ -238,6 +241,8 @@ func NewBaseApp(config BaseAppConfig) *BaseApp {
 		store:               store.New[string, any](nil),
 		cron:                cron.New(),
 		subscriptionsBroker: subscriptions.NewBroker(),
+		replicaReady:        new(atomic.Bool),
+		replicaGate:         new(sync.RWMutex),
 		config:              &config,
 	}
 
@@ -484,6 +489,8 @@ func (app *BaseApp) Bootstrap() error {
 
 		// try to cleanup the pb_data temp directory (if any)
 		_ = os.RemoveAll(filepath.Join(app.DataDir(), LocalTempDirName))
+
+		app.replicaBootstrapped() // fork-only (#106 M7)
 
 		return nil
 	})

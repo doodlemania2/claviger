@@ -103,26 +103,6 @@ func eventually(t testing.TB, d time.Duration, what string, cond func() bool) {
 	t.Fatalf("timed out after %s waiting for %s", d, what)
 }
 
-func (rs *replicas) superuserToken(app core.App) string {
-	rs.t.Helper()
-
-	su, err := app.FindAuthRecordByEmail(core.CollectionNameSuperusers, "root@example.com")
-	if err != nil {
-		col, _ := app.FindCollectionByNameOrId(core.CollectionNameSuperusers)
-		su = core.NewRecord(col)
-		su.SetEmail("root@example.com")
-		su.SetPassword("1234567890")
-		if err := app.Save(su); err != nil {
-			rs.t.Fatal(err)
-		}
-	}
-	tok, err := su.NewAuthToken()
-	if err != nil {
-		rs.t.Fatal(err)
-	}
-	return tok
-}
-
 // createCollection creates a base collection on one replica and waits for all
 // the others to see it (cache invalidation, guarantee: bounded by the event
 // latency, a few hundred milliseconds).

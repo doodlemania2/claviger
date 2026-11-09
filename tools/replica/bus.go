@@ -166,6 +166,9 @@ func (b *Bus) OnResync(fn func()) {
 	b.mu.Unlock()
 }
 
+// Resync runs the [Bus.OnResync] callbacks now.
+func (b *Bus) Resync() { b.triggerResync() }
+
 // Listening reports whether the listen connection is up.
 func (b *Bus) Listening() bool { return b.listening.Load() }
 

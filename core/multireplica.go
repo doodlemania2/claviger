@@ -209,23 +209,30 @@ func (app *BaseApp) initReplicaBus() error {
 	return nil
 }
 
+// replicaBootstrapped is called when Bootstrap finished: from now on the
+// events of the other replicas are applied. Those that arrived while this
+// replica was still starting were dropped (the handlers need a complete app), so
+// everything is reloaded once more to close that window.
+func (app *BaseApp) replicaBootstrapped() {
+	if app.replicaBus == nil {
+		return
+	}
+
+	app.replicaReady.Store(true)
+	app.replicaBus.Resync()
+}
+
 // registerReplicaHandlers installs the receivers of the events that package
 // core owns.
 func (app *BaseApp) registerReplicaHandlers(bus *replica.Bus) {
-	settings := newReplicaDebouncer(func() {
-		if !app.IsBootstrapped() {
-			return
-		}
+	settings := newReplicaDebouncer(app, func() {
 		app.Logger().Debug("Reloading settings after a replica event")
 		if err := app.ReloadSettings(); err != nil {
 			app.Logger().Warn("Failed to reload the app settings after a replica event", "error", err)
 		}
 	})
 
-	collections := newReplicaDebouncer(func() {
-		if !app.IsBootstrapped() {
-			return
-		}
+	collections := newReplicaDebouncer(app, func() {
 		app.Logger().Debug("Reloading cached collections after a replica event")
 		if err := app.ReloadCachedCollections(); err != nil {
 			app.Logger().Warn("Failed to reload the cached collections after a replica event", "error", err)
@@ -237,18 +244,15 @@ func (app *BaseApp) registerReplicaHandlers(bus *replica.Bus) {
 		}
 	})
 
-	fieldKeysReload := newReplicaDebouncer(func() {
-		if !app.IsBootstrapped() {
-			return
-		}
+	fieldKeysReload := newReplicaDebouncer(app, func() {
 		if err := loadFieldKeys(app); err != nil {
 			app.Logger().Warn("Failed to reload the field keys after a replica event", "error", err)
 		}
 		replicaFieldKeyReloads.Add(1)
 	})
 
-	webhooks := newReplicaDebouncer(func() {
-		if m := webhookManagerFor(app); m != nil && app.IsBootstrapped() {
+	webhooks := newReplicaDebouncer(app, func() {
+		if m := webhookManagerFor(app); m != nil {
 			m.reload()
 		}
 	})
@@ -290,6 +294,9 @@ func (app *BaseApp) registerMultiReplicaHooks() {
 		Id: systemHookIdMultiReplica,
 		Func: func(e *BootstrapEvent) error {
 			// before the database pools are closed
+			app.replicaGate.Lock() // waits for the handlers that are running
+			app.replicaReady.Store(false)
+			app.replicaGate.Unlock()
 			if app.replicaBus != nil {
 				app.replicaBus.Stop()
 				app.replicaBus = nil
@@ -339,6 +346,26 @@ var replicaFieldKeyReloads atomic.Int64
 // field keys in this process.
 func ReplicaFieldKeyReloads() int64 { return replicaFieldKeyReloads.Load() }
 
+// ReplicaGuard runs fn only while the app is fully bootstrapped, and keeps
+// ClearBootstrap from closing the databases under it. The handlers of the
+// events of the other replicas run on timers and goroutines of their own, so
+// they must not run before Bootstrap finished (the app is incomplete) or while
+// it is being torn down (the database pools are closed).
+func ReplicaGuard(app App, fn func()) {
+	base, ok := app.(*BaseApp)
+	if !ok {
+		fn()
+		return
+	}
+
+	base.replicaGate.RLock()
+	defer base.replicaGate.RUnlock()
+
+	if base.replicaReady.Load() {
+		fn()
+	}
+}
+
 // replicaDebouncer coalesces bursts of events into one trailing call.
 type replicaDebouncer struct {
 	fn    func()
@@ -346,7 +373,9 @@ type replicaDebouncer struct {
 	timer *time.Timer
 }
 
-func newReplicaDebouncer(fn func()) *replicaDebouncer { return &replicaDebouncer{fn: fn} }
+func newReplicaDebouncer(app *BaseApp, fn func()) *replicaDebouncer {
+	return &replicaDebouncer{fn: func() { ReplicaGuard(app, fn) }}
+}
 
 func (d *replicaDebouncer) trigger() {
 	d.mu.Lock()
