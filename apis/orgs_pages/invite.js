@@ -1,4 +1,4 @@
-import { session, el, api, errCode, createCaptcha, initSignIn } from "/orgs/assets/auth.js";
+import { session, el, api, errCode, createCaptcha, initSignIn, t, word } from "/orgs/assets/auth.js";
 
 const root = document.getElementById("app");
 const d = root.dataset;
@@ -29,14 +29,14 @@ function say(text, kind) {
 function finished(res) {
   const link = root.querySelector("#doneLink");
   link.href = "/orgs/" + encodeURIComponent(res.org.slug);
-  root.querySelector("#doneText").textContent = "You joined " + res.org.name + " as " + res.role + ".";
+  root.querySelector("#doneText").textContent = t("js.invite.joined", { org: res.org.name, role: word("role", res.role) });
   say("");
   show("done");
 }
 
 function signedIn(rec) {
   record = rec;
-  root.querySelector("#who").textContent = rec.email || "your account";
+  root.querySelector("#who").textContent = rec.email || t("js.invite.yourAccount");
   root.querySelector("#verifyBtn").hidden = true;
   show("signedIn");
 }
@@ -51,7 +51,7 @@ root.querySelector("#accept").addEventListener("click", async () => {
   say("");
   const r = await api("/api/invitations/accept", { token: session.get(), body: { token } });
   if (r.ok) return finished(r.body);
-  say(r.body.message || "The invitation could not be accepted.");
+  say(r.body.message || t("js.invite.acceptFailed"));
   if (errCode(r) === "email_not_verified") root.querySelector("#verifyBtn").hidden = false;
 });
 
@@ -61,11 +61,11 @@ root.querySelector("#verifyBtn").addEventListener("click", async () => {
     const t = await captcha.token("verification");
     if (t) headers["X-Captcha-Token"] = t;
   } catch (err) {
-    return say(err.message || "The captcha could not be completed.");
+    return say(err.message || t("js.captcha.incomplete"));
   }
   const r = await api(base + "/request-verification", { body: { email: record.email }, headers });
-  if (r.ok || r.status === 204) say("Check your inbox for the verification email, then come back to this page.", "ok");
-  else say(r.status === 429 ? "Too many attempts. Try again later." : "The email could not be sent.");
+  if (r.ok || r.status === 204) say(t("js.invite.checkInbox"), "ok");
+  else say(r.status === 429 ? t("js.tooMany") : t("js.invite.emailNotSent"));
 });
 
 root.querySelector("#signout").addEventListener("click", () => {
@@ -88,7 +88,7 @@ signup.addEventListener("submit", async (ev) => {
     const t = await captcha.token("signup");
     if (t) headers["X-Captcha-Token"] = t;
   } catch (err) {
-    return say(err.message || "The captcha could not be completed.");
+    return say(err.message || t("js.captcha.incomplete"));
   }
   const f = signup.elements;
   const r = await api("/api/invitations/register", {
@@ -100,7 +100,7 @@ signup.addEventListener("submit", async (ev) => {
     if (errCode(r) === "account_exists") {
       show("signIn");
     }
-    return say((first && first.message) || r.body.message || "The account could not be created.");
+    return say((first && first.message) || r.body.message || t("js.invite.createFailed"));
   }
   // the account exists and the invitation is accepted: sign in with the ordinary endpoint
   const login = await api(base + "/auth-with-password", { body: { identity: d.email, password: f.password.value } });

@@ -7,6 +7,22 @@ import { PasskeysClient } from "/api/passkeys-client.js";
 
 const KEY = "claviger_orgs_token";
 
+// The strings of the page are in the language the server negotiated: they come
+// in an inline JSON data block (not script, so the strict CSP is unaffected).
+let MESSAGES = {};
+try { MESSAGES = JSON.parse(document.getElementById("i18n").textContent); } catch (e) { /* English keys show */ }
+
+// t("js.key", {name: value}) fills the {placeholders} of a message.
+export function t(key, args) {
+  const msg = Object.prototype.hasOwnProperty.call(MESSAGES, key) ? MESSAGES[key] : key;
+  return msg.replace(/\{(\w+)\}/g, (m, k) => (args && k in args ? args[k] : m));
+}
+
+// the name of a role or status in the language of the page, the value itself when unknown
+export function word(group, value) {
+  return Object.prototype.hasOwnProperty.call(MESSAGES, "js." + group + "." + value) ? t("js." + group + "." + value) : value;
+}
+
 export const session = {
   get() {
     try { return sessionStorage.getItem(KEY) || ""; } catch (e) { return ""; }
@@ -61,7 +77,8 @@ export function errCode(r) {
 export function when(v) {
   if (!v) return "";
   const d = new Date(String(v).replace(" ", "T"));
-  return isNaN(d.getTime()) ? "" : d.toLocaleString();
+  const lang = document.documentElement.lang;
+  return isNaN(d.getTime()) ? "" : d.toLocaleString(lang && lang !== "en" ? lang : undefined);
 }
 
 // ---- optional captcha ----------------------------------------------------
@@ -81,14 +98,14 @@ export function createCaptcha(box) {
 
   function load(c) {
     const src = CAPTCHA_SRC[c.provider] && CAPTCHA_SRC[c.provider](c);
-    if (!src) return Promise.reject(new Error("Unsupported captcha provider."));
+    if (!src) return Promise.reject(new Error(t("js.captcha.unsupported")));
     if (!scripts[src]) {
       scripts[src] = new Promise((resolve, reject) => {
         const s = document.createElement("script");
         s.src = src;
         s.async = true;
         s.onload = resolve;
-        s.onerror = () => reject(new Error("Could not load the captcha."));
+        s.onerror = () => reject(new Error(t("js.captcha.loadFailed")));
         document.head.appendChild(s);
       });
     }
@@ -116,8 +133,8 @@ export function createCaptcha(box) {
           sitekey: cfg.siteKey,
           action: cfg.provider === "turnstile" ? action : undefined,
           callback: (t) => done(resolve, t),
-          "error-callback": () => done(reject, new Error("Captcha failed, please try again.")),
-          "expired-callback": () => done(reject, new Error("Captcha expired, please try again.")),
+          "error-callback": () => done(reject, new Error(t("js.captcha.failed"))),
+          "expired-callback": () => done(reject, new Error(t("js.captcha.expired"))),
         });
       });
     },
@@ -159,7 +176,7 @@ export async function initSignIn({ root, collection, captcha, onToken, identity 
       return true;
     }
     if (body && body.mfaId) {
-      fail("This account needs a second sign-in step that this page does not support yet.");
+      fail(t("js.signin.unsupportedFactor"));
       return true;
     }
     return false;
@@ -176,12 +193,12 @@ export async function initSignIn({ root, collection, captcha, onToken, identity 
     ev.preventDefault();
     fail("");
     let headers;
-    try { headers = await withCaptcha("login"); } catch (err) { return fail(err.message || "The captcha could not be completed."); }
+    try { headers = await withCaptcha("login"); } catch (err) { return fail(err.message || t("js.captcha.incomplete")); }
     const r = await api(base + "/auth-with-password", { body: { identity: pw.elements.identity.value, password: pw.elements.password.value }, headers });
     if (r.status === 200 && r.body.token) return onToken(r.body.token, r.body.record);
     if (r.status === 401 && secondFactor(r.body)) return;
-    if (isCaptchaFailure(r)) return fail("The captcha check failed. Try again.");
-    fail(tooMany(r) ? "Too many attempts. Try again later." : "Wrong email or password.");
+    if (isCaptchaFailure(r)) return fail(t("js.captcha.checkFailed"));
+    fail(tooMany(r) ? t("js.tooMany") : t("js.signin.wrongCredentials"));
   });
 
   totp.addEventListener("submit", async (ev) => {
@@ -189,17 +206,17 @@ export async function initSignIn({ root, collection, captcha, onToken, identity 
     fail("");
     const r = await api(base + "/auth-with-totp", { body: { mfaId, code: totp.elements.code.value.trim() } });
     if (r.status === 200 && r.body.token) return onToken(r.body.token, r.body.record);
-    fail(tooMany(r) ? "Too many attempts. Try again later." : "That code was not accepted.");
+    fail(tooMany(r) ? t("js.tooMany") : t("js.signin.codeRejected"));
   });
 
   root.querySelector("#otpSend").addEventListener("click", async () => {
     fail("");
     const who = pw.elements.identity.value.trim();
-    if (!who) return fail("Enter your email first.");
+    if (!who) return fail(t("js.signin.enterEmail"));
     let headers;
-    try { headers = await withCaptcha("otp_request"); } catch (err) { return fail(err.message || "The captcha could not be completed."); }
+    try { headers = await withCaptcha("otp_request"); } catch (err) { return fail(err.message || t("js.captcha.incomplete")); }
     const r = await api(base + "/request-otp", { body: { email: who }, headers });
-    if (!r.ok || !r.body.otpId) return fail(tooMany(r) ? "Too many attempts. Try again later." : "The code could not be sent.");
+    if (!r.ok || !r.body.otpId) return fail(tooMany(r) ? t("js.tooMany") : t("js.signin.codeNotSent"));
     otpId = r.body.otpId;
     otpForm.hidden = false;
     otpForm.elements.code.focus();
@@ -211,22 +228,22 @@ export async function initSignIn({ root, collection, captcha, onToken, identity 
     const r = await api(base + "/auth-with-otp", { body: { otpId, password: otpForm.elements.code.value.trim() } });
     if (r.status === 200 && r.body.token) return onToken(r.body.token, r.body.record);
     if (r.status === 401 && secondFactor(r.body)) return;
-    fail(tooMany(r) ? "Too many attempts. Try again later." : "That code was not accepted.");
+    fail(tooMany(r) ? t("js.tooMany") : t("js.signin.codeRejected"));
   });
 
   root.querySelector("#passkey").addEventListener("click", async () => {
     fail("");
     const who = pw.elements.identity.value.trim();
-    if (!who) return fail("Enter your email first.");
+    if (!who) return fail(t("js.signin.enterEmail"));
     const client = new PasskeysClient({ baseUrl: window.location.origin, collection, getCaptchaToken: (a) => captcha.token(a) });
     try {
       const res = await client.login(who);
       if (res && res.token) return onToken(res.token, res.record);
-      if (!secondFactor(res)) fail("The passkey sign-in did not complete.");
+      if (!secondFactor(res)) fail(t("js.signin.passkeyIncomplete"));
     } catch (err) {
       if (err && err.status === 401 && secondFactor(err.response)) return;
-      if (err && err.status === 429) return fail("Too many attempts. Try again later.");
-      fail("The passkey sign-in did not complete.");
+      if (err && err.status === 429) return fail(t("js.tooMany"));
+      fail(t("js.signin.passkeyIncomplete"));
     }
   });
 
@@ -244,7 +261,7 @@ export async function initSignIn({ root, collection, captcha, onToken, identity 
       pw.elements.password.closest("label").hidden = true;
       pw.elements.password.required = false;
       pw.querySelector("button").hidden = true;
-      if (!otpOn && !passkeyOn) fail("No sign-in method is available.");
+      if (!otpOn && !passkeyOn) fail(t("js.signin.noMethod"));
     }
   } catch (err) {
     pw.hidden = false;

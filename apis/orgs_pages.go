@@ -57,7 +57,7 @@ func hostedPagesCSP(cfg core.CaptchaConfig) string {
 }
 
 const orgsPageHead = `{{define "head"}}<!doctype html>
-<html lang="en">
+<html lang="{{.Text.Lang}}"{{.Text.Attrs}}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -66,33 +66,33 @@ const orgsPageHead = `{{define "head"}}<!doctype html>
 <title>{{.Title}}</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/orgs/assets/hosted.css">
-</head>
+{{.Text.DataBlock}}</head>
 <body>{{end}}
 {{define "signin"}}<section id="signin" hidden>
-<h2>Sign in</h2>
+<h2>{{.Text.T "js.signIn"}}</h2>
 <form id="pw" hidden>
-<label>Email or username<input name="identity" autocomplete="username webauthn" required></label>
-<label>Password<input name="password" type="password" autocomplete="current-password" required></label>
-<button type="submit">Sign in</button>
+<label>{{.Text.T "js.identityLabel"}}<input name="identity" autocomplete="username webauthn" required></label>
+<label>{{.Text.T "js.passwordLabel"}}<input name="password" type="password" autocomplete="current-password" required></label>
+<button type="submit">{{.Text.T "js.signIn"}}</button>
 </form>
 <form id="totp" hidden>
-<label>Authenticator code or backup code<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
-<button type="submit">Verify</button>
+<label>{{.Text.T "js.totpLabel"}}<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<button type="submit">{{.Text.T "js.verify"}}</button>
 </form>
 <div id="otpBox" hidden>
-<div class="or"><span>or</span></div>
-<button id="otpSend" type="button" class="secondary">Email me a sign-in code</button>
+<div class="or"><span>{{.Text.T "js.or"}}</span></div>
+<button id="otpSend" type="button" class="secondary">{{.Text.T "js.emailMeCode"}}</button>
 <form id="otpForm" hidden>
-<label>Code from the email<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
-<button type="submit">Sign in</button>
+<label>{{.Text.T "js.codeFromEmail"}}<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<button type="submit">{{.Text.T "js.signIn"}}</button>
 </form>
 </div>
 <div id="passkeyBox" hidden>
-<div class="or"><span>or</span></div>
-<button id="passkey" type="button" class="secondary">Sign in with a passkey</button>
+<div class="or"><span>{{.Text.T "js.or"}}</span></div>
+<button id="passkey" type="button" class="secondary">{{.Text.T "js.passkeySignIn"}}</button>
 </div>
 <p id="status" class="msg err" role="alert" hidden></p>
-{{if .ShowSignUp}}<p class="muted">No account yet? <button id="toSignUp" type="button" class="linklike">Create one</button></p>{{end}}
+{{if .ShowSignUp}}<p class="muted">{{.Text.HTML "orgs.signin.noAccountHtml" (.Text.Args "link" .ToSignUpLink)}}</p>{{end}}
 </section>{{end}}
 `
 
@@ -106,34 +106,34 @@ var orgsPageTemplates = template.Must(template.New("pages").Parse(orgsPageHead +
 
 {{define "invite"}}{{template "head" .}}
 <main class="card" id="app" data-page="invite" data-token="{{.Token}}" data-collection="{{.Collection}}" data-email="{{.Email}}" data-has-account="{{.HasAccount}}">
-<h1>Join {{.OrgName}}</h1>
-<p class="sub">You are invited as <strong>{{.Role}}</strong> with <strong>{{.Email}}</strong>.</p>
+<h1>{{.Text.T "orgs.invite.title" (.Text.Args "org" .OrgName)}}</h1>
+<p class="sub">{{.Text.HTML "orgs.invite.introHtml" (.Text.Args "role" .RoleLabel "email" .Email)}}</p>
 <p id="istatus" class="msg err" role="alert" hidden></p>
 <div id="captchaBox" hidden></div>
 
 <section id="signedIn" hidden>
-<p>Signed in as <strong id="who"></strong>.</p>
-<button id="accept" type="button">Accept the invitation</button>
-<button id="verifyBtn" type="button" class="secondary" hidden>Send me a verification email</button>
-<p><button id="signout" type="button" class="linklike">Use another account</button></p>
+<p>{{.Text.HTML "orgs.invite.signedInAsHtml" (.Text.Args "who" .WhoElement)}}</p>
+<button id="accept" type="button">{{.Text.T "orgs.invite.accept"}}</button>
+<button id="verifyBtn" type="button" class="secondary" hidden>{{.Text.T "orgs.invite.sendVerification"}}</button>
+<p><button id="signout" type="button" class="linklike">{{.Text.T "orgs.invite.useAnother"}}</button></p>
 </section>
 
 {{template "signin" .}}
 
 <section id="signup" hidden>
 <form id="signupForm">
-<label>Email<input name="email" type="email" value="{{.Email}}" readonly></label>
-<label>Name<input name="name" autocomplete="name"></label>
-<label>Password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
-<label>Repeat the password<input name="passwordConfirm" type="password" autocomplete="new-password" minlength="8" required></label>
-<button type="submit">Create the account and join</button>
+<label>{{.Text.T "orgs.email"}}<input name="email" type="email" value="{{.Email}}" readonly></label>
+<label>{{.Text.T "orgs.invite.name"}}<input name="name" autocomplete="name"></label>
+<label>{{.Text.T "js.passwordLabel"}}<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+<label>{{.Text.T "orgs.invite.repeatPassword"}}<input name="passwordConfirm" type="password" autocomplete="new-password" minlength="8" required></label>
+<button type="submit">{{.Text.T "orgs.invite.createAndJoin"}}</button>
 </form>
-<p class="muted">Already have an account? <button id="toSignIn" type="button" class="linklike">Sign in</button></p>
+<p class="muted">{{.Text.HTML "orgs.invite.haveAccountHtml" (.Text.Args "link" .ToSignInLink)}}</p>
 </section>
 
 <section id="done" hidden>
 <p class="msg ok" id="doneText" role="status"></p>
-<p><a id="doneLink" href="/orgs/">Open the organization page</a></p>
+<p><a id="doneLink" href="/orgs/">{{.Text.T "orgs.invite.openOrg"}}</a></p>
 </section>
 </main>
 <script type="module" src="/orgs/assets/invite.js"></script>
@@ -145,9 +145,9 @@ var orgsPageTemplates = template.Must(template.New("pages").Parse(orgsPageHead +
 <div id="captchaBox" hidden></div>
 
 <div id="denied" hidden>
-<h1>No access</h1>
-<p class="muted">This account is not an active member of that organization.</p>
-<p><button id="deniedOut" type="button" class="secondary">Sign out</button></p>
+<h1>{{.Text.T "orgs.org.noAccess"}}</h1>
+<p class="muted">{{.Text.T "orgs.org.notMember"}}</p>
+<p><button id="deniedOut" type="button" class="secondary">{{.Text.T "orgs.signOut"}}</button></p>
 </div>
 
 {{template "signin" .}}
@@ -155,54 +155,54 @@ var orgsPageTemplates = template.Must(template.New("pages").Parse(orgsPageHead +
 <div id="main" hidden>
 <header class="bar">
 <div><h1 id="orgName"></h1><p class="muted" id="myRole"></p></div>
-<button id="signout" type="button" class="secondary">Sign out</button>
+<button id="signout" type="button" class="secondary">{{.Text.T "orgs.signOut"}}</button>
 </header>
 
-<h2>Members</h2>
+<h2>{{.Text.T "orgs.members"}}</h2>
 <div class="tablewrap"><table id="members">
-<thead><tr><th>Member</th><th>Role</th><th>Status</th><th>Tags</th><th></th></tr></thead>
+<thead><tr><th>{{.Text.T "orgs.col.member"}}</th><th>{{.Text.T "orgs.col.role"}}</th><th>{{.Text.T "orgs.col.status"}}</th><th>{{.Text.T "orgs.col.tags"}}</th><th></th></tr></thead>
 <tbody></tbody>
 </table></div>
 
 <div data-manage hidden>
-<h2>Invite someone</h2>
+<h2>{{.Text.T "orgs.inviteSomeone"}}</h2>
 <form id="inviteForm" class="inline">
-<label>Email<input name="email" type="email" autocomplete="off" required></label>
-<label>Role<select id="inviteRole" name="role"><option>member</option></select></label>
-<label>Tags (comma separated)<input name="tags" autocomplete="off"></label>
-<button type="submit">Send invitation</button>
+<label>{{.Text.T "orgs.email"}}<input name="email" type="email" autocomplete="off" required></label>
+<label>{{.Text.T "orgs.col.role"}}<select id="inviteRole" name="role"><option>member</option></select></label>
+<label>{{.Text.T "orgs.tagsCommaSeparated"}}<input name="tags" autocomplete="off"></label>
+<button type="submit">{{.Text.T "orgs.sendInvitation"}}</button>
 </form>
 
-<h2>Invitations</h2>
+<h2>{{.Text.T "orgs.invitations"}}</h2>
 <div class="tablewrap"><table id="invitations">
-<thead><tr><th>Email</th><th>Role</th><th>Tags</th><th>Status</th><th>Expires / accepted</th><th>Sent</th><th></th></tr></thead>
+<thead><tr><th>{{.Text.T "orgs.email"}}</th><th>{{.Text.T "orgs.col.role"}}</th><th>{{.Text.T "orgs.col.tags"}}</th><th>{{.Text.T "orgs.col.status"}}</th><th>{{.Text.T "orgs.col.expiresAccepted"}}</th><th>{{.Text.T "orgs.col.sent"}}</th><th></th></tr></thead>
 <tbody></tbody>
 </table></div>
 
-<h2>SCIM provisioning</h2>
-<p class="muted">Tenant URL: <code id="scimUrl"></code></p>
+<h2>{{.Text.T "orgs.scim.title"}}</h2>
+<p class="muted">{{.Text.HTML "orgs.scim.tenantUrlHtml" (.Text.Args "url" .ScimURLElement)}}</p>
 <form id="scimTokenForm" class="inline">
-<label>Token name<input name="name" autocomplete="off" maxlength="100" required></label>
-<button type="submit">Create a token</button>
+<label>{{.Text.T "orgs.scim.tokenName"}}<input name="name" autocomplete="off" maxlength="100" required></label>
+<button type="submit">{{.Text.T "orgs.scim.createToken"}}</button>
 </form>
 <p id="scimNew" class="msg ok" role="status" hidden></p>
 <div class="tablewrap"><table id="scimTokens">
-<thead><tr><th>Name</th><th>Token</th><th>Created</th><th>Last used</th><th>Expires</th><th>Status</th><th></th></tr></thead>
+<thead><tr><th>{{.Text.T "orgs.col.name"}}</th><th>{{.Text.T "orgs.col.token"}}</th><th>{{.Text.T "orgs.col.created"}}</th><th>{{.Text.T "orgs.col.lastUsed"}}</th><th>{{.Text.T "orgs.col.expires"}}</th><th>{{.Text.T "orgs.col.status"}}</th><th></th></tr></thead>
 <tbody></tbody>
 </table></div>
 <form id="scimSettings">
-<label>Role of new users<select id="scimDefaultRole" name="defaultRole"><option>member</option></select></label>
-<label>Groups that grant a role (one per line, <code>Group name = role</code>)<textarea name="groupRoles" rows="3" autocomplete="off"></textarea></label>
-<label class="check"><input name="deactivationBans" type="checkbox"> Also ban the account when the identity provider deactivates a user</label>
-<button type="submit">Save SCIM settings</button>
+<label>{{.Text.T "orgs.scim.defaultRole"}}<select id="scimDefaultRole" name="defaultRole"><option>member</option></select></label>
+<label>{{.Text.HTML "orgs.scim.groupsLabelHtml"}}<textarea name="groupRoles" rows="3" autocomplete="off"></textarea></label>
+<label class="check"><input name="deactivationBans" type="checkbox"> {{.Text.T "orgs.scim.deactivationBans"}}</label>
+<button type="submit">{{.Text.T "orgs.scim.save"}}</button>
 </form>
 </div>
 
-<h2>Tags</h2>
+<h2>{{.Text.T "orgs.col.tags"}}</h2>
 <p id="taglist"></p>
 <form id="tagForm" class="inline" data-manage hidden>
-<label>New tag<input name="name" autocomplete="off" maxlength="64" required></label>
-<button type="submit">Add tag</button>
+<label>{{.Text.T "orgs.newTag"}}<input name="name" autocomplete="off" maxlength="64" required></label>
+<button type="submit">{{.Text.T "orgs.addTag"}}</button>
 </form>
 </div>
 </main>
@@ -216,6 +216,12 @@ type orgsPageData struct {
 	Token, Collection, Email string
 	OrgName, Role, Slug      string
 	HasAccount, ShowSignUp   bool
+
+	// fork-local (#97): the language of the page and the pieces of markup
+	// that sentences wrap around (the catalog decides where they go)
+	Text                                                   *PageText
+	RoleLabel                                              string
+	WhoElement, ScimURLElement, ToSignUpLink, ToSignInLink template.HTML
 }
 
 func orgsPageHeaders(e *core.RequestEvent) {
@@ -229,13 +235,30 @@ func orgsPageHeaders(e *core.RequestEvent) {
 
 func renderOrgsPage(e *core.RequestEvent, status int, name string, d orgsPageData) error {
 	orgsPageHeaders(e)
+
+	if d.Text == nil {
+		d.Text = NewPageText(e, "")
+	}
+
+	d.RoleLabel = d.Text.RoleLabel(d.Role)
+	d.WhoElement = `<strong id="who"></strong>`
+	d.ScimURLElement = `<code id="scimUrl"></code>`
+	d.ToSignUpLink = template.HTML(`<button id="toSignUp" type="button" class="linklike">` + //nolint:gosec // the label is escaped
+		template.HTMLEscapeString(d.Text.T("orgs.signin.createOne")) + `</button>`)
+	d.ToSignInLink = template.HTML(`<button id="toSignIn" type="button" class="linklike">` + //nolint:gosec // the label is escaped
+		template.HTMLEscapeString(d.Text.T("js.signIn")) + `</button>`)
+
 	e.Response.WriteHeader(status)
 
 	return orgsPageTemplates.ExecuteTemplate(e.Response, name, d)
 }
 
-func orgsErrorPage(e *core.RequestEvent, status int, message string) error {
-	return renderOrgsPage(e, status, "error", orgsPageData{Title: "Invitation", Heading: "Invitation", Message: message})
+// orgsErrorPage renders a refusal; messageKey is a catalog key.
+func orgsErrorPage(e *core.RequestEvent, status int, messageKey string) error {
+	text := NewPageText(e, "")
+	title := text.T("orgs.invite.errorTitle")
+
+	return renderOrgsPage(e, status, "error", orgsPageData{Title: title, Heading: title, Message: text.T(messageKey), Text: text})
 }
 
 // invitationLimiter is shared by the pages and the API routes.
@@ -268,23 +291,32 @@ func bindOrgsPages(app core.App) {
 
 func orgsInvitePage(e *core.RequestEvent) error {
 	if err := invitationLimited(e, invitationLimiter(e.App)); err != nil {
-		return orgsErrorPage(e, http.StatusTooManyRequests, "Too many attempts. Try again later.")
+		return orgsErrorPage(e, http.StatusTooManyRequests, "js.tooMany")
 	}
 
 	inv, org, err := core.LookupInvitation(e.App, e.Request.Context(), e.Request.PathValue("token"))
 	if err != nil {
-		return orgsErrorPage(e, http.StatusNotFound, core.InvitationInvalidMessage+" Ask for a new invitation.")
+		return orgsErrorPage(e, http.StatusNotFound, "orgs.err.invitationInvalid")
 	}
 
 	col, err := core.OrgUserCollection(e.App)
 	if err != nil {
-		return orgsErrorPage(e, http.StatusNotFound, "Invitations are not available.")
+		return orgsErrorPage(e, http.StatusNotFound, "orgs.err.invitationsUnavailable")
 	}
 
-	_, accountErr := e.App.FindAuthRecordByEmail(col, inv.GetString("email"))
+	account, accountErr := e.App.FindAuthRecordByEmail(col, inv.GetString("email"))
+
+	// the invitee's own preference (when the account has one) comes before Accept-Language
+	var recordLang string
+	if accountErr == nil {
+		recordLang = core.RecordLanguage(e.App, account)
+	}
+
+	text := NewPageText(e, recordLang)
 
 	return renderOrgsPage(e, http.StatusOK, "invite", orgsPageData{
-		Title: "Join " + org.GetString("name"), OrgName: org.GetString("name"), Role: inv.GetString("role"),
+		Text:  text,
+		Title: text.T("orgs.invite.title", text.Args("org", org.GetString("name"))), OrgName: org.GetString("name"), Role: inv.GetString("role"),
 		Email: inv.GetString("email"), Token: e.Request.PathValue("token"), Collection: col.Name,
 		HasAccount: accountErr == nil, ShowSignUp: accountErr != nil,
 	})
@@ -293,15 +325,17 @@ func orgsInvitePage(e *core.RequestEvent) error {
 func orgsAdminPage(e *core.RequestEvent) error {
 	slug := e.Request.PathValue("slug")
 	if !orgSlugPageRegex.MatchString(slug) {
-		return orgsErrorPage(e, http.StatusNotFound, "Page not found.")
+		return orgsErrorPage(e, http.StatusNotFound, "orgs.err.notFound")
 	}
 
 	col, err := core.OrgUserCollection(e.App)
 	if err != nil {
-		return orgsErrorPage(e, http.StatusNotFound, "Organizations are not available.")
+		return orgsErrorPage(e, http.StatusNotFound, "orgs.err.orgsUnavailable")
 	}
 
-	return renderOrgsPage(e, http.StatusOK, "org", orgsPageData{Title: "Organization", Slug: slug, Collection: col.Name})
+	text := NewPageText(e, "")
+
+	return renderOrgsPage(e, http.StatusOK, "org", orgsPageData{Text: text, Title: text.T("orgs.org.title"), Slug: slug, Collection: col.Name})
 }
 
 func orgsAsset(e *core.RequestEvent) error {
