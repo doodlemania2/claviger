@@ -77,7 +77,9 @@ func TestOrgsCreate(t *testing.T) {
 		{name: "unknown owner", who: "super", method: http.MethodPost, url: "/api/orgs", body: `{"name":"Xylophone","owner":"nobody@x.test"}`, status: 404},
 		{name: "parent", who: "super", method: http.MethodPost, url: "/api/orgs", body: `{"name":"Child","parent":"` + orgP2 + `"}`, status: 200,
 			has: []string{`"parent":"` + orgP2 + `"`}},
-		{name: "only one level of hierarchy", who: "super", method: http.MethodPost, url: "/api/orgs", body: `{"name":"Grandchild","parent":"` + orgP1 + `"}`, status: 400},
+		{name: "deeper hierarchy is allowed (#84)", who: "super", method: http.MethodPost, url: "/api/orgs", body: `{"name":"Grandchild","parent":"` + orgP1 + `"}`, status: 200,
+			has: []string{`"parent":"` + orgP1 + `"`}},
+		{name: "a cycle is refused (#84)", who: "super", method: http.MethodPatch, url: "/api/orgs/" + orgD, body: `{"parent":"` + orgP1 + `"}`, status: 400},
 	})
 }
 
