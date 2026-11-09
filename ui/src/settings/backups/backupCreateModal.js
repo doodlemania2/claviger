@@ -114,7 +114,7 @@ function backupCreateModal(settings) {
                             id: uniqueId + "_name",
                             name: "name",
                             type: "text",
-                            pattern: "^[a-z0-9_-]+\\.zip(\\.enc)?$",
+                            pattern: "^[a-z0-9_\\-]+\\.zip(\\.enc)?$", // escaped dash: browsers compile patterns with the v flag, where a bare trailing dash is a syntax error
                             placeholder: "Leave empty to autogenerate",
                             value: () => data.name,
                             oninput: (e) => (data.name = e.target.value),
