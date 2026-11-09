@@ -56,6 +56,7 @@ func NewRouter(app core.App) (*router.Router[*core.RequestEvent], error) {
 	bindWebhooksApi(app, apiGroup)  // fork-local (#77)
 	bindFieldKeysApi(app, apiGroup) // fork-local (#75)
 	bindOrgsApi(app, apiGroup)      // fork-local (#79a)
+	bindDataMapApi(app, apiGroup)   // fork-local (#88)
 	bindSCIMApi(app, pbRouter)      // fork-local (#79c)
 
 	// UI routes

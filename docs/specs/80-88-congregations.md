@@ -891,6 +891,8 @@ Non-goals:
 
 A system collection `_dataMap` lists, for each collection that holds personal data: the **subject path** (which field links a row to a person: `user`, `member`, `author`, `owner`), the **treatment** (`export`, `erase`, `anonymize`, `retain`), `retainReason`, `fields` (which fields are personal), and `ageOutBasis`. System collections register themselves in the migration. Template collections register when installed. Custom collections are registered in the admin UI.
 
+Implemented in milestone 88-0; see `docs/data-map.md` for the field names and how to add an entry. (The collection field is named `collection`, since `collectionName` is reserved on records.)
+
 Why first: erasure and export are only correct if every collection that holds personal data is listed. If #80 to #87 land without registering, their data is missed. The map also produces the Article 30 record of processing (a generated report).
 
 Subject paths for the built-in collections:
