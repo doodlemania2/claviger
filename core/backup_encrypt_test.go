@@ -426,6 +426,11 @@ func movedDirs(t testing.TB, app core.App) int {
 }
 
 // restoreUntilRestart runs RestoreBackup with the process restart intercepted.
+//
+// Note: a restore moves pb_data/.notify, which wakes the notify watcher
+// goroutine of the app; under -race that goroutine's IsBootstrapped() read is
+// reported against app.Cleanup() (a pre-existing race in core/notify_watcher.go,
+// like the flaky TestNotifyWatcher_* tests). CI does not run -race.
 // It returns what pb_data looked like at the moment the restart would happen.
 func restoreUntilRestart(t testing.TB, app *tests.TestApp, name string) (snapshotAtRestart string, restoreErr error) {
 	t.Helper()
@@ -732,7 +737,10 @@ func TestEncryptedBackupS3(t *testing.T) {
 	store.mod["bad.zip.enc"] = time.Now()
 	store.mu.Unlock()
 
-	res, _ = core.VerifyBackup(context.Background(), app, "bad.zip.enc")
+	res, err = core.VerifyBackup(context.Background(), app, "bad.zip.enc")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if res.Status != core.BackupVerifyStatusFailed {
 		t.Fatalf("expected a failure for the tampered S3 object, got %+v", res)
 	}
