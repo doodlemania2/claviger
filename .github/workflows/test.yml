@@ -126,6 +126,21 @@ jobs:
       - name: Run the regular suites on Postgres
         run: scripts/test_postgres_suites.sh
 
+      # Several replicas on one database (#106, M7): the bus, the advisory-lock cron guard, the
+      # webhook delivery claim, and an N-app harness (realtime across replicas, cache and session
+      # invalidation, shared auth rate limits, concurrent start). Every test runs against this
+      # server; a skipped test fails the step, and so does a run that ran nothing.
+      - name: Run the multi-replica suite
+        run: |
+          set -o pipefail
+          go test -tags postgres -count=1 -v -run 'MultiReplica|TestBus|TestRunExclusive|TestRateHit|TestCeremony|TestEnsureSchema' \
+            ./tests/pgtests/... ./core ./tools/replica/... | tee mr-test.log
+          if grep -q -- '--- SKIP' mr-test.log; then
+            echo "::error::a multi-replica test was skipped"
+            exit 1
+          fi
+          test "$(grep -c -- '--- PASS' mr-test.log)" -ge 18
+
       # migrate-db end to end with the real binary (#106, M5): a SQLite pb_data is copied into a
       # fresh database of this server, and the same records are read back through the API of a
       # server that runs on CLAVIGER_DB_URL. The package tests of migrate-db (fixture, every fork
