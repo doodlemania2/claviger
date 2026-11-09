@@ -15,7 +15,7 @@ export default defineConfig({
     expect: { timeout: 10_000 },
     reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
     use: {
-        baseURL: `http://127.0.0.1:${PORT}`,
+        baseURL: `http://localhost:${PORT}`,
         trace: "retain-on-failure",
         screenshot: "only-on-failure",
         // pinned build, so the cached browser matches without a download

@@ -22,7 +22,8 @@ async function waitFor(url: string, ms = 60_000) {
 
 export default async function globalSetup() {
     const port = Number(process.env.E2E_PORT || 18090);
-    const base = `http://127.0.0.1:${port}`;
+    // "localhost", not 127.0.0.1: WebAuthn relying party ids must be domain names.
+    const base = `http://localhost:${port}`;
 
     mkdirSync(join(__dirname, ".bin"), { recursive: true });
     rmSync(runDir, { recursive: true, force: true });
@@ -80,6 +81,8 @@ export default async function globalSetup() {
     };
 
     await api("PATCH", "/api/settings", { meta: { appUrl: base } });
+    // passkeys are opt in per auth collection
+    await api("PATCH", "/api/collections/users", { webauthn: { enabled: true, discoverable: true } });
 
     // The shared end-user fixture used by the hosted pages tests.
     const user = { email: "alice@example.com", password: randomBytes(12).toString("hex") };
