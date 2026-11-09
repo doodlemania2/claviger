@@ -209,6 +209,10 @@ The KEK is the only way to read the encrypted values. Backups contain `data.db` 
 - Pruning a retired data key is final. A backup taken before the prune still holds the key, but also the rows of its time: restore the two together. Keep a backup from before you prune until you are satisfied with the rotation.
 - During a DEK rotation, a backup holds a mix of old and new keys; that is fine, all of them are in `_fieldKeys`.
 
+## Encrypting the backups too
+
+Field encryption protects individual values inside `data.db`. To encrypt the whole backup archive (database, uploaded files, settings) with the same key, switch on **Encrypt new backups**: see [Backup encryption](backup-encryption.md). Rotating the KEK affects old encrypted backups too: keep the previous key (`CLAVIGER_KEK_OLD`) for as long as you keep backups made under it.
+
 ## Deployment notes
 
 - Single replica / handover: nothing to change besides providing the variable to the container and the pre-flight step above. Provide the same variable to every command that opens the database (`superuser`, `migrate`, ...), since they bootstrap the app and fail closed too.
