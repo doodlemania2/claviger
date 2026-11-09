@@ -200,7 +200,7 @@ func (m *module) bindRoutes(se *core.ServeEvent) {
 	callback := func(e *core.RequestEvent) error {
 		req, err := m.store.requestByID(e.Request.FormValue("id"))
 		if err != nil || !m.checkBinding(e, req) {
-			return m.errorPage(e, http.StatusBadRequest, "This sign-in could not be resumed. Return to the app and start again.")
+			return m.errorPage(e, http.StatusBadRequest, "oidc.err.cannotResume")
 		}
 
 		return m.serveLibrary(e)

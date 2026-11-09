@@ -63,7 +63,7 @@ func (m *module) pageHeaders(e *core.RequestEvent, page string) {
 }
 
 var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
-<html lang="en">
+<html lang="{{.Text.Lang}}"{{.Text.Attrs}}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -71,35 +71,35 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
 <title>{{.Title}}</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/oidc/assets/oidc.css">
-</head>
+{{if .Script}}{{.Text.DataBlock}}{{end}}</head>
 <body>
 <main class="card" id="app" data-page="{{.Page}}" data-request="{{.RequestID}}" data-collection="{{.Collection}}">
 <h1>{{.Heading}}</h1>
 {{if .Message}}<p class="msg {{.MessageClass}}" role="alert">{{.Message}}</p>{{end}}
 {{if eq .Page "login"}}
-<p class="sub">to continue to <strong>{{.ClientName}}</strong></p>
+<p class="sub">{{.Text.HTML "oidc.login.continueToHtml" (.Text.Args "client" .ClientName)}}</p>
 <form id="pw" hidden>
-<label>Email or username<input name="identity" autocomplete="username webauthn" required></label>
-<label>Password<input name="password" type="password" autocomplete="current-password" required></label>
-<button type="submit">Sign in</button>
+<label>{{.Text.T "js.identityLabel"}}<input name="identity" autocomplete="username webauthn" required></label>
+<label>{{.Text.T "js.passwordLabel"}}<input name="password" type="password" autocomplete="current-password" required></label>
+<button type="submit">{{.Text.T "js.signIn"}}</button>
 </form>
 <form id="totp" hidden>
-<label>Authenticator code or backup code<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
-<button type="submit">Verify</button>
+<label>{{.Text.T "js.totpLabel"}}<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<button type="submit">{{.Text.T "js.verify"}}</button>
 </form>
 <div id="captchaBox" hidden></div>
 <div id="passkeyBox" hidden>
-<div class="or"><span>or</span></div>
-<button id="passkey" type="button" class="secondary">Sign in with a passkey</button>
+<div class="or"><span>{{.Text.T "js.or"}}</span></div>
+<button id="passkey" type="button" class="secondary">{{.Text.T "js.passkeySignIn"}}</button>
 </div>
 <p id="status" class="msg err" role="alert" hidden></p>
 {{end}}
 {{if eq .Page "consent"}}
-<p class="sub"><strong>{{.ClientName}}</strong> wants to access your account{{if .Account}} <span class="muted">({{.Account}})</span>{{end}}.</p>
+<p class="sub">{{.Text.HTML "oidc.consent.wantsHtml" (.Text.Args "client" .ClientName "account" .AccountHTML)}}</p>
 <ul class="scopes">{{range .Scopes}}<li><strong>{{.Label}}</strong><span>{{.Detail}}</span></li>{{end}}</ul>
 <div class="row">
-<button id="allow" type="button">Allow</button>
-<button id="deny" type="button" class="secondary">Cancel</button>
+<button id="allow" type="button">{{.Text.T "oidc.consent.allow"}}</button>
+<button id="deny" type="button" class="secondary">{{.Text.T "oidc.consent.cancel"}}</button>
 </div>
 <p id="status" class="msg err" role="alert" hidden></p>
 {{end}}
@@ -114,18 +114,36 @@ type pageData struct {
 	Title, Heading, Page, RequestID, Collection, ClientName, Account string
 	Message, MessageClass, Script                                    string
 	Scopes                                                           []scopeInfo
+
+	// fork-local (#97): the language of the page; render fills it in when the caller did not
+	Text        *apis.PageText
+	AccountHTML template.HTML
 }
 
 func (m *module) render(e *core.RequestEvent, status int, d pageData) error {
 	m.pageHeaders(e, d.Page)
+
+	if d.Text == nil {
+		d.Text = apis.NewPageText(e, "")
+	}
+
+	if d.Account != "" {
+		d.AccountHTML = template.HTML(` <span class="muted">(` + template.HTMLEscapeString(d.Account) + `)</span>`) //nolint:gosec // escaped
+	}
+
 	e.Response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	e.Response.WriteHeader(status)
 
 	return pageTemplate.Execute(e.Response, d)
 }
 
+// errorPage renders a refusal; message is a catalog key (text that is not a
+// key is shown as it is).
 func (m *module) errorPage(e *core.RequestEvent, status int, message string) error {
-	return m.render(e, status, pageData{Title: "Sign-in problem", Heading: "Sign-in problem", Page: "error", Message: message, MessageClass: "err"})
+	text := apis.NewPageText(e, "")
+	title := text.T("oidc.problem")
+
+	return m.render(e, status, pageData{Title: title, Heading: title, Page: "error", Message: text.T(message), MessageClass: "err", Text: text})
 }
 
 func (m *module) bindPages(se *core.ServeEvent) {
@@ -135,7 +153,12 @@ func (m *module) bindPages(se *core.ServeEvent) {
 	se.Router.POST(mountPath+"/consent", m.consentDecision)
 
 	se.Router.GET(mountPath+"/logged-out", func(e *core.RequestEvent) error {
-		return m.render(e, http.StatusOK, pageData{Title: "Signed out", Heading: "You are signed out", Page: "info", Message: "You can close this window.", MessageClass: "ok"})
+		text := apis.NewPageText(e, "")
+
+		return m.render(e, http.StatusOK, pageData{
+			Title: text.T("oidc.signedOut.title"), Heading: text.T("oidc.signedOut.heading"), Page: "info",
+			Message: text.T("oidc.signedOut.message"), MessageClass: "ok", Text: text,
+		})
 	})
 
 	asset := func(contentType, body string) func(e *core.RequestEvent) error {
@@ -221,21 +244,21 @@ func (m *module) loginPage(e *core.RequestEvent) error {
 
 	req, err := m.store.requestByID(id)
 	if err != nil || req.row.Status == statusDone || req.row.Status == statusDenied {
-		return m.errorPage(e, http.StatusBadRequest, "This sign-in link has expired. Return to the app and try again.")
+		return m.errorPage(e, http.StatusBadRequest, "oidc.err.linkExpired")
 	}
 
 	if !m.bind(e, req) {
-		return m.errorPage(e, http.StatusForbidden, "This sign-in was started in another browser. Return to the app and try again.")
+		return m.errorPage(e, http.StatusForbidden, "oidc.err.otherBrowser")
 	}
 
 	client, err := m.store.findClient(req.row.ClientId)
 	if err != nil {
-		return m.errorPage(e, http.StatusBadRequest, "This application is not available.")
+		return m.errorPage(e, http.StatusBadRequest, "oidc.err.appUnavailable")
 	}
 
 	col, err := client.collection()
 	if err != nil {
-		return m.errorPage(e, http.StatusBadRequest, "This application is not available.")
+		return m.errorPage(e, http.StatusBadRequest, "oidc.err.appUnavailable")
 	}
 
 	// a single sign-on session of this browser carries the request without credentials
@@ -263,9 +286,11 @@ func (m *module) loginPage(e *core.RequestEvent) error {
 		}
 	}
 
+	text := apis.NewPageText(e, "")
+
 	return m.render(e, http.StatusOK, pageData{
-		Title: "Sign in", Heading: "Sign in", Page: "login", RequestID: id,
-		Collection: col.Name, ClientName: client.Name, Script: mountPath + "/assets/login.js",
+		Title: text.T("js.signIn"), Heading: text.T("js.signIn"), Page: "login", RequestID: id,
+		Collection: col.Name, ClientName: client.Name, Script: mountPath + "/assets/login.js", Text: text,
 	})
 }
 
@@ -273,8 +298,10 @@ type finishBody struct {
 	AuthRequestID string `json:"authRequestID"`
 }
 
+// jsonError answers a page script; message is a catalog key (text that is not
+// a key is sent as it is).
 func jsonError(e *core.RequestEvent, status int, message string) error {
-	return e.JSON(status, map[string]any{"status": status, "message": message})
+	return e.JSON(status, map[string]any{"status": status, "message": apis.NewPageText(e, "").T(message)})
 }
 
 // loginFinish completes an authorize request with the Claviger token the
@@ -283,45 +310,45 @@ func jsonError(e *core.RequestEvent, status int, message string) error {
 func (m *module) loginFinish(e *core.RequestEvent) error {
 	var body finishBody
 	if err := e.BindBody(&body); err != nil {
-		return jsonError(e, http.StatusBadRequest, "Invalid request.")
+		return jsonError(e, http.StatusBadRequest, "oidc.err.invalidRequest")
 	}
 
 	req, err := m.store.requestByID(body.AuthRequestID)
 	if err != nil || (req.row.Status != statusPending && req.row.Status != statusAuthenticated) {
-		return jsonError(e, http.StatusBadRequest, "This sign-in has expired. Return to the app and try again.")
+		return jsonError(e, http.StatusBadRequest, "oidc.err.signInExpired")
 	}
 
 	if !m.checkBinding(e, req) {
-		return jsonError(e, http.StatusForbidden, "This sign-in was started in another browser.")
+		return jsonError(e, http.StatusForbidden, "oidc.err.signInOtherBrowser")
 	}
 
 	client, err := m.store.findClient(req.row.ClientId)
 	if err != nil {
-		return jsonError(e, http.StatusBadRequest, "This application is not available.")
+		return jsonError(e, http.StatusBadRequest, "oidc.err.appUnavailable")
 	}
 
 	col, err := client.collection()
 	if err != nil {
-		return jsonError(e, http.StatusBadRequest, "This application is not available.")
+		return jsonError(e, http.StatusBadRequest, "oidc.err.appUnavailable")
 	}
 
 	if e.Auth == nil || e.Auth.Collection().Id != col.Id {
-		return jsonError(e, http.StatusUnauthorized, "Sign in with an account of the right type.")
+		return jsonError(e, http.StatusUnauthorized, "oidc.err.wrongAccountType")
 	}
 
 	// only a real, fresh sign-in counts: not an API key, not a token that
 	// predates sessions, not one that has been lying around
 	sid := apis.SessionIdFromRequest(e)
 	if sid == "" {
-		return jsonError(e, http.StatusUnauthorized, "A fresh sign-in is required.")
+		return jsonError(e, http.StatusUnauthorized, "oidc.err.freshRequired")
 	}
 
 	if core.IsBanned(m.app, e.Auth) {
-		return jsonError(e, http.StatusForbidden, "This account cannot sign in.")
+		return jsonError(e, http.StatusForbidden, "oidc.err.cannotSignIn")
 	}
 
 	if err := m.store.orgBoundOK(client, e.Auth); err != nil {
-		return jsonError(e, http.StatusForbidden, "Your account is not a member of the organization this application belongs to.")
+		return jsonError(e, http.StatusForbidden, "oidc.err.notOrgMember")
 	}
 
 	var sess struct {
@@ -331,12 +358,12 @@ func (m *module) loginFinish(e *core.RequestEvent) error {
 	if err := m.app.ConcurrentDB().NewQuery(
 		"SELECT [[created]], [[authMethod]] FROM {{" + core.CollectionNameSessions + "}} WHERE [[id]] = {:sid}",
 	).Bind(dbx.Params{"sid": sid}).One(&sess); err != nil {
-		return jsonError(e, http.StatusUnauthorized, "A fresh sign-in is required.")
+		return jsonError(e, http.StatusUnauthorized, "oidc.err.freshRequired")
 	}
 
 	authTime := sess.Created.Time()
 	if time.Since(authTime) > maxSignInAge {
-		return jsonError(e, http.StatusUnauthorized, "That sign-in is too old. Sign in again.")
+		return jsonError(e, http.StatusUnauthorized, "oidc.err.tooOld")
 	}
 
 	// max_age (and prompt=login, which the library turns into max_age=0) asks
@@ -345,7 +372,7 @@ func (m *module) loginFinish(e *core.RequestEvent) error {
 	startedAt := req.row.Expires.Time().Add(-authRequestLifetime)
 	if req.d.MaxAge != nil && authTime.Before(startedAt.Add(-time.Second)) &&
 		time.Since(authTime) > time.Duration(*req.d.MaxAge)*time.Second {
-		return jsonError(e, http.StatusUnauthorized, "Sign in again.")
+		return jsonError(e, http.StatusUnauthorized, "oidc.err.signInAgain")
 	}
 
 	amr, acr := authnContext(sess.AuthMethod, apis.HasFreshPasskey(e, maxSignInAge))
@@ -355,10 +382,10 @@ func (m *module) loginFinish(e *core.RequestEvent) error {
 	target, err := m.advance(req, client, col, e.Auth, auth)
 	if err != nil {
 		if errors.Is(err, errRequestGone) {
-			return jsonError(e, http.StatusBadRequest, "This sign-in has expired. Return to the app and try again.")
+			return jsonError(e, http.StatusBadRequest, "oidc.err.signInExpired")
 		}
 
-		return jsonError(e, http.StatusInternalServerError, "Failed to check the consent.")
+		return jsonError(e, http.StatusInternalServerError, "oidc.err.consentCheckFailed")
 	}
 
 	// this sign-in is now the browser's single sign-on session
@@ -529,12 +556,10 @@ func (m *module) saveConsent(account *core.Record, clientID string, scopes []str
 	return m.app.SaveWithContext(ctx, rec)
 }
 
-var scopeDescriptions = map[string]scopeInfo{
-	oidc.ScopeOpenID:        {"Sign you in", "Confirm who you are to this application."},
-	oidc.ScopeProfile:       {"Your profile", "Your name and username."},
-	oidc.ScopeEmail:         {"Your email address", "Your email address and whether it is verified."},
-	oidc.ScopeOfflineAccess: {"Stay signed in", "Keep access when you are not using the application."},
-	ScopeOrgs:               {"Your organizations", "The organizations you belong to and your role in each."},
+// scopeDescriptions lists the scopes the consent page can describe; the texts
+// are the catalog keys "oidc.scope.<scope>.label" and ".detail".
+var scopeDescriptions = map[string]struct{}{
+	oidc.ScopeOpenID: {}, oidc.ScopeProfile: {}, oidc.ScopeEmail: {}, oidc.ScopeOfflineAccess: {}, ScopeOrgs: {},
 }
 
 func (m *module) consentPage(e *core.RequestEvent) error {
@@ -542,19 +567,22 @@ func (m *module) consentPage(e *core.RequestEvent) error {
 
 	req, err := m.store.requestByID(id)
 	if err != nil || req.row.Status != statusAuthenticated || !m.checkBinding(e, req) {
-		return m.errorPage(e, http.StatusBadRequest, "This request has expired. Return to the app and try again.")
+		return m.errorPage(e, http.StatusBadRequest, "oidc.err.requestExpired")
 	}
 
 	client, err := m.store.findClient(req.row.ClientId)
 	if err != nil {
-		return m.errorPage(e, http.StatusBadRequest, "This application is not available.")
+		return m.errorPage(e, http.StatusBadRequest, "oidc.err.appUnavailable")
 	}
 
 	account, _ := m.app.FindRecordById(req.row.CollectionRef, req.row.Subject)
 
+	// the account's own language preference comes before Accept-Language
+	text := apis.NewPageText(e, core.RecordLanguage(m.app, account))
+
 	d := pageData{
-		Title: "Allow access", Heading: "Allow access?", Page: "consent", RequestID: id,
-		ClientName: client.Name, Script: mountPath + "/assets/consent.js",
+		Title: text.T("oidc.consent.title"), Heading: text.T("oidc.consent.heading"), Page: "consent", RequestID: id,
+		ClientName: client.Name, Script: mountPath + "/assets/consent.js", Text: text,
 	}
 
 	if account != nil {
@@ -562,9 +590,9 @@ func (m *module) consentPage(e *core.RequestEvent) error {
 	}
 
 	for _, sc := range req.d.Scopes {
-		info, ok := scopeDescriptions[sc]
-		if !ok {
-			info = scopeInfo{Label: sc, Detail: "Access requested by the application."}
+		info := scopeInfo{Label: sc, Detail: text.T("oidc.scope.unknown")}
+		if _, known := scopeDescriptions[sc]; known {
+			info = scopeInfo{Label: text.T("oidc.scope." + sc + ".label"), Detail: text.T("oidc.scope." + sc + ".detail")}
 		}
 
 		d.Scopes = append(d.Scopes, info)
@@ -581,23 +609,23 @@ type consentBody struct {
 func (m *module) consentDecision(e *core.RequestEvent) error {
 	var body consentBody
 	if err := e.BindBody(&body); err != nil {
-		return jsonError(e, http.StatusBadRequest, "Invalid request.")
+		return jsonError(e, http.StatusBadRequest, "oidc.err.invalidRequest")
 	}
 
 	req, err := m.store.requestByID(body.AuthRequestID)
 	if err != nil || req.row.Status != statusAuthenticated {
-		return jsonError(e, http.StatusBadRequest, "This request has expired. Return to the app and try again.")
+		return jsonError(e, http.StatusBadRequest, "oidc.err.requestExpired")
 	}
 
 	if !m.checkBinding(e, req) {
-		return jsonError(e, http.StatusForbidden, "This request was started in another browser.")
+		return jsonError(e, http.StatusForbidden, "oidc.err.requestOtherBrowser")
 	}
 
 	if !body.Allow {
 		if _, err := exec(m.app,
 			"UPDATE {{"+core.CollectionNameOAuthRequests+"}} SET [[status]] = {:denied} WHERE [[requestId]] = {:id} AND [[status]] = {:authn}",
 			dbx.Params{"denied": statusDenied, "id": req.row.RequestId, "authn": statusAuthenticated}); err != nil {
-			return jsonError(e, http.StatusInternalServerError, "Failed to record the decision.")
+			return jsonError(e, http.StatusInternalServerError, "oidc.err.decisionFailed")
 		}
 
 		return e.JSON(http.StatusOK, map[string]any{"redirect": denyRedirect(req)})
@@ -605,18 +633,18 @@ func (m *module) consentDecision(e *core.RequestEvent) error {
 
 	account, err := m.app.FindRecordById(req.row.CollectionRef, req.row.Subject)
 	if err != nil {
-		return jsonError(e, http.StatusBadRequest, "This request has expired.")
+		return jsonError(e, http.StatusBadRequest, "oidc.err.requestExpiredShort")
 	}
 
 	if err := m.saveConsent(account, req.row.ClientId, req.d.Scopes, e.RealIP()); err != nil {
-		return jsonError(e, http.StatusInternalServerError, "Failed to save the consent.")
+		return jsonError(e, http.StatusInternalServerError, "oidc.err.consentSaveFailed")
 	}
 
 	n, err := exec(m.app,
 		"UPDATE {{"+core.CollectionNameOAuthRequests+"}} SET [[status]] = {:done} WHERE [[requestId]] = {:id} AND [[status]] = {:authn}",
 		dbx.Params{"done": statusDone, "id": req.row.RequestId, "authn": statusAuthenticated})
 	if err != nil || n != 1 {
-		return jsonError(e, http.StatusBadRequest, "This request has expired.")
+		return jsonError(e, http.StatusBadRequest, "oidc.err.requestExpiredShort")
 	}
 
 	return e.JSON(http.StatusOK, map[string]any{"redirect": mountPath + "/authorize/callback?id=" + url.QueryEscape(req.row.RequestId)})
