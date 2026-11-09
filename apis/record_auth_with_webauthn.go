@@ -461,11 +461,21 @@ func storeWebAuthnSessionFor(app core.App, session *webauthn.SessionData, record
 
 	token := security.RandomString(32)
 	app.Store().Set(webauthnSessionPrefix+token, entry)
+	putSharedWebAuthnSession(app, token, entry) // several replicas (#106 M7)
 	return token
 }
 
 // retrieveWebAuthnSession retrieves and validates a session from the app store.
 func retrieveWebAuthnSession(app core.App, token string) (*webauthnSessionEntry, error) {
+	// several replicas (#106 M7): the database decides, so a ceremony begun on
+	// one replica finishes on another, and a token is used once
+	if entry, shared := getSharedWebAuthnSession(app, token); shared {
+		if entry == nil {
+			return nil, errors.New("missing or expired webauthn session")
+		}
+		return entry, nil
+	}
+
 	raw := app.Store().Get(webauthnSessionPrefix + token)
 	if raw == nil {
 		return nil, errors.New("missing or expired webauthn session")
@@ -486,6 +496,7 @@ func retrieveWebAuthnSession(app core.App, token string) (*webauthnSessionEntry,
 
 // deleteWebAuthnSession removes a session from the app store.
 func deleteWebAuthnSession(app core.App, token string) {
+	deleteSharedWebAuthnSession(app, token) // several replicas (#106 M7)
 	app.Store().Remove(webauthnSessionPrefix + token)
 }
 

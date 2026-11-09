@@ -50,6 +50,14 @@ func oauth2SubscriptionRedirect(e *core.RequestEvent) error {
 
 	client, err := e.App.SubscriptionsBroker().ClientById(data.State)
 	if err != nil || client.IsDiscarded() || !client.HasSubscription(oauth2SubscriptionTopic) {
+		// several replicas (#106 M7): the realtime connection may be on another one
+		if encoded, mErr := json.Marshal(data); mErr == nil && forwardOAuth2Redirect(e.App, data, encoded, e.RealIP()) {
+			if data.Error != "" || data.Code == "" {
+				return failureRedirect(e)
+			}
+			return successRedirect(e)
+		}
+
 		e.App.Logger().Debug("Missing or invalid OAuth2 subscription client", "error", err, "clientId", data.State)
 		return failureRedirect(e)
 	}

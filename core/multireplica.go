@@ -191,6 +191,19 @@ func (app *BaseApp) initReplicaBus() error {
 		}
 	})
 
+	// the shared tables are short lived scratch space: one replica trims them
+	app.cron.Add("__clvReplicaPurge__", "*/10 * * * *", func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+
+		if err := replica.PurgeRateLimits(ctx, sqlDB); err != nil {
+			app.Logger().Warn("Failed to purge the shared rate limits", "error", err)
+		}
+		if err := replica.PurgeCeremonies(ctx, sqlDB); err != nil {
+			app.Logger().Warn("Failed to purge the shared WebAuthn sessions", "error", err)
+		}
+	})
+
 	bus.Start(10 * time.Second)
 
 	return nil
