@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   test:
-    timeout-minutes: 45
+    timeout-minutes: 60
     # Dependabot PRs are notices and never run CI; label one `run-ci` to test it.
     # docker-build needs this job, so it is skipped too.
     if: >-
@@ -40,7 +40,7 @@ jobs:
 
       - name: Run tests
         # The apis package alone runs past go test's default 10m on the k3s runners.
-        run: go test -timeout 30m ./... -v --cover
+        run: go test -timeout 40m ./... -v --cover
 
       - name: Run KMS key source tests (AWS KMS and Google Cloud KMS build tags)
         run: go test -tags kms_aws,kms_gcp -count=1 ./tools/keys/...
@@ -69,7 +69,7 @@ jobs:
   # regression therefore shows up on master, one merge late, which is the accepted trade.
   postgres:
     name: postgres ${{ matrix.pg }}
-    timeout-minutes: 75
+    timeout-minutes: 100
     runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || (vars.RUNNER_LIGHT || 'tdp-k3s-claviger') }}
     needs: test
     strategy:

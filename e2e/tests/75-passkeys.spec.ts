@@ -79,8 +79,10 @@ test("Passkeys page: register a passkey after a password sign-in, then sign in w
     const { credentials } = await cdp.send("WebAuthn.getCredentials", { authenticatorId });
     expect(credentials).toHaveLength(1);
     expect(credentials[0].isResidentCredential).toBe(true);
-    const stored = await api("GET", "/api/collections/_webauthnCredentials/records");
-    expect(stored.items).toHaveLength(1);
+    // the authenticator holds the credential before the browser has sent the finish request,
+    // so wait for the server to store it (on a loaded runner that takes a moment)
+    await expect(page.getByText("Passkey registered.")).toBeVisible();
+    await expect.poll(async () => (await api("GET", "/api/collections/_webauthnCredentials/records")).items.length, { timeout: 15_000 }).toBe(1);
 
     // sign out and sign in with the passkey alone
     await page.locator("#linkLogout").click();

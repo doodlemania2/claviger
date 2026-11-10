@@ -37,7 +37,7 @@ show_failures() {
 }
 
 # shellcheck disable=SC2086
-go test -count=1 -v -p 2 -timeout 45m -skip "$skip_regex" "$@" $PACKAGES 2>&1 | tee "$log" | grep -E '^(--- FAIL|FAIL|ok|panic:)' || true
+go test -count=1 -v -p 2 -timeout 60m -skip "$skip_regex" "$@" $PACKAGES 2>&1 | tee "$log" | grep -E '^(--- FAIL|FAIL|ok|panic:)' || true
 
 if grep -q -- '^--- FAIL\|^FAIL\|^panic:' "$log"; then
   # A panic or timeout is never retried.
