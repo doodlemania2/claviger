@@ -453,12 +453,20 @@ func (app *BaseApp) registerDataRequestHooks() {
 	app.OnServe().Bind(&hook.Handler[*ServeEvent]{
 		Id: "__pbDataExportResume__",
 		Func: func(e *ServeEvent) error {
-			// a crash left rows running: run them again from the start
-			_, err := e.App.NonconcurrentDB().Update(
-				CollectionNameDataRequests,
-				dbx.Params{"state": DataRequestStateQueued},
-				dbx.HashExp{"type": DataRequestTypeExport, "state": DataRequestStateRunning},
-			).Execute()
+			// a crash left rows running: run them again from the start.
+			// (Checked with a read first: an UPDATE that matches nothing
+			// would reset the connection's changes() counter, which the
+			// SQL endpoint reports for DDL on the modernc driver.)
+			running, err := e.App.CountRecords(CollectionNameDataRequests, dbx.HashExp{
+				"type": DataRequestTypeExport, "state": DataRequestStateRunning,
+			})
+			if err == nil && running > 0 {
+				_, err = e.App.NonconcurrentDB().Update(
+					CollectionNameDataRequests,
+					dbx.Params{"state": DataRequestStateQueued},
+					dbx.HashExp{"type": DataRequestTypeExport, "state": DataRequestStateRunning},
+				).Execute()
+			}
 			if err == nil {
 				StartDataExports(e.App)
 			}
