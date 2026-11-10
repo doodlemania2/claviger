@@ -51,6 +51,7 @@ func bindOrgsApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 	bindInvitationsApi(app, rg, sub) // fork-local (#79b)
 	bindOrgTagsApi(sub)              // fork-local (#79b)
 	bindSCIMTokensApi(sub)           // fork-local (#79c)
+	bindCredentialsApi(sub)          // fork-local (#81)
 }
 
 func orgHTTP(e *core.RequestEvent, err error) error {
@@ -258,7 +259,24 @@ func orgRuleTemplates(e *core.RequestEvent) error {
 		field = "org"
 	}
 
-	return e.JSON(http.StatusOK, map[string]any{"field": field, "presets": core.OrgRulePresets(field)})
+	out := map[string]any{"field": field, "presets": core.OrgRulePresets(field)}
+
+	// #81: ?credentialType=<key>[&credentialScope=org|ancestors|any][&credentialMaxDepth=N]
+	// adds the "members, with a current credential" rule set
+	if key := e.Request.URL.Query().Get("credentialType"); key != "" {
+		depth, _ := strconv.Atoi(e.Request.URL.Query().Get("credentialMaxDepth"))
+
+		set, err := core.CredentialRuleSet(field, core.CredentialRuleOpts{
+			Type: key, Scope: e.Request.URL.Query().Get("credentialScope"), MaxDepth: depth,
+		})
+		if err != nil {
+			return e.BadRequestError(err.Error(), nil)
+		}
+
+		out["credentialGated"] = set
+	}
+
+	return e.JSON(http.StatusOK, out)
 }
 
 func orgsView(e *core.RequestEvent) error {

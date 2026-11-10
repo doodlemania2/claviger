@@ -83,6 +83,11 @@ var webhookEventTypes = map[string]string{
 	AuditActionCreate: "record.created",
 	AuditActionUpdate: "record.updated",
 	AuditActionDelete: "record.deleted",
+
+	// #81: the lifecycle job of safeguarding credentials (passage of time, not
+	// a record change)
+	AuditActionCredentialExpiring: "credential.expiring",
+	AuditActionCredentialLapsed:   "credential.lapsed",
 }
 
 // -------------------------------------------------------------------
@@ -284,9 +289,9 @@ func ValidateWebhookEvents(events []string) error {
 			return fmt.Errorf("invalid event filter %q (expected \"*\", \"collection:action\" or \"collection:*\")", ev)
 		}
 		switch action {
-		case "*", AuditActionCreate, AuditActionUpdate, AuditActionDelete:
+		case "*", AuditActionCreate, AuditActionUpdate, AuditActionDelete, AuditActionCredentialExpiring, AuditActionCredentialLapsed:
 		default:
-			return fmt.Errorf("invalid action in event filter %q (expected create, update, delete or *)", ev)
+			return fmt.Errorf("invalid action in event filter %q (expected create, update, delete, credential_expiring, credential_lapsed or *)", ev)
 		}
 	}
 	return nil
