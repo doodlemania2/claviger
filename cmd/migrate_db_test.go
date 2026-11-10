@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/doodlemania2/claviger/apis"
 	"github.com/doodlemania2/claviger/core"
 	"github.com/doodlemania2/claviger/tests"
@@ -820,6 +821,15 @@ func populateForkDB(t *testing.T, app core.App) {
 		}
 	}
 	t.Logf("%d filler rows", filled)
+
+	// filler data requests must not be picked up by the export worker: it runs
+	// separately on each side of the comparison and would change state/error
+	if _, err := app.DB().Update(core.CollectionNameDataRequests,
+		dbx.Params{"state": core.DataRequestStateCancelled},
+		dbx.In("state", core.DataRequestStateQueued, core.DataRequestStateRunning),
+	).Execute(); err != nil {
+		t.Fatal(err)
+	}
 
 	// every fork table must now hold data
 	for _, name := range []string{
