@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/doodlemania2/claviger/core"
@@ -245,6 +246,15 @@ func TestOrgSlugAndMembershipUniqueness(t *testing.T) {
 	bad.Set("slug", "Bad Slug")
 	if err := f.app.Save(bad); err == nil {
 		t.Fatal("expected the invalid slug to be refused")
+	}
+
+	for _, slug := range core.OrgReservedSlugs {
+		reserved := core.NewRecord(f.orgs)
+		reserved.Set("name", "Reserved")
+		reserved.Set("slug", slug)
+		if err := f.app.Save(reserved); err == nil || !strings.Contains(err.Error(), "reserved") {
+			t.Fatalf("expected the reserved slug %q to be refused, got %v", slug, err)
+		}
 	}
 
 	again := core.NewRecord(f.members)
