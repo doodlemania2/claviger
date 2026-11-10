@@ -80,7 +80,8 @@ func apiKeyForbidden(e *core.RequestEvent) error {
 //     change). Expanded relations need read on their collections too.
 //   - /api/files/{c}/...: collection read. /api/files/token is denied.
 //   - /api/health: always allowed.
-//   - API key management, field key maintenance, auth flows (auth-*, request-*, confirm-*,
+//   - API key management, field key maintenance, the personal data export
+//     (/api/me, /api/gdpr), auth flows (auth-*, request-*, confirm-*,
 //     impersonate, oauth2-redirect): always denied, "*" included.
 //   - realtime, batch and every other route: "*" only. Superuser-only routes
 //     additionally need a superuser owner, so a key reaches them only when it
@@ -103,7 +104,7 @@ func enforceAPIKeyScopes(e *core.RequestEvent, key *core.APIKeyInfo) error {
 	switch segs[0] {
 	case "health":
 		return nil
-	case "apikeys", "sessions", "bans", "oauth2-redirect", "field-keys":
+	case "apikeys", "sessions", "bans", "oauth2-redirect", "field-keys", "me", "gdpr": // me, gdpr: #88 data export
 		return apiKeyForbidden(e)
 	case "files":
 		if len(segs) < 2 || segs[1] == "token" {
