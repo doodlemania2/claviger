@@ -99,6 +99,9 @@ var builtinDataMap = []DataMapEntry{
 	{Collection: CollectionNameFieldKeys, Treatment: DataMapTreatmentNone,
 		Note: "Wrapped data keys of encrypted fields. Key material, not personal data."},
 
+	{Collection: CollectionNameDataRequests, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"recordRef"},
+		Note: "Export: the request, its state and dates (never the export file). The export ZIP is deleted with the row."},
+
 	// The auxiliary database table _logs (request logs, IP and user id) is
 	// not a collection. It is covered by the log retention setting
 	// (logs.maxDays), not by a row here.
