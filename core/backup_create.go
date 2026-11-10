@@ -90,6 +90,12 @@ func (app *BaseApp) CreateBackup(ctx context.Context, name string) error {
 		lostFoundDirName,
 	}
 
+	// fork (#88, 88-1): the personal data exports are never part of a backup
+	// (spec 10.10); a restored backup must not bring back an expired export
+	if c, err := app.FindCachedCollectionByNameOrId(CollectionNameDataRequests); err == nil {
+		event.Exclude = append(event.Exclude, filepath.Join(LocalStorageDirName, c.Id))
+	}
+
 	return app.OnBackupCreate().Trigger(event, func(e *BackupEvent) error {
 		if e.Name == "" {
 			e.Name = generateBackupName(e.App, "pb_backup_")

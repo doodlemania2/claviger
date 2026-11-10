@@ -47,7 +47,7 @@ func TestCollectionsList(t *testing.T) {
 			ExpectedContent: []string{
 				`"page":1`,
 				`"perPage":30`,
-				`"totalItems":41`,
+				`"totalItems":42`,
 				`"items":[{`,
 				`"name":"` + core.CollectionNameSuperusers + `"`,
 				`"name":"` + core.CollectionNameAuthOrigins + `"`,
@@ -79,20 +79,20 @@ func TestCollectionsList(t *testing.T) {
 		{
 			Name:   "authorized as superuser + paging and sorting",
 			Method: http.MethodGet,
-			URL:    "/api/collections?page=5&perPage=2&sort=-created",
+			URL:    "/api/collections?page=6&perPage=2&sort=-created",
 			Headers: map[string]string{
 				"Authorization": "eyJhbGciOiJIUzI1NiJ9.eyJpZCI6InN5d2JoZWNuaDQ2cmhtMCIsInR5cGUiOiJhdXRoIiwiY29sbGVjdGlvbklkIjoicGJjXzMxNDI2MzU4MjMiLCJleHAiOjI1MjQ2MDQ0NjEsInJlZnJlc2hhYmxlIjp0cnVlfQ.UXgO3j-0BumcugrFjbd7j0M4MQvbrLggLlcu_YNGjoY",
 			},
 			ExpectedStatus: 200,
 			ExpectedContent: []string{
-				`"page":5`,
+				`"page":6`,
 				`"perPage":2`,
-				`"totalItems":41`,
+				`"totalItems":42`,
 				`"items":[{`,
 				// newest first (_dataMap #88, _orgClosure #84 and _oauthDeviceCodes are on pages 1-2): _scimGroups and _scimTokens (#79c) are page 1, _invitations (#79b) and an
 				// org collection (#79a) page 2, the other two org collections page 3 (same migration,
-				// order not asserted), and page 5 holds _fieldKeys second (_dataMap #88 and _orgClosure #84
-				// each shift the list by one)
+				// order not asserted), and page 6 holds _fieldKeys second (_dataRequests #88 88-1, _dataMap #88
+				// and _orgClosure #84 each shift the list by one)
 				`"name":"` + core.CollectionNameFieldKeys + `"`,
 			},
 			ExpectedEvents: map[string]int{

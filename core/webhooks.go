@@ -85,6 +85,14 @@ var webhookEventTypes = map[string]string{
 	AuditActionDelete: "record.deleted",
 }
 
+// webhookEntryEventTypes are the audit actions of entries that are not record
+// changes (no record) but are delivered anyway. The payload carries the
+// entry's meta (ids and counts, never content) as "record". Fork-local
+// (#88, 88-1): the personal data export.
+var webhookEntryEventTypes = map[string]string{
+	AuditActionDataExport: "gdpr.export",
+}
+
 // -------------------------------------------------------------------
 // secrets and signing (Standard Webhooks, https://www.standardwebhooks.com)
 // -------------------------------------------------------------------
@@ -285,6 +293,7 @@ func ValidateWebhookEvents(events []string) error {
 		}
 		switch action {
 		case "*", AuditActionCreate, AuditActionUpdate, AuditActionDelete:
+		case AuditActionDataExport: // fork-local (#88): see webhookEntryEventTypes
 		default:
 			return fmt.Errorf("invalid action in event filter %q (expected create, update, delete or *)", ev)
 		}
@@ -571,8 +580,11 @@ func (m *webhookManager) onAuditEntry(e *AuditEntryEvent) error {
 		return err
 	}
 
-	if e.Record == nil || e.Entry == nil {
+	if e.Entry == nil {
 		return nil
+	}
+	if e.Record == nil {
+		return m.onEntryEvent(e)
 	}
 	if _, skip := webhookExcludedCollections[e.Entry.CollectionName]; skip {
 		return nil
@@ -617,6 +629,70 @@ func (m *webhookManager) onAuditEntry(e *AuditEntryEvent) error {
 		d.SetRaw("updated", types.NowDateTime())
 		d.Set("webhook", ep.id)
 		d.Set("eventType", webhookEventTypes[e.Entry.Action])
+		d.Set("payload", types.JSONRaw(body))
+		d.Set("status", WebhookDeliveryPending)
+		d.Set("attempts", 0)
+		next, _ := types.ParseDateTime(now)
+		d.Set("nextAttempt", next)
+		d.Set("attemptLog", []any{})
+		if err := txApp.SaveNoValidate(d); err != nil {
+			return fmt.Errorf("webhook enqueue: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// onEntryEvent enqueues the deliveries of an entry that is not a record change
+// (see webhookEntryEventTypes). Only successful runs are delivered.
+func (m *webhookManager) onEntryEvent(e *AuditEntryEvent) error {
+	eventType, ok := webhookEntryEventTypes[e.Entry.Action]
+	if !ok {
+		return nil
+	}
+	if status, _ := e.Entry.Meta["status"].(string); status != "ok" && status != "partial" {
+		return nil
+	}
+
+	var matched []*webhookEndpoint
+	for _, ep := range m.enabledEndpoints() {
+		if webhookEventMatches(ep.events, e.Entry.CollectionName, e.Entry.Action) {
+			matched = append(matched, ep)
+		}
+	}
+	if len(matched) == 0 {
+		return nil
+	}
+
+	now := m.now()
+	body, err := json.Marshal(WebhookPayload{
+		Type:      eventType,
+		Timestamp: now.UTC().Format(time.RFC3339),
+		Data: WebhookPayloadData{
+			Collection:    e.Entry.CollectionName,
+			RecordId:      e.Entry.RecordId,
+			Actor:         e.Entry.Actor,
+			ChangedFields: []string{},
+			Record:        e.Entry.Meta,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("webhook payload: %w", err)
+	}
+
+	collection, err := e.App.FindCachedCollectionByNameOrId(CollectionNameWebhookDeliveries)
+	if err != nil {
+		return nil // not migrated yet
+	}
+
+	txApp := e.App.UnsafeWithoutHooks()
+	for _, ep := range matched {
+		d := NewRecord(collection)
+		d.Id = GenerateDefaultRandomId()
+		d.SetRaw("created", types.NowDateTime())
+		d.SetRaw("updated", types.NowDateTime())
+		d.Set("webhook", ep.id)
+		d.Set("eventType", eventType)
 		d.Set("payload", types.JSONRaw(body))
 		d.Set("status", WebhookDeliveryPending)
 		d.Set("attempts", 0)
