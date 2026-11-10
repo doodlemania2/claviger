@@ -38,6 +38,9 @@ const (
 	OrgDefaultMaxDepth = 4
 	OrgHardMaxDepth    = 8
 
+	// OrgKindMaxLength is the longest `kind` label of an org.
+	OrgKindMaxLength = 64
+
 	// AuditActionOrgReparent is the audit action of a re-parent (counts only).
 	AuditActionOrgReparent = "org_reparent"
 )
