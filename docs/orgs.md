@@ -2,6 +2,8 @@
 
 Organizations (#79a) let one Claviger instance serve several groups (parishes, ministries, tenants), each with its own members and roles. With no organization created nothing changes: no extra checks run, and the new collections stay empty.
 
+Safeguarding credentials that gate access on an expiring background check or training are described in [`docs/credentials.md`](credentials.md).
+
 Design notes and the evidence behind the rules are in `docs/specs/79-orgs-roles-scim.md`. Invitations (79b, below) and the hosted org page ship with this release. SCIM provisioning (79c) is described in [`docs/scim.md`](scim.md).
 
 ## Model
@@ -10,7 +12,7 @@ Hidden system collections:
 
 | Collection | Holds |
 |---|---|
-| `_orgs` | `name`, `slug` (unique, `^[a-z0-9-]{2,64}$`), `parent` (optional), `archived`, `settings` |
+| `_orgs` | `name`, `slug` (unique, `^[a-z0-9-]{2,64}$`), `parent` (optional), `kind` (optional label, see [Hierarchy](#hierarchy)), `archived`, `settings` |
 | `_orgMembers` | `org`, `user`, `role`, `status`, `tags`, `source`; unique on `(org, user)` |
 | `_orgRoles` | free-form labels (`org`, `name`, `description`), the targets of `_orgMembers.tags` |
 | `_orgClosure` | derived ancestor/descendant pairs of the org tree (#84), see [Hierarchy](#hierarchy). Holds no personal data |
@@ -40,7 +42,16 @@ A diocese, deanery, parish and ministry can be nested: `_orgs.parent` is the sou
 - **Kept consistent by hooks** on `_orgs`, in the same transaction as the org write: create adds the self row and one row per ancestor, a re-parent replaces the rows of the moved subtree (and writes one `org_reparent` audit entry with counts), delete removes the org's rows. The rows are written with plain SQL, so they cause no record hooks, realtime events or per-row audit entries.
 - **Existing deployments.** The migration fills the table from the current `parent` values.
 - **Repair.** After a restore or a manual database edit run `claviger orgs closure-repair` (`--dry-run` to only report). It rebuilds the table from `parent` in one transaction and prints how many rows were missing, extra or had the wrong depth; a second run reports nothing. The server also logs a warning at startup when the table differs from the tree. In Go: `core.RepairOrgClosure(app, dryRun)`.
+- **Kind.** `_orgs.kind` is an optional free-text label of at most 64 characters (`region`, `congregation`, `ministry`, ...). The vocabulary is yours: the engine never reads it and no rule depends on it, so there is no fixed list to configure. It is only shown and grouped by (tree view, status counts). The admin UI suggests the labels already in use (`GET /api/orgs/config` returns them), which keeps spelling consistent without a settings list to maintain. Owners and admins of an org set its kind (`PATCH /api/orgs/{id}` with `{"kind": "..."}`; an empty string clears it); `POST /api/orgs` accepts it too.
 - **No inheritance, no upward visibility.** Being admin of a diocese does not make you a member of its parishes, and a parish member never sees the diocese's records. Oversight is **opt-in per collection**: the presets stay org-only, and pastoral data never gets an ancestor rule.
+
+### Admin UI
+
+`Organizations` in the admin UI (superusers) shows the orgs as a tree: parents and children indented with expand and collapse (and "Expand all" / "Collapse all"), the kind label of each org, and "under <parent>" below a child. An org whose parent is not in the list (archived, or filtered out) is shown at the top level. The line above the table shows the effective maximum depth, read-only: it comes from `CLAVIGER_ORGS_MAX_DEPTH` on the server (`GET /api/orgs/config`).
+
+- **Move** (the arrow icon in a row) re-parents an org together with its subtree. A cycle or a tree deeper than the limit is refused with the server's message in the dialog and nothing changes. The new-org and edit dialogs carry the parent (new only) and kind.
+- **Status** of the selected org is shown under the table: level, levels below, orgs below by kind, members active and suspended. Counts only.
+- **Rule snippets** ("Rule templates for org-owned collections" then "Rule snippets") generate the oversight rule for a relation field (pick a collection that has a relation to `_orgs`, or type the field), roles at the ancestor, ancestors within N levels and an optional tag. The text is rendered by the server from `core.OrgAncestorRule` (`GET /api/orgs/ancestor-rule`), so it cannot drift from what the Go helpers and tests use; the write rules shown are the org-only ones of the "members" preset.
 
 ### Oversight rules
 
@@ -87,6 +98,9 @@ All routes need authentication. API keys can read but never change organizations
 | `GET /api/orgs/{id}` | members | id or slug. Non-members get 404 |
 | `PATCH /api/orgs/{id}` | owner/admin (name, slug), owner (archive/restore), superuser (parent) | |
 | `DELETE /api/orgs/{id}` | owner or superuser | archived orgs only, body `{"confirm": "<slug>"}`. Refused while child orgs or org-owned records exist |
+| `GET /api/orgs/config` | superuser | `{maxDepth, defaultDepth, hardMaxDepth, envVar, kinds}`: the effective depth limit and the kinds in use |
+| `GET /api/orgs/ancestor-rule` | superuser | `?field=org&roles=admin,owner&maxDepth=2&tag=x`: `{field, rule, ruleSet}` with the text of `core.OrgAncestorRule` and `core.OrgOversightRuleSet`. 400 for an invalid role, depth or tag |
+| `GET /api/orgs/{id}/status` | owner/admin, superuser | counts only, see below |
 | `GET /api/orgs/{id}/members` | members | owners/admins also see suspended members and emails |
 | `POST /api/orgs/{id}/members` | owner/admin | `{user, role?, status?, tags?}`; `user` is an email or id of an existing account |
 | `PATCH /api/orgs/{id}/members/{member}` | owner/admin | `{role?, status?, tags?}` |
@@ -96,6 +110,18 @@ All routes need authentication. API keys can read but never change organizations
 | `DELETE /api/orgs/{id}/tags/{tag}` | owner/admin | the tag leaves every member that carried it |
 | invitation routes | see [Invitations](#invitations) | |
 | `GET /api/orgs/rule-templates` | superuser | the presets below, for a relation field named `?field=` (default `org`) |
+
+### Org status (counts only)
+
+`GET /api/orgs/{id}/status` answers owners and admins of the org and superusers (members and viewers get 403, non-members 404 like every org route):
+
+```json
+{"level": 1, "height": 1, "maxDepth": 4, "descendants": 3, "archivedDescendants": 0,
+ "descendantsByKind": [{"kind": "congregation", "count": 2}, {"kind": "", "count": 1}],
+ "members": {"active": 4, "suspended": 1}}
+```
+
+`level` is the org's place in its tree (a root is 1), `height` the number of levels below it, `descendants` the live orgs below it (`kind: ""` groups those without a label), `members` the memberships of this org itself (not of its descendants). It contains no names, emails or ids, and an admin sees only their own org: being admin of a parish says nothing about the diocese above it.
 
 Guards, enforced for every caller and backed by model hooks for any app-level write:
 

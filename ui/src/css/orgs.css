@@ -7,6 +7,14 @@
     tr.active {
         background: var(--secondaryAltColor, rgba(127, 127, 127, 0.1));
     }
+    .org-toggle-spacer {
+        display: inline-block;
+        width: 30px;
+        flex: 0 0 auto;
+    }
+    .org-tree-cell {
+        align-items: center;
+    }
     .org-rule {
         margin-bottom: 6px;
     }

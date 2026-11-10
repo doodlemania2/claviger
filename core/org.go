@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
 	"github.com/doodlemania2/claviger/tools/hook"
 )
 
@@ -130,6 +131,10 @@ func OrgUserCollection(app App) (*Collection, error) {
 	return app.FindCachedCollectionByNameOrId(rel.CollectionId)
 }
 
+// OrgReservedSlugs are the literal path segments under /api/orgs; an org with
+// one of them as its slug could not be reached by slug.
+var OrgReservedSlugs = []string{"config", "ancestor-rule", "rule-templates"}
+
 // FindOrg loads an organization by id or slug.
 func FindOrg(app App, idOrSlug string) (*Record, error) {
 	if idOrSlug == "" {
@@ -238,6 +243,18 @@ func DeleteOrg(app App, ctx context.Context, org *Record) error {
 // ---- hooks ---------------------------------------------------------------
 
 func (app *BaseApp) registerOrgHooks() {
+	app.OnRecordValidate(CollectionNameOrgs).Bind(&hook.Handler[*RecordEvent]{
+		Id: "__pbOrgSlugReserved__",
+		Func: func(e *RecordEvent) error {
+			if slug := e.Record.GetString("slug"); slices.Contains(OrgReservedSlugs, slug) {
+				return validation.Errors{"slug": validation.NewError("validation_slug_reserved",
+					"This slug is reserved by an /api/orgs route; choose another.")}
+			}
+
+			return e.Next()
+		},
+	})
+
 	app.OnRecordValidate(CollectionNameOrgMembers).Bind(&hook.Handler[*RecordEvent]{
 		Id: "__pbOrgMemberValidate__",
 		Func: func(e *RecordEvent) error {

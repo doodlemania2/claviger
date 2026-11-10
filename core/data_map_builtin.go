@@ -62,6 +62,13 @@ var builtinDataMap = []DataMapEntry{
 	{Collection: CollectionNameSCIMGroups, Treatment: DataMapTreatmentNone,
 		Note: "Group names and member links as sent by the identity provider; the members are already covered by " + CollectionNameOrgMembers + "."},
 
+	// ---- safeguarding credentials (#81) ----
+	{Collection: CollectionNameCredentials, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"user"},
+		PersonalFields: []string{"issuer", "document", "revokedReason", "recordedBy", "verifiedBy"}, AgeOutBasis: "expires",
+		Note: "Safeguarding credential attestations (#81). Export: all fields, including the revoke reason. Erased after the credential retention period set by the congregation."},
+	{Collection: CollectionNameCredentialTypes, Treatment: DataMapTreatmentNone,
+		Note: "Credential type definitions (#81). Not about a person."},
+
 	// ---- OpenID Connect provider ----
 	{Collection: CollectionNameOAuthConsents, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"recordRef"},
 		Note: "Export: client, scopes, dates."},
@@ -91,6 +98,9 @@ var builtinDataMap = []DataMapEntry{
 		Note:           "Subject is found inside the payload (delivery events name the record). Deliveries whose payload names the subject are deleted."},
 	{Collection: CollectionNameFieldKeys, Treatment: DataMapTreatmentNone,
 		Note: "Wrapped data keys of encrypted fields. Key material, not personal data."},
+
+	{Collection: CollectionNameDataRequests, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"recordRef"},
+		Note: "Export: the request, its state and dates (never the export file). The export ZIP is deleted with the row."},
 
 	// The auxiliary database table _logs (request logs, IP and user id) is
 	// not a collection. It is covered by the log retention setting

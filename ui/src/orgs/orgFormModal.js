@@ -4,7 +4,8 @@
 window.app = window.app || {};
 window.app.modals = window.app.modals || {};
 
-// fields: [{ id, label, type: "text"|"select"|"checkbox", options: [], value, hint, required }]
+// fields: [{ id, label, type: "text"|"select"|"checkbox", options: [] (strings or {value, label}),
+//            suggestions: [] (text fields: datalist), value, hint, required }]
 // settings: { title, submitLabel, fields, onsubmit(values) -> Promise, onsave }
 window.app.modals.openOrgForm = function(settings) {
     const modal = orgFormModal(settings);
@@ -38,7 +39,11 @@ function orgFormModal(settings) {
         if (f.type == "select") {
             return t.select(
                 { id, onchange: (e) => values[f.id] = e.target.value },
-                f.options.map((o) => t.option({ value: o, selected: () => values[f.id] == o }, o)),
+                f.options.map((o) => {
+                    const value = typeof o == "object" ? o.value : o;
+                    const label = typeof o == "object" ? o.label : o;
+                    return t.option({ value, selected: () => values[f.id] == value }, label);
+                }),
             );
         }
         if (f.type == "checkbox") {
@@ -50,14 +55,22 @@ function orgFormModal(settings) {
                 onchange: (e) => values[f.id] = e.target.checked,
             });
         }
-        return t.input({
+        const el = t.input({
             type: "text",
             id,
             required: !!f.required,
             placeholder: f.placeholder || "",
+            "html-list": f.suggestions?.length ? id + "_list" : undefined,
             value: () => values[f.id],
             oninput: (e) => values[f.id] = e.target.value,
         });
+        if (!f.suggestions?.length) {
+            return el;
+        }
+        return [
+            el,
+            t.datalist({ id: id + "_list" }, f.suggestions.map((v) => t.option({ value: v }))),
+        ];
     }
 
     return t.div(

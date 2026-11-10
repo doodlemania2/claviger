@@ -25,7 +25,7 @@ Treatments:
 - `export`: exported on request, left alone on erasure.
 - `none`: reviewed, and holds no personal data. This is different from "forgotten": the check below treats `none` as mapped.
 
-Export covers the subject's own rows only. Other people's data is left out.
+Export covers the subject's own rows only. Other people's data is left out. How the export works, and what each built-in collection exports, is in [data-export.md](data-export.md).
 
 ## Built-in entries
 
@@ -54,6 +54,8 @@ A new system collection needs a data map entry in the same change. A test fails 
    It does nothing when `_dataMap` does not exist yet, and updates the built-in row when it does.
 
 The test is `TestDataMapCoversSystemCollections` in `core/data_map_test.go`. It bootstraps a fresh app and fails with the name of any system collection that has no entry.
+
+3. Add the export allowlist line in `core/data_export_fields.go` (see [data-export.md](data-export.md)): the columns that may leave the system when the person asks for their data. `TestDataExportBuiltinAllowlistIsComplete` fails until it exists.
 
 ## App collections
 
