@@ -663,7 +663,7 @@ func TestDataExportRequestJobAuditWebhookDownloadAndExpiry(t *testing.T) {
 	if req.GetDateTime("dueAt").IsZero() || req.GetDateTime("expires").IsZero() || req.GetString("file") == "" {
 		t.Fatalf("incomplete request row")
 	}
-	if d := req.GetDateTime("expires").Time().Sub(time.Now()); d < 6*24*time.Hour || d > 8*24*time.Hour {
+	if d := time.Until(req.GetDateTime("expires").Time()); d < 6*24*time.Hour || d > 8*24*time.Hour {
 		t.Errorf("default retention is 7 days, got %v", d)
 	}
 

@@ -188,11 +188,10 @@ func dataExportSelfList(e *core.RequestEvent) error {
 }
 
 func dataExportAdminList(e *core.RequestEvent) error {
-	var exp dbx.Expression = dbx.NewExp("1=1")
 	if s := e.Request.URL.Query().Get("subject"); s != "" {
-		exp = dbx.HashExp{"recordRef": s}
+		return listDataExports(e, dbx.HashExp{"recordRef": s})
 	}
-	return listDataExports(e, exp)
+	return listDataExports(e, dbx.NewExp("1=1"))
 }
 
 func listDataExports(e *core.RequestEvent, exp dbx.Expression) error {
@@ -231,7 +230,7 @@ func findDataExport(e *core.RequestEvent, auth *core.Record) (*core.Record, erro
 		return nil, e.NotFoundError("", nil)
 	}
 	if !auth.IsSuperuser() &&
-		!(req.GetString("requestedBy") == auth.Id && req.GetString("requestedByCollection") == auth.Collection().Id) {
+		(req.GetString("requestedBy") != auth.Id || req.GetString("requestedByCollection") != auth.Collection().Id) {
 		return nil, e.NotFoundError("", nil)
 	}
 
