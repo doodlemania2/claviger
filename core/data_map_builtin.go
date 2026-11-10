@@ -62,6 +62,13 @@ var builtinDataMap = []DataMapEntry{
 	{Collection: CollectionNameSCIMGroups, Treatment: DataMapTreatmentNone,
 		Note: "Group names and member links as sent by the identity provider; the members are already covered by " + CollectionNameOrgMembers + "."},
 
+	// ---- safeguarding credentials (#81) ----
+	{Collection: CollectionNameCredentials, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"user"},
+		PersonalFields: []string{"issuer", "document", "revokedReason", "recordedBy", "verifiedBy"}, AgeOutBasis: "expires",
+		Note: "Safeguarding credential attestations (#81). Export: all fields, including the revoke reason. Erased after the credential retention period set by the congregation."},
+	{Collection: CollectionNameCredentialTypes, Treatment: DataMapTreatmentNone,
+		Note: "Credential type definitions (#81). Not about a person."},
+
 	// ---- OpenID Connect provider ----
 	{Collection: CollectionNameOAuthConsents, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"recordRef"},
 		Note: "Export: client, scopes, dates."},
