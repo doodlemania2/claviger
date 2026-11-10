@@ -16,6 +16,9 @@ import (
 //	GET    /api/orgs                                 orgs of the caller (all for superusers)
 //	POST   /api/orgs                                 create
 //	GET    /api/orgs/rule-templates                  ready-made API rules for org-owned collections (superusers)
+//	GET    /api/orgs/config                          effective depth limits and kinds in use (superusers, #84)
+//	GET    /api/orgs/ancestor-rule                   oversight rule text for a field (superusers, #84)
+//	GET    /api/orgs/{id}/status                     counts only: levels, descendants by kind, members (owner/admin, #84)
 //	GET    /api/orgs/{id}                            one org (id or slug)
 //	PATCH  /api/orgs/{id}                            name, slug, parent (superuser), archived
 //	DELETE /api/orgs/{id}                            permanent delete; archived orgs only, body {"confirm": "<slug>"}
@@ -35,7 +38,10 @@ func bindOrgsApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 	sub.GET("", orgsList)
 	sub.POST("", orgsCreate)
 	sub.GET("/rule-templates", orgRuleTemplates).Bind(RequireSuperuserAuth())
+	sub.GET("/config", orgsConfig).Bind(RequireSuperuserAuth())
+	sub.GET("/ancestor-rule", orgAncestorRule).Bind(RequireSuperuserAuth())
 	sub.GET("/{id}", orgsView)
+	sub.GET("/{id}/status", orgStatus)
 	sub.PATCH("/{id}", orgsUpdate)
 	sub.DELETE("/{id}", orgsDelete)
 	sub.GET("/{id}/members", orgMembersList)
@@ -105,6 +111,7 @@ func orgJSON(org *core.Record, role string) map[string]any {
 		"name":     org.GetString("name"),
 		"slug":     org.GetString("slug"),
 		"parent":   org.GetString("parent"),
+		"kind":     org.GetString("kind"),
 		"archived": org.GetBool("archived"),
 		"created":  org.GetDateTime("created"),
 		"updated":  org.GetDateTime("updated"),
@@ -214,6 +221,7 @@ type orgCreateBody struct {
 	Name   string `json:"name" form:"name"`
 	Slug   string `json:"slug" form:"slug"`
 	Parent string `json:"parent" form:"parent"`
+	Kind   string `json:"kind" form:"kind"`
 	Owner  string `json:"owner" form:"owner"`
 }
 
@@ -230,7 +238,7 @@ func orgsCreate(e *core.RequestEvent) error {
 	actor := &core.OrgActor{Record: e.Auth, Superuser: e.Auth.IsSuperuser()}
 
 	org, err := core.CreateOrg(e.App, auditContext(e), actor, core.OrgInput{
-		Name: body.Name, Slug: body.Slug, Parent: body.Parent, Owner: body.Owner,
+		Name: body.Name, Slug: body.Slug, Parent: body.Parent, Kind: body.Kind, Owner: body.Owner,
 	})
 	if err != nil {
 		return orgHTTP(e, err)
@@ -266,6 +274,7 @@ type orgUpdateBody struct {
 	Name     *string `json:"name" form:"name"`
 	Slug     *string `json:"slug" form:"slug"`
 	Parent   *string `json:"parent" form:"parent"`
+	Kind     *string `json:"kind" form:"kind"`
 	Archived *bool   `json:"archived" form:"archived"`
 }
 
@@ -281,7 +290,7 @@ func orgsUpdate(e *core.RequestEvent) error {
 	}
 
 	if err := core.UpdateOrg(e.App, auditContext(e), actor, org, core.OrgUpdate{
-		Name: body.Name, Slug: body.Slug, Parent: body.Parent, Archived: body.Archived,
+		Name: body.Name, Slug: body.Slug, Parent: body.Parent, Kind: body.Kind, Archived: body.Archived,
 	}); err != nil {
 		return orgHTTP(e, err)
 	}

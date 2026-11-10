@@ -382,6 +382,8 @@ type OrgInput struct {
 	Name   string
 	Slug   string
 	Parent string
+	// Kind is the optional free-text label (#84), e.g. "region".
+	Kind string
 	// Owner is the user (id or email) who becomes the owner. For a regular
 	// user creating an org it is always the user themselves.
 	Owner string
@@ -448,6 +450,14 @@ func CreateOrg(app App, ctx context.Context, actor *OrgActor, in OrgInput) (*Rec
 	org.Set("slug", in.Slug)
 	org.Set("parent", in.Parent)
 
+	if in.Kind, err = normalizeOrgKind(in.Kind); err != nil {
+		return nil, err
+	}
+
+	if col.Fields.GetByName("kind") != nil {
+		org.Set("kind", in.Kind)
+	}
+
 	txErr := app.RunInTransaction(func(txApp App) error {
 		if err := saveOrgRecord(txApp, ctx, org); err != nil {
 			return err
@@ -483,10 +493,11 @@ type OrgUpdate struct {
 	Name     *string
 	Slug     *string
 	Parent   *string
+	Kind     *string
 	Archived *bool
 }
 
-// UpdateOrg changes an organization. Name and slug need an owner or admin,
+// UpdateOrg changes an organization. Name, slug and kind need an owner or admin,
 // archiving and unarchiving an owner, the parent a superuser.
 func UpdateOrg(app App, ctx context.Context, actor *OrgActor, org *Record, in OrgUpdate) error {
 	archivedNow := org.GetBool("archived")
@@ -530,6 +541,17 @@ func UpdateOrg(app App, ctx context.Context, actor *OrgActor, org *Record, in Or
 
 	if in.Parent != nil {
 		org.Set("parent", *in.Parent)
+	}
+
+	if in.Kind != nil {
+		kind, err := normalizeOrgKind(*in.Kind)
+		if err != nil {
+			return err
+		}
+
+		if org.Collection().Fields.GetByName("kind") != nil {
+			org.Set("kind", kind)
+		}
 	}
 
 	if in.Archived != nil {

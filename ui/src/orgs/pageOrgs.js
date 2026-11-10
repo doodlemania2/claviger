@@ -23,6 +23,13 @@ export function pageOrgs(route) {
         isLoading: false,
         isLoadingMembers: false,
         showRules: false,
+        // #84: tree view, hierarchy config, status counts, rule snippets
+        collapsed: {},
+        config: null,
+        status: null,
+        statusError: "",
+        collections: [],
+        snippet: { collection: "", field: "org", roles: [], maxDepth: "", tag: "", result: null, error: "" },
     });
 
     const active = () => state.orgs.find((o) => o.id == state.activeId);
@@ -223,6 +230,282 @@ export function pageOrgs(route) {
         }
     }
 
+    // ---- #84: hierarchy ---------------------------------------------------
+
+    async function loadConfig() {
+        try {
+            state.config = await app.pb.send("/api/orgs/config");
+        } catch (err) {
+            if (!err.isAbort) {
+                app.checkApiError(err);
+            }
+        }
+    }
+
+    async function loadStatus() {
+        const org = active();
+        state.status = null;
+        state.statusError = "";
+        if (!org) {
+            return;
+        }
+        try {
+            const res = await app.pb.send(`/api/orgs/${org.id}/status`);
+            if (org.id == state.activeId) {
+                state.status = res;
+            }
+        } catch (err) {
+            if (!err.isAbort) {
+                state.statusError = err?.response?.message || "The status could not be loaded.";
+            }
+        }
+    }
+
+    // the loaded orgs as visible tree rows: [{ org, level, hasKids }]
+    function treeRows() {
+        const byId = new Map(state.orgs.map((o) => [o.id, o]));
+        const kids = {};
+        const roots = [];
+        for (const o of state.orgs) {
+            if (o.parent && byId.has(o.parent)) {
+                (kids[o.parent] ||= []).push(o);
+            } else {
+                roots.push(o);
+            }
+        }
+        const rows = [];
+        const seen = new Set();
+        const walk = (list, level) => {
+            for (const o of list) {
+                if (seen.has(o.id)) {
+                    continue;
+                }
+                seen.add(o.id);
+                const children = kids[o.id] || [];
+                rows.push({ org: o, level, hasKids: children.length > 0 });
+                if (!state.collapsed[o.id]) {
+                    walk(children, level + 1);
+                }
+            }
+        };
+        walk(roots, 0);
+        return rows;
+    }
+
+    function orgName(id) {
+        return state.orgs.find((o) => o.id == id)?.name || id;
+    }
+
+    function toggleCollapsed(o) {
+        state.collapsed = { ...state.collapsed, [o.id]: !state.collapsed[o.id] };
+    }
+
+    function setAllCollapsed(v) {
+        state.collapsed = v ? Object.fromEntries(state.orgs.map((o) => [o.id, true])) : {};
+    }
+
+    function kindSuggestions() {
+        const all = new Set(state.config?.kinds || []);
+        state.orgs.forEach((o) => o.kind && all.add(o.kind));
+        return [...all].sort();
+    }
+
+    // options for a parent select: every loaded org, indented by its place in the tree
+    function parentOptions(exceptId) {
+        const opts = [{ value: "", label: "(none, a top level organization)" }];
+        const byId = new Map(state.orgs.map((o) => [o.id, o]));
+        const levelOf = (o) => {
+            let n = 0;
+            for (let cur = o; cur?.parent && byId.has(cur.parent) && n < 10; cur = byId.get(cur.parent)) {
+                n++;
+            }
+            return n;
+        };
+        for (const o of state.orgs) {
+            if (o.id != exceptId) {
+                opts.push({ value: o.id, label: "  ".repeat(levelOf(o)) + o.name + (o.kind ? ` (${o.kind})` : "") });
+            }
+        }
+        return opts;
+    }
+
+    function moveOrg(org) {
+        const max = state.config?.maxDepth;
+        app.modals.openOrgForm({
+            title: `Move ${org.name}`,
+            submitLabel: "Move",
+            fields: [{
+                id: "parent",
+                label: "New parent",
+                type: "select",
+                options: parentOptions(org.id),
+                value: org.parent || "",
+                hint: `The whole subtree moves with it. A tree can have at most ${max ?? "a configured number of"} levels, and an organization cannot sit below itself.`,
+            }],
+            onsubmit: (v) => app.pb.send(`/api/orgs/${org.id}`, { method: "PATCH", body: { parent: v.parent } }),
+            onsave: () => loadOrgs().then(loadStatus).then(loadConfig),
+        });
+    }
+
+    // ---- #84: rule snippets -----------------------------------------------
+
+    async function loadSnippetCollections() {
+        try {
+            const cols = await app.pb.collections.getFullList({ requestKey: "orgs_snippet_cols" });
+            const orgsCol = cols.find((c) => c.name == "_orgs");
+            state.collections = cols
+                .filter((c) => !c.system || c.name == "users")
+                .map((c) => ({
+                    name: c.name,
+                    fields: (c.fields || []).filter((f) => f.type == "relation" && orgsCol && f.collectionId == orgsCol.id).map((f) => f.name),
+                }))
+                .filter((c) => c.fields.length);
+        } catch (err) {
+            if (!err.isAbort) {
+                console.warn("orgs: failed to load collections", err);
+            }
+        }
+    }
+
+    async function refreshSnippet() {
+        const sn = state.snippet;
+        sn.error = "";
+        try {
+            sn.result = await app.pb.send("/api/orgs/ancestor-rule", {
+                query: { field: sn.field, roles: sn.roles.join(","), maxDepth: sn.maxDepth, tag: sn.tag },
+                requestKey: "orgs_snippet",
+            });
+        } catch (err) {
+            if (!err.isAbort) {
+                sn.result = null;
+                sn.error = err?.response?.message || "The rule could not be generated.";
+            }
+        }
+    }
+
+    function toggleRole(role, on) {
+        const sn = state.snippet;
+        sn.roles = ROLES.filter((r) => (r == role ? on : sn.roles.includes(r)));
+        refreshSnippet();
+    }
+
+    function snippetPanel() {
+        const sn = state.snippet;
+        return t.div(
+            { className: "org-snippets m-t-10", id: "org_snippets" },
+            t.p(
+                { className: "txt-hint" },
+                "Oversight lets members of an organization's ancestors read its records. It is opt-in per collection: ",
+                "paste the List and View rules below only where higher organizations should see the data, never on pastoral data. ",
+                "Writes stay with the record's own organization. The text comes from the same code the server uses.",
+            ),
+            t.div(
+                { className: "grid" },
+                t.div(
+                    { className: "col-lg-4" },
+                    t.div(
+                        { className: "field" },
+                        t.select(
+                            {
+                                id: "snippet_collection",
+                                onchange: (e) => {
+                                    const [coll, field] = e.target.value.split("|");
+                                    sn.collection = coll || "";
+                                    if (field) {
+                                        sn.field = field;
+                                    }
+                                    refreshSnippet();
+                                },
+                            },
+                            t.option({ value: "" }, "(choose a collection, or type a field below)"),
+                            () => state.collections.flatMap((c) => c.fields.map((f) => t.option({ value: `${c.name}|${f}` }, `${c.name} (${f})`))),
+                        ),
+                        t.label({ htmlFor: "snippet_collection" }, "Collection"),
+                    ),
+                ),
+                t.div(
+                    { className: "col-lg-4" },
+                    t.div(
+                        { className: "field" },
+                        t.input({
+                            type: "text",
+                            id: "snippet_field",
+                            value: () => sn.field,
+                            oninput: (e) => {
+                                sn.field = e.target.value.trim();
+                                refreshSnippet();
+                            },
+                        }),
+                        t.label({ htmlFor: "snippet_field" }, "Relation field to the organization"),
+                    ),
+                ),
+                t.div(
+                    { className: "col-lg-2" },
+                    t.div(
+                        { className: "field" },
+                        t.select(
+                            {
+                                id: "snippet_depth",
+                                onchange: (e) => {
+                                    sn.maxDepth = e.target.value;
+                                    refreshSnippet();
+                                },
+                            },
+                            t.option({ value: "" }, "any level"),
+                            [1, 2, 3, 4, 5, 6, 7, 8].map((n) => t.option({ value: String(n) }, `${n} up`)),
+                        ),
+                        t.label({ htmlFor: "snippet_depth" }, "Ancestors within"),
+                    ),
+                ),
+                t.div(
+                    { className: "col-lg-2" },
+                    t.div(
+                        { className: "field" },
+                        t.input({
+                            type: "text",
+                            id: "snippet_tag",
+                            value: () => sn.tag,
+                            oninput: (e) => {
+                                sn.tag = e.target.value.trim();
+                                refreshSnippet();
+                            },
+                        }),
+                        t.label({ htmlFor: "snippet_tag" }, "Tag (optional)"),
+                    ),
+                ),
+            ),
+            t.div(
+                { className: "inline-flex gap-sm m-b-10" },
+                t.span({ className: "txt-hint txt-sm" }, "Roles at the ancestor (none ticked = any role):"),
+                ROLES.map((r) =>
+                    t.div(
+                        { className: "field inline" },
+                        t.input({
+                            type: "checkbox",
+                            id: "snippet_role_" + r,
+                            className: "switch",
+                            checked: () => sn.roles.includes(r),
+                            onchange: (e) => toggleRole(r, e.target.checked),
+                        }),
+                        t.label({ htmlFor: "snippet_role_" + r }, r),
+                    )
+                ),
+            ),
+            () => sn.error ? t.div({ className: "alert danger", id: "snippet_error" }, sn.error) : null,
+            () =>
+                sn.result
+                    ? t.div(
+                        { id: "snippet_result" },
+                        t.div({ className: "txt-bold" }, () => sn.collection ? `Rules for ${sn.collection}` : "Rules"),
+                        ruleBlock("List rule and View rule", sn.result.rule),
+                        ruleBlock("Create rule (the record's own organization)", sn.result.ruleSet.createRule),
+                        ruleBlock("Update rule", sn.result.ruleSet.updateRule),
+                        ruleBlock("Delete rule", sn.result.ruleSet.deleteRule),
+                    )
+                    : null,
+        );
+    }
+
     function newOrg() {
         app.modals.openOrgForm({
             title: "New organization",
@@ -231,10 +514,11 @@ export function pageOrgs(route) {
                 { id: "name", label: "Name", required: true },
                 { id: "slug", label: "Slug", hint: "Lowercase letters, digits and dashes. Derived from the name when empty." },
                 { id: "owner", label: "Owner (email or user id)", hint: "Optional. Without an owner only superusers can manage the organization." },
-                { id: "parent", label: "Parent organization id", hint: "Optional. One level of hierarchy." },
+                { id: "parent", label: "Parent organization", type: "select", options: parentOptions(""), value: "", hint: "Optional. A tree can have at most the number of levels shown above." },
+                { id: "kind", label: "Kind", suggestions: kindSuggestions(), hint: "Optional free label such as region, congregation or ministry. Pick your own vocabulary." },
             ],
             onsubmit: (v) => app.pb.send("/api/orgs", { method: "POST", body: v }),
-            onsave: () => loadOrgs(),
+            onsave: () => loadOrgs().then(loadStatus).then(loadConfig),
         });
     }
 
@@ -244,9 +528,10 @@ export function pageOrgs(route) {
             fields: [
                 { id: "name", label: "Name", value: org.name, required: true },
                 { id: "slug", label: "Slug", value: org.slug, required: true },
+                { id: "kind", label: "Kind", value: org.kind || "", suggestions: kindSuggestions(), hint: "Optional free label. Empty clears it." },
             ],
             onsubmit: (v) => app.pb.send(`/api/orgs/${org.id}`, { method: "PATCH", body: v }),
-            onsave: () => loadOrgs(),
+            onsave: () => loadOrgs().then(loadStatus).then(loadConfig),
         });
     }
 
@@ -360,18 +645,24 @@ export function pageOrgs(route) {
             pbEvent: "pageOrgs",
             className: "page page-orgs",
             onmount() {
-                loadOrgs().then(loadMembers).then(loadInvitations).then(loadScim);
+                loadConfig();
+                loadOrgs().then(loadMembers).then(loadInvitations).then(loadScim).then(loadStatus);
                 watchers.push(
                     watch(() => state.activeId, () => {
                         app.utils.replaceHashQueryParams({ org: state.activeId });
                         loadMembers();
                         loadInvitations();
                         loadScim();
+                        loadStatus();
                     }),
                     watch(() => state.showArchived, () => loadOrgs()),
                     watch(() => state.showRules, (v) => {
                         if (v && !state.presets.length) {
                             loadPresets();
+                        }
+                        if (v) {
+                            loadSnippetCollections();
+                            refreshSnippet();
                         }
                     }),
                 );
@@ -408,6 +699,18 @@ export function pageOrgs(route) {
             ),
             t.div(
                 { className: "page-table-wrapper" },
+                t.div(
+                    { className: "txt-hint txt-sm m-b-10", id: "orgs_depth", hidden: () => !state.config },
+                    () =>
+                        state.config
+                            ? `Maximum tree depth: ${state.config.maxDepth} levels (a top level organization is level 1). Set by ${state.config.envVar} on the server: default ${state.config.defaultDepth}, hard cap ${state.config.hardMaxDepth}. Read-only here.`
+                            : "",
+                ),
+                t.div(
+                    { className: "inline-flex gap-xs m-b-10" },
+                    t.button({ type: "button", className: "btn sm secondary", onclick: () => setAllCollapsed(false) }, "Expand all"),
+                    t.button({ type: "button", className: "btn sm secondary", onclick: () => setAllCollapsed(true) }, "Collapse all"),
+                ),
                 t.table(
                     { className: "orgs-table" },
                     t.thead(
@@ -415,6 +718,7 @@ export function pageOrgs(route) {
                         t.tr(
                             null,
                             t.th(null, "Name"),
+                            t.th(null, "Kind"),
                             t.th(null, "Slug"),
                             t.th(null, "State"),
                             t.th({ className: "col-meta" }, "Actions"),
@@ -436,13 +740,41 @@ export function pageOrgs(route) {
                             );
                         }
 
-                        return state.orgs.map((o) =>
+                        return treeRows().map(({ org: o, level, hasKids }) =>
                             t.tr(
                                 {
                                     className: () => `handle ${state.activeId == o.id ? "active" : ""}`,
                                     onclick: () => state.activeId = o.id,
+                                    "html-data-org-id": o.id,
+                                    "html-data-level": String(level + 1),
                                 },
-                                t.td(null, t.div({ className: "txt-bold" }, o.name), o.parent ? t.div({ className: "txt-hint txt-sm" }, "child of " + o.parent) : null),
+                                t.td(
+                                    null,
+                                    t.div(
+                                        { className: "inline-flex gap-xs org-tree-cell", style: `padding-left:${level * 22}px` },
+                                        hasKids
+                                            ? t.button(
+                                                {
+                                                    type: "button",
+                                                    className: "btn sm transparent circle org-toggle",
+                                                    ariaLabel: (state.collapsed[o.id] ? "Expand " : "Collapse ") + o.name,
+                                                    ariaExpanded: () => String(!state.collapsed[o.id]),
+                                                    onclick: (e) => {
+                                                        e.stopPropagation();
+                                                        toggleCollapsed(o);
+                                                    },
+                                                },
+                                                t.i({ className: state.collapsed[o.id] ? "ri-arrow-right-s-line" : "ri-arrow-down-s-line", ariaHidden: true }),
+                                            )
+                                            : t.span({ className: "org-toggle-spacer" }),
+                                        t.div(
+                                            null,
+                                            t.div({ className: "txt-bold" }, o.name),
+                                            o.parent ? t.div({ className: "txt-hint txt-sm" }, "under " + orgName(o.parent)) : null,
+                                        ),
+                                    ),
+                                ),
+                                t.td(null, o.kind ? t.span({ className: "label sm" }, o.kind) : t.span({ className: "txt-hint" }, "-")),
                                 t.td(null, o.slug),
                                 t.td(null, t.span({ className: `label sm ${o.archived ? "" : "success"}` }, o.archived ? "archived" : "active")),
                                 t.td(
@@ -450,6 +782,7 @@ export function pageOrgs(route) {
                                     t.div(
                                         { className: "inline-flex gap-xs" },
                                         btn("ri-pencil-line", "Edit", () => renameOrg(o)),
+                                        btn("ri-corner-down-right-line", "Move", () => moveOrg(o)),
                                         btn(
                                             o.archived ? "ri-inbox-unarchive-line" : "ri-archive-line",
                                             o.archived ? "Restore" : "Archive",
@@ -461,6 +794,28 @@ export function pageOrgs(route) {
                             )
                         );
                     }),
+                ),
+                t.div(
+                    { className: "org-status m-t-10", id: "org_status", hidden: () => !active() },
+                    () => {
+                        if (state.statusError) {
+                            return t.div({ className: "txt-hint txt-sm" }, state.statusError);
+                        }
+                        const st = state.status;
+                        if (!st) {
+                            return null;
+                        }
+                        const kinds = st.descendantsByKind.map((k) => `${k.count} ${k.kind || "without a kind"}`).join(", ");
+                        return t.div(
+                            { className: "txt-sm" },
+                            t.span({ className: "txt-bold" }, `Status of ${active()?.name}: `),
+                            `level ${st.level} of ${st.maxDepth}, ${st.height} ${st.height == 1 ? "level" : "levels"} below. `,
+                            `${st.descendants} ${st.descendants == 1 ? "organization" : "organizations"} below`,
+                            kinds ? ` (${kinds})` : "",
+                            st.archivedDescendants ? `, ${st.archivedDescendants} archived` : "",
+                            `. Members: ${st.members.active} active, ${st.members.suspended} suspended.`,
+                        );
+                    },
                 ),
                 t.div(
                     { className: "flex m-t-20 m-b-10" },
@@ -653,6 +1008,8 @@ export function pageOrgs(route) {
                         t.span({ className: "txt" }, () => state.showRules ? "Hide rule templates" : "Rule templates for org-owned collections"),
                     ),
                 ),
+                () => state.showRules ? t.h6({ className: "m-t-20" }, "Rule snippets: oversight by ancestor organizations") : null,
+                () => state.showRules ? snippetPanel() : null,
                 () => {
                     if (!state.showRules) {
                         return null;
