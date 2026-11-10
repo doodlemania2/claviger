@@ -44,6 +44,8 @@ or `"*:<action>"`. Internal collections `_auditLog`, `_webhooks` and
 `_externalAuths` and `_webauthnCredentials` changes (account linking, passkeys
 added/removed) are delivered.
 
+Two more actions exist for safeguarding credentials (`docs/credentials.md`): `credential_expiring` and `credential_lapsed`, delivered as the event types `credential.expiring` and `credential.lapsed` (filter `_credentials:credential_lapsed`, `_credentials:*` or `*:credential_lapsed`). They come from the daily credential job, because a lapse is a passage of time and not a record change.
+
 ### URL rules
 
 `https` only. `http://localhost`, `http://127.0.0.1` and `http://[::1]` are
