@@ -44,6 +44,83 @@ test("Orgs: create an org and invite someone in the admin UI", async ({ admin })
     await smtp.waitFor((m) => m.to.includes("carol@example.com"));
 });
 
+test("Orgs: tree view, kind labels, re-parenting with cycle and depth errors, status and rule snippets (#84)", async ({ admin, problems }) => {
+    // the refused cycle and depth moves are answered with a 400 on purpose
+    problems.ignore(/status of 400/);
+    const org = (slug: string) => api("GET", `/api/orgs/${slug}`);
+    const region = await api("POST", "/api/orgs", { name: "E2E Region", slug: "e2e-region", kind: "region" });
+    const ministry = await api("POST", "/api/orgs", { name: "E2E Ministry", slug: "e2e-ministry", kind: "ministry", parent: region.id });
+    expect(region.kind).toBe("region");
+
+    await admin.goto("/_/#/orgs");
+    const row = (name: string) =>
+        admin.locator("tr[data-org-id]").filter({ has: admin.locator(".txt-bold", { hasText: new RegExp(`^${name}$`) }) });
+
+    // the depth is read-only and comes from the server
+    const config = await api("GET", "/api/orgs/config");
+    await expect(admin.locator("#orgs_depth")).toContainText(`Maximum tree depth: ${config.maxDepth} levels`);
+    expect(config.kinds).toEqual(expect.arrayContaining(["region", "ministry"]));
+
+    // tree: the child sits under its parent, kinds are shown
+    await expect(row("E2E Region")).toContainText("region");
+    await expect(row("E2E Ministry")).toContainText("under E2E Region");
+    await expect(admin.locator(`tr[data-org-id="${ministry.id}"]`)).toHaveAttribute("data-level", "2");
+
+    // collapse hides the subtree, expand brings it back
+    await admin.getByRole("button", { name: "Collapse E2E Region" }).click();
+    await expect(row("E2E Ministry")).toHaveCount(0);
+    await admin.getByRole("button", { name: "Expand E2E Region" }).click();
+    await expect(row("E2E Ministry")).toBeVisible();
+
+    // status of the selected org: counts only
+    await row("E2E Region").click();
+    await expect(admin.locator("#org_status")).toContainText("1 organization below (1 ministry)");
+    const status = await api("GET", `/api/orgs/${region.id}/status`);
+    expect(status).toMatchObject({ level: 1, height: 1, descendants: 1, members: { active: 0, suspended: 0 } });
+
+    // re-parent the parish from the first test under the ministry
+    const parish = await org("e2e-parish");
+    await row("E2E Parish").getByRole("button", { name: "Move" }).click();
+    await admin.locator(".org-form-modal").getByLabel("New parent").selectOption(ministry.id);
+    await admin.locator(".org-form-modal").getByRole("button", { name: "Move", exact: true }).click();
+    await expect.poll(async () => (await org("e2e-parish")).parent).toBe(ministry.id);
+    await expect(admin.locator(`tr[data-org-id="${parish.id}"]`)).toHaveAttribute("data-level", "3");
+    await expect(row("E2E Parish")).toContainText("under E2E Ministry");
+    await expect(admin.locator(".org-form-modal")).toHaveCount(0);
+
+    // a cycle is refused with a clear message and nothing changes
+    await row("E2E Region").getByRole("button", { name: "Move" }).click();
+    await admin.locator(".org-form-modal").getByLabel("New parent").selectOption(parish.id);
+    await admin.locator(".org-form-modal").getByRole("button", { name: "Move", exact: true }).click();
+    await expect(admin.locator(".org-form-modal .alert.danger")).toContainText("cycle");
+    expect((await org("e2e-region")).parent).toBe("");
+    await admin.locator(".org-form-modal").getByRole("button", { name: "Cancel" }).click();
+    await expect(admin.locator(".org-form-modal")).toHaveCount(0);
+
+    // depth: fill the tree to the limit, then try to go one level deeper
+    let parent = parish.id;
+    for (let level = 4; level <= config.maxDepth; level++) {
+        parent = (await api("POST", "/api/orgs", { name: `E2E Level ${level}`, slug: `e2e-level-${level}`, parent })).id;
+    }
+    const deep = await api("POST", "/api/orgs", { name: "E2E Deep Root", slug: "e2e-deep-root" });
+    await admin.getByRole("button", { name: "Refresh" }).first().click();
+    await row("E2E Deep Root").getByRole("button", { name: "Move" }).click();
+    await admin.locator(".org-form-modal").getByLabel("New parent").selectOption(parent);
+    await admin.locator(".org-form-modal").getByRole("button", { name: "Move", exact: true }).click();
+    await expect(admin.locator(".org-form-modal .alert.danger")).toContainText(`at most ${config.maxDepth} levels`);
+    expect((await org(deep.id)).parent).toBe("");
+    await admin.locator(".org-form-modal").getByRole("button", { name: "Cancel" }).click();
+    await expect(admin.locator(".org-form-modal")).toHaveCount(0);
+
+    // rule snippets show exactly what the server renders
+    await admin.getByRole("button", { name: "Rule templates for org-owned collections" }).click();
+    await admin.locator("#snippet_role_admin").check();
+    await admin.locator("#snippet_depth").selectOption("2");
+    const want = await api("GET", "/api/orgs/ancestor-rule?field=org&roles=admin&maxDepth=2");
+    expect(want.rule).toContain("?<= 2");
+    await expect(admin.locator("#snippet_result code").first()).toHaveText(want.rule);
+});
+
 test("Orgs: an invitee without an account follows the link, registers and joins; a member sees the org page", async ({ browser, problems }) => {
     const { base } = state();
     const mail = await smtp.waitFor((m) => m.to.includes("carol@example.com"));
