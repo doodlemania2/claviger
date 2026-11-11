@@ -372,7 +372,10 @@ func UpdateHousehold(app App, ctx context.Context, actor *HouseholdActor, org, h
 		return nil, err
 	}
 
-	col := h.Collection()
+	col, err := app.FindCachedCollectionByNameOrId(CollectionNameHouseholds)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := requireSealed(col, hasKeys(patch, householdSensitiveFields...)...); err != nil {
 		return nil, err
@@ -637,7 +640,12 @@ func UpdateHouseholdMember(app App, ctx context.Context, actor *HouseholdActor, 
 		return nil, householdErr(403, "You cannot change this person.")
 	}
 
-	if err := requireSealed(m.Collection(), hasKeys(fields, householdSensitiveMemberFields...)...); err != nil {
+	mcol, err := app.FindCachedCollectionByNameOrId(CollectionNameHouseholdMembers)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := requireSealed(mcol, hasKeys(fields, householdSensitiveMemberFields...)...); err != nil {
 		return nil, err
 	}
 
