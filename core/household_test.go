@@ -931,15 +931,7 @@ func TestHouseholdFieldsUpgradeToEncrypted(t *testing.T) {
 		t.Errorf("the stored value was not encrypted: %q", raw)
 	}
 
-	// (PostgreSQL fails a statement prepared before the change once, then recovers)
-	find := func(collection, id string) (*core.Record, error) {
-		r, err := app.FindRecordById(collection, id)
-		if err != nil && strings.Contains(err.Error(), "cached plan") {
-			r, err = app.FindRecordById(collection, id)
-		}
-
-		return r, err
-	}
+	find := app.FindRecordById
 
 	loaded, err := find(core.CollectionNameHouseholdMembers, m.Id)
 	if err != nil || loaded.GetString("birthDate") != "1980-01-02" {

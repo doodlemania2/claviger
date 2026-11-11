@@ -22,7 +22,7 @@ Staff never see or set a password. The code is never sent by message.
 
 The person must be an active member of the org. Nobody can issue a code for themselves.
 
-Staff need a passkey of their own, and they must have used it in the last 5 minutes. The page asks for it when needed.
+Staff need a passkey of their own, and they must have used it in the last 5 minutes. The page asks for it when needed. This includes superusers: turn on passkeys for the `_superusers` collection before a superuser issues codes.
 
 ## Two staff for owners and admins
 
