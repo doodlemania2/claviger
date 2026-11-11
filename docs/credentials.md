@@ -107,7 +107,6 @@ Both are audit entries (collection `_credentials`, with `meta.orgId`, `meta.type
 
 The job is idempotent. Each step is a compare-and-swap update and only the run that changed the row writes the entry, so running it twice, or on two servers, never duplicates. Revoked and still-unverified credentials get no reminder.
 
-
 ### Reminder emails
 
 When a threshold is crossed, Claviger also emails the **holder** and the org's **coordinators**. Each threshold sends at most once per credential: the crossed threshold is stored on the credential row (`reminderStage`), so a restart, a second run or a second server never resends, and renewing the credential restarts the reminders. If the days left jump past a threshold (the job did not run, or the credential was recorded late), only the tightest threshold crossed is mailed.
