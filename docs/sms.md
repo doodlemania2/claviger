@@ -20,7 +20,7 @@ Admin UI: Settings > SMS. Or through the settings API (`PATCH /api/settings`), b
 | `webhook.url` | `https://` endpoint (plain `http` only for localhost). |
 | `webhook.secret` | Signing secret. Write-only. |
 
-Secrets are never returned by the settings API and are redacted in the audit log. Leave a secret field out of a `PATCH` to keep the saved value. When `CLAVIGER_*`/`--encryptionEnv` settings encryption is on, they are encrypted at rest with the rest of the settings.
+Secrets are never returned by the settings API and are redacted in the audit log. Leave a secret field out of a `PATCH` to keep the saved value. When settings encryption is on (`PB_ENCRYPTION_KEY`), they are encrypted at rest with the rest of the settings.
 
 When enabled, the selected provider's required fields must be set or the save is rejected.
 
