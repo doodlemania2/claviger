@@ -124,6 +124,7 @@
   "orgs.col.created": "Créé",
   "orgs.col.lastUsed": "Dernière utilisation",
   "orgs.col.expires": "Expire",
+  "orgs.col.actions": "Actions",
   "orgs.scim.title": "Provisionnement SCIM",
   "orgs.scim.tenantUrlHtml": "URL du locataire : {url}",
   "orgs.scim.tokenName": "Nom du jeton",
@@ -263,5 +264,7 @@
   "oidc.device.used": "Ce code a déjà été utilisé.",
   "oidc.device.expired": "Ce code a expiré. Recommencez sur votre appareil.",
   "oidc.device.browser": "Cette demande a été lancée dans un autre navigateur. Recommencez sur votre appareil.",
-  "oidc.device.signInEnded": "Cette connexion est terminée. Recommencez sur votre appareil."
+  "oidc.device.signInEnded": "Cette connexion est terminée. Recommencez sur votre appareil.",
+  "a11y.toggle": "Texte plus grand et contraste élevé",
+  "a11y.skip": "Aller au contenu principal"
 }

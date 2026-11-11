@@ -65,7 +65,8 @@ func NewRouter(app core.App) (*router.Router[*core.RequestEvent], error) {
 
 	// Inline end-user passkey self-service page
 	bindPasskeysPage(app)
-	bindOrgsPages(app) // fork-local (#79b)
+	bindOrgsPages(app)    // fork-local (#79b)
+	bindHostedAssets(app) // fork-local (#83): accessible mode and /passkeys files
 
 	return pbRouter, nil
 }

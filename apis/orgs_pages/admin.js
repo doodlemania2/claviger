@@ -20,6 +20,7 @@ let tags = [];
 function say(text, kind) {
   statusEl.textContent = text || "";
   statusEl.className = "msg " + (kind || "err");
+  statusEl.setAttribute("role", kind === "ok" ? "status" : "alert");
   statusEl.hidden = !text;
 }
 
@@ -61,20 +62,22 @@ async function loadMembers() {
   for (const m of r.body.items) {
     const isSelf = me && m.user === me.id;
     const editable = canManage && RANK[m.role] <= myRank;
-    const who = el("td", {}, m.name || m.email || m.user, m.name && m.email ? el("div", { class: "muted" }, m.email) : null);
+    const who = el("td", { id: "m-" + m.id }, m.name || m.email || m.user, m.name && m.email ? el("div", { class: "muted" }, m.email) : null);
     if (!editable) {
       body.append(el("tr", {}, who, el("td", {}, word("role", m.role)), el("td", {}, word("status", m.status)), el("td", {}, (m.tags || []).join(", ")),
-        el("td", {}, canManage && isSelf ? el("button", { class: "secondary", onclick: () => removeMember(m, true) }, tx("js.admin.leave")) : null)));
+        el("td", {}, canManage && isSelf ? el("button", { class: "secondary", "aria-describedby": "m-" + m.id, onclick: () => removeMember(m, true) }, tx("js.admin.leave")) : null)));
       continue;
     }
     const role = roleSelect(m.role, myRank);
-    const status = el("select", { disabled: isSelf }, el("option", { value: "active" }, word("status", "active")), el("option", { value: "suspended" }, word("status", "suspended")));
+    role.setAttribute("aria-label", tx("orgs.col.role"));
+    role.setAttribute("aria-describedby", "m-" + m.id);
+    const status = el("select", { disabled: isSelf, "aria-label": tx("orgs.col.status"), "aria-describedby": "m-" + m.id }, el("option", { value: "active" }, word("status", "active")), el("option", { value: "suspended" }, word("status", "suspended")));
     status.value = m.status;
-    const tagInput = el("input", { value: (m.tags || []).join(", "), "aria-label": tx("js.admin.tags") });
+    const tagInput = el("input", { value: (m.tags || []).join(", "), "aria-label": tx("js.admin.tags"), "aria-describedby": "m-" + m.id });
     body.append(el("tr", {}, who, el("td", {}, role), el("td", {}, status), el("td", {}, tagInput),
       el("td", {},
-        el("button", { onclick: () => saveMember(m, role.value, status.value, splitTags(tagInput.value)) }, tx("js.admin.save")),
-        el("button", { class: "secondary", onclick: () => removeMember(m, isSelf) }, isSelf ? tx("js.admin.leave") : tx("js.admin.remove")))));
+        el("button", { "aria-describedby": "m-" + m.id, onclick: () => saveMember(m, role.value, status.value, splitTags(tagInput.value)) }, tx("js.admin.save")),
+        el("button", { class: "secondary", "aria-describedby": "m-" + m.id, onclick: () => removeMember(m, isSelf) }, isSelf ? tx("js.admin.leave") : tx("js.admin.remove")))));
   }
 }
 
@@ -106,11 +109,11 @@ async function loadInvitations() {
   for (const inv of r.body.items) {
     const live = inv.status === "pending" || inv.status === "expired";
     const mine = RANK[inv.role] <= myRank;
-    body.append(el("tr", {}, el("td", {}, inv.email), el("td", {}, word("role", inv.role)), el("td", {}, (inv.tags || []).join(", ")),
+    body.append(el("tr", {}, el("td", { id: "i-" + inv.id }, inv.email), el("td", {}, word("role", inv.role)), el("td", {}, (inv.tags || []).join(", ")),
       el("td", {}, word("status", inv.status)), el("td", {}, inv.status === "accepted" ? when(inv.acceptedAt) : when(inv.expires)), el("td", {}, String(inv.sendCount)),
       el("td", {},
-        live && mine ? el("button", { onclick: () => resend(inv) }, tx("js.admin.resend")) : null,
-        inv.status === "pending" && mine ? el("button", { class: "secondary", onclick: () => revoke(inv) }, tx("js.admin.revoke")) : null)));
+        live && mine ? el("button", { "aria-describedby": "i-" + inv.id, onclick: () => resend(inv) }, tx("js.admin.resend")) : null,
+        inv.status === "pending" && mine ? el("button", { class: "secondary", "aria-describedby": "i-" + inv.id, onclick: () => revoke(inv) }, tx("js.admin.revoke")) : null)));
   }
 }
 
@@ -148,10 +151,10 @@ async function loadScim() {
   if (!r.ok) return guard(r);
   root.querySelector("#scimUrl").textContent = r.body.endpoint;
   for (const t of r.body.items) {
-    body.append(el("tr", {}, el("td", {}, t.name), el("td", {}, el("code", {}, "scim_" + t.prefix + "_...")),
+    body.append(el("tr", {}, el("td", { id: "s-" + t.id }, t.name), el("td", {}, el("code", {}, "scim_" + t.prefix + "_...")),
       el("td", {}, when(t.created)), el("td", {}, t.lastUsed ? when(t.lastUsed) : tx("js.admin.never")), el("td", {}, t.expires ? when(t.expires) : tx("js.admin.never")),
       el("td", {}, word("status", t.revoked ? "revoked" : t.active ? "active" : "expired")),
-      el("td", {}, t.active ? el("button", { class: "secondary", onclick: () => revokeScim(t) }, tx("js.admin.revoke")) : null)));
+      el("td", {}, t.active ? el("button", { class: "secondary", "aria-describedby": "s-" + t.id, onclick: () => revokeScim(t) }, tx("js.admin.revoke")) : null)));
   }
   const s = await call("/scim-settings");
   if (!s.ok) return guard(s);

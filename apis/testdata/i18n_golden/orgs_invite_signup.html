@@ -8,8 +8,13 @@
 <title>Join Parish One</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/orgs/assets/hosted.css">
+<link rel="stylesheet" href="/a11y/a11y-mode.css">
+<script src="/a11y/a11y-mode.js"></script>
 </head>
 <body>
+<a class="skip" href="#app">Skip to the main content</a>
+<header class="a11y-bar"><button type="button" id="a11yToggle" class="a11y-toggle" aria-pressed="false" hidden>Larger text and high contrast</button></header>
+
 <main class="card" id="app" data-page="invite" data-token="tok-newbie-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" data-collection="users" data-email="newbie@orgs.test" data-has-account="false">
 <h1>Join Parish One</h1>
 <p class="sub">You are invited as <strong>member</strong> with <strong>newbie@orgs.test</strong>.</p>
@@ -27,18 +32,18 @@
 <h2>Sign in</h2>
 <form id="pw" hidden>
 <label>Email or username<input name="identity" autocomplete="username webauthn" required></label>
-<label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+<label>Password<input name="password" type="password" autocomplete="current-password" required aria-describedby="status"></label>
 <button type="submit">Sign in</button>
 </form>
 <form id="totp" hidden>
-<label>Authenticator code or backup code<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<label>Code from your authenticator app, or a backup code<input name="code" inputmode="numeric" autocomplete="one-time-code" required aria-describedby="status"></label>
 <button type="submit">Verify</button>
 </form>
 <div id="otpBox" hidden>
 <div class="or"><span>or</span></div>
 <button id="otpSend" type="button" class="secondary">Email me a sign-in code</button>
 <form id="otpForm" hidden>
-<label>Code from the email<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<label>Code from the email<input name="code" inputmode="numeric" autocomplete="one-time-code" required aria-describedby="status"></label>
 <button type="submit">Sign in</button>
 </form>
 </div>

@@ -268,11 +268,12 @@ var extTemplate = template.Must(template.New("ext").Parse(`
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/oidc/assets/oidc.css">
 <link rel="stylesheet" href="/oidc/assets/chooser.css">
-{{if .Script}}{{.Text.DataBlock}}{{end}}</head>
+{{.Text.A11yHead}}{{if .Script}}{{.Text.DataBlock}}{{end}}</head>
 <body>
+{{.Text.A11yBar}}
 <main class="card" id="app" data-page="{{.Page}}" data-flow="{{.Flow}}" data-request="{{.Ref}}" data-other="{{.Other}}" data-select="{{.SelectURL}}" data-signout="{{.SignoutURL}}">
 <h1>{{.Heading}}</h1>
-{{if .Message}}<p class="msg {{.MessageClass}}" role="alert">{{.Message}}</p>{{end}}
+{{if .Message}}<p class="msg {{.MessageClass}}" id="pageMsg" role="{{if eq .MessageClass "ok"}}status{{else}}alert{{end}}">{{.Message}}</p>{{end}}
 {{end}}
 {{define "foot"}}</main>
 {{if .Script}}<script type="module" src="{{.Script}}"></script>{{end}}
@@ -298,7 +299,7 @@ var extTemplate = template.Must(template.New("ext").Parse(`
 {{define "device-code"}}{{template "head" .}}
 <p class="sub">{{.Text.T "oidc.device.sub"}}</p>
 <form method="post" action="{{.Action}}">
-<label>{{.Text.T "oidc.device.codeLabel"}}<input name="user_code" value="{{.UserCode}}" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" maxlength="20" required autofocus class="usercode"></label>
+<label>{{.Text.T "oidc.device.codeLabel"}}<input name="user_code" value="{{.UserCode}}" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" maxlength="20" required autofocus class="usercode"{{if .Message}} aria-invalid="true" aria-describedby="pageMsg"{{end}}></label>
 <button type="submit">{{.Text.T "oidc.device.continue"}}</button>
 </form>
 {{template "foot" .}}{{end}}

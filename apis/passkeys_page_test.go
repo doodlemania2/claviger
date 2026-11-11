@@ -25,7 +25,8 @@ func TestPasskeysPageAndClientCoverNewFlows(t *testing.T) {
 		return rec.Body.String()
 	}
 
-	page := get("/passkeys")
+	// the page script is a file since #83
+	page := get("/passkeys") + get("/passkeys/assets/passkeys-page.js")
 	for _, want := range []string{
 		`autocomplete="username webauthn"`, // conditional UI hook
 		"autofillLogin",
@@ -59,8 +60,8 @@ func TestPasskeysPageCSPCaptcha(t *testing.T) {
 	t.Parallel()
 
 	const original = "default-src 'self'; " +
-		"script-src 'self' 'unsafe-inline'; " +
-		"style-src 'self' 'unsafe-inline'; " +
+		"script-src 'self'; " +
+		"style-src 'self'; " +
 		"img-src 'self' data:; " +
 		"connect-src 'self'; " +
 		"frame-ancestors 'self'; " +
@@ -83,7 +84,7 @@ func TestPasskeysPageCSPCaptcha(t *testing.T) {
 		want     []string
 		notWant  []string
 	}{
-		{"turnstile", []string{"script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com;", "frame-src 'self' https://challenges.cloudflare.com;"}, []string{"hcaptcha", "google"}},
+		{"turnstile", []string{"script-src 'self' https://challenges.cloudflare.com;", "frame-src 'self' https://challenges.cloudflare.com;"}, []string{"hcaptcha", "google"}},
 		{"hcaptcha", []string{"https://*.hcaptcha.com", "frame-src 'self' https://hcaptcha.com"}, []string{"cloudflare", "google"}},
 		{"recaptchaV2", []string{"https://www.google.com/recaptcha/", "https://www.gstatic.com/recaptcha/", "frame-src"}, []string{"cloudflare", "hcaptcha"}},
 		{"recaptchaV3", []string{"https://www.google.com/recaptcha/"}, []string{"cloudflare", "hcaptcha"}},
@@ -119,7 +120,12 @@ func TestPasskeysPageServesCaptchaLoaderWithoutProviderScripts(t *testing.T) {
 	env.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/passkeys", nil))
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "getCaptchaToken") {
+
+	// the page script is a file since #83 (no 'unsafe-inline'), so the loader is there
+	js := httptest.NewRecorder()
+	env.mux.ServeHTTP(js, httptest.NewRequest(http.MethodGet, "/passkeys/assets/passkeys-page.js", nil))
+
+	if !strings.Contains(js.Body.String(), "getCaptchaToken") {
 		t.Error("page should know how to render a captcha on demand")
 	}
 	// the provider scripts are injected on demand, never referenced by a <script src>

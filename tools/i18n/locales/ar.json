@@ -124,6 +124,7 @@
   "orgs.col.created": "الإنشاء",
   "orgs.col.lastUsed": "آخر استخدام",
   "orgs.col.expires": "الانتهاء",
+  "orgs.col.actions": "الإجراءات",
   "orgs.scim.title": "توفير SCIM",
   "orgs.scim.tenantUrlHtml": "عنوان URL للمستأجر: {url}",
   "orgs.scim.tokenName": "اسم الرمز المميز",
@@ -263,5 +264,7 @@
   "oidc.device.used": "تم استخدام هذا الرمز من قبل.",
   "oidc.device.expired": "انتهت صلاحية هذا الرمز. ابدأ من جديد على جهازك.",
   "oidc.device.browser": "بدأ هذا الطلب في متصفح آخر. ابدأ من جديد على جهازك.",
-  "oidc.device.signInEnded": "انتهت جلسة تسجيل الدخول هذه. ابدأ من جديد على جهازك."
+  "oidc.device.signInEnded": "انتهت جلسة تسجيل الدخول هذه. ابدأ من جديد على جهازك.",
+  "a11y.toggle": "نص أكبر وتباين عالٍ",
+  "a11y.skip": "تخطَّ إلى المحتوى الرئيسي"
 }

@@ -124,6 +124,7 @@
   "orgs.col.created": "Đã tạo",
   "orgs.col.lastUsed": "Dùng lần cuối",
   "orgs.col.expires": "Hết hạn",
+  "orgs.col.actions": "Thao tác",
   "orgs.scim.title": "Cấp phát SCIM",
   "orgs.scim.tenantUrlHtml": "URL tenant: {url}",
   "orgs.scim.tokenName": "Tên token",
@@ -263,5 +264,7 @@
   "oidc.device.used": "Mã này đã được sử dụng.",
   "oidc.device.expired": "Mã này đã hết hạn. Hãy bắt đầu lại trên thiết bị của bạn.",
   "oidc.device.browser": "Yêu cầu này được bắt đầu trong trình duyệt khác. Hãy bắt đầu lại trên thiết bị của bạn.",
-  "oidc.device.signInEnded": "Phiên đăng nhập đó đã kết thúc. Hãy bắt đầu lại trên thiết bị của bạn."
+  "oidc.device.signInEnded": "Phiên đăng nhập đó đã kết thúc. Hãy bắt đầu lại trên thiết bị của bạn.",
+  "a11y.toggle": "Chữ lớn hơn và độ tương phản cao",
+  "a11y.skip": "Chuyển đến nội dung chính"
 }

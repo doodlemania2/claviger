@@ -234,7 +234,7 @@ func TestDevicePagesAreLocalized(t *testing.T) {
 	b := e.browser()
 
 	code := b.do("GET", "/oidc/device", map[string]string{"Accept-Language": "es"}, nil)
-	assertLocalizedExtPage(t, code, "es", false, []string{"Conectar un dispositivo", "Introduce el código", "Continuar"}, []string{"Connect a device", "Enter the code"})
+	assertLocalizedExtPage(t, code, "es", false, []string{"Conectar un dispositivo", "Ingrese el código", "Continuar"}, []string{"Connect a device", "Enter the code"})
 
 	delete(b.cookies, "lang")
 

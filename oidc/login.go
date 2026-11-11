@@ -71,20 +71,21 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
 <title>{{.Title}}</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/oidc/assets/oidc.css">
-{{if .Script}}{{.Text.DataBlock}}{{end}}</head>
+{{.Text.A11yHead}}{{if .Script}}{{.Text.DataBlock}}{{end}}</head>
 <body>
+{{.Text.A11yBar}}
 <main class="card" id="app" data-page="{{.Page}}" data-request="{{.RequestID}}" data-collection="{{.Collection}}"{{if .Finish}} data-finish="{{.Finish}}"{{end}}{{if .LoginHint}} data-login-hint="{{.LoginHint}}"{{end}}>
 <h1>{{.Heading}}</h1>
-{{if .Message}}<p class="msg {{.MessageClass}}" role="alert">{{.Message}}</p>{{end}}
+{{if .Message}}<p class="msg {{.MessageClass}}" id="pageMsg" role="{{if eq .MessageClass "ok"}}status{{else}}alert{{end}}">{{.Message}}</p>{{end}}
 {{if eq .Page "login"}}
 <p class="sub">{{.Text.HTML "oidc.login.continueToHtml" (.Text.Args "client" .ClientName)}}</p>
 <form id="pw" hidden>
 <label>{{.Text.T "js.identityLabel"}}<input name="identity" autocomplete="username webauthn" required></label>
-<label>{{.Text.T "js.passwordLabel"}}<input name="password" type="password" autocomplete="current-password" required></label>
+<label>{{.Text.T "js.passwordLabel"}}<input name="password" type="password" autocomplete="current-password" required aria-describedby="status"></label>
 <button type="submit">{{.Text.T "js.signIn"}}</button>
 </form>
 <form id="totp" hidden>
-<label>{{.Text.T "js.totpLabel"}}<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<label>{{.Text.T "js.totpLabel"}}<input name="code" inputmode="numeric" autocomplete="one-time-code" required aria-describedby="status"></label>
 <button type="submit">{{.Text.T "js.verify"}}</button>
 </form>
 <div id="captchaBox" hidden></div>
