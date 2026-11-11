@@ -392,3 +392,33 @@ func TestCredentialDocuments(t *testing.T) {
 	run("a document is refused while the org setting is off (the default)", false, 400, `"message"`)
 	run("a document is stored when the org allows it", true, 200, `"document":"certificate`)
 }
+
+func TestCredentialBlocksOrgDeleteAPI(t *testing.T) {
+	t.Parallel()
+
+	seed := func(t testing.TB, app *tests.TestApp) {
+		seedCredential(t, app, "credarchivedaa1", "hank", orgA, "safe_environment", "2099-01-01 00:00:00.000Z", true, "")
+	}
+
+	runOrgCases(t, []orgCase{
+		{
+			name: "an org with credentials cannot be deleted", who: "hank", method: "DELETE", url: "/api/orgs/" + orgA,
+			body: `{"confirm":"closed"}`, status: 400, has: []string{"safeguarding credentials"},
+			before: seed, factory: credFactory,
+		},
+		{
+			name: "the guard also covers a direct record delete", who: "hank", method: "GET", url: "/api/orgs/" + orgA, status: 200,
+			factory: credFactory,
+			before: func(t testing.TB, app *tests.TestApp) {
+				seed(t, app)
+
+				org, err := app.FindRecordById(core.CollectionNameOrgs, orgA)
+				orgMust(t, err)
+
+				if err := app.Delete(org); err == nil {
+					t.Fatal("expected the direct delete to be refused")
+				}
+			},
+		},
+	})
+}

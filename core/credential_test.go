@@ -287,7 +287,7 @@ func TestCredentialReminderDaysSetting(t *testing.T) {
 	w := newCredWorld(t)
 	p := w.orgs["P"]
 
-	if got := core.CredentialReminderDays(p); !slices.Equal(got, []int{60, 30, 7}) {
+	if got := core.CredentialReminderDays(p); !slices.Equal(got, []int{30, 7}) {
 		t.Fatalf("default: %v", got)
 	}
 
@@ -346,5 +346,209 @@ func TestCredentialStanding(t *testing.T) {
 		if got, _ := core.CredentialStanding(c.creds, now, 60); got != c.want {
 			t.Errorf("case %d: got %s, want %s", i, got, c.want)
 		}
+	}
+}
+
+func TestOrgCoordinators(t *testing.T) {
+	w := newCredWorld(t)
+	app := w.f.app
+
+	ids := func(org string) []string {
+		t.Helper()
+
+		recs, err := core.OrgCoordinators(app, w.orgs[org].Id)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var out []string
+		for _, r := range recs {
+			out = append(out, r.Email())
+		}
+
+		slices.Sort(out)
+
+		return out
+	}
+
+	// the tag wins over the admins of the same org
+	if got := ids("D"); !slices.Equal(got, []string{"gwen@closure.test"}) {
+		t.Fatalf("D: %v", got)
+	}
+
+	// nobody is tagged in P: the admins (mix is only a member there)
+	if got := ids("P"); !slices.Equal(got, []string{"pat@closure.test"}) {
+		t.Fatalf("P: %v", got)
+	}
+
+	// a suspended tagged member does not count: the fallback applies again
+	m, _ := core.FindOrgMember(app, w.orgs["D"].Id, w.users["gwen"].Id)
+	m.Set("status", "suspended")
+
+	if err := app.Save(m); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := ids("D"); !slices.Equal(got, []string{"ann@closure.test", "mix@closure.test"}) {
+		t.Fatalf("D without gwen: %v", got)
+	}
+
+	// an org with no admins and no tag has no coordinators
+	if got := ids("Y"); len(got) != 0 {
+		t.Fatalf("Y: %v", got)
+	}
+}
+
+func TestCredentialReminderDaysValidation(t *testing.T) {
+	w := newCredWorld(t)
+	org := w.orgs["Q"]
+
+	cases := []struct {
+		settings string
+		ok       bool
+	}{
+		{`{}`, true},
+		{`{"credentialReminderDays":[30,7]}`, true},
+		{`{"credentialReminderDays":[365,1,2,3,4]}`, true},
+		{`{"credentialReminderDays":[1,2,3,4,5,6]}`, false},
+		{`{"credentialReminderDays":[]}`, false},
+		{`{"credentialReminderDays":[0]}`, false},
+		{`{"credentialReminderDays":[366]}`, false},
+		{`{"credentialReminderDays":[7,7]}`, false},
+		{`{"credentialReminderDays":[1.5]}`, false},
+		{`{"credentialReminderDays":["7"]}`, false},
+		{`{"credentialReminderDays":7}`, false},
+	}
+
+	for _, c := range cases {
+		org.Set("settings", c.settings)
+
+		err := w.f.app.Save(org)
+		if (err == nil) != c.ok {
+			t.Errorf("%s: err=%v, want ok=%v", c.settings, err, c.ok)
+		}
+	}
+}
+
+func TestCredentialBlocksOrgDelete(t *testing.T) {
+	w := newCredWorld(t)
+	app := w.f.app
+	ctx := context.Background()
+
+	y, q := w.orgs["Y"], w.f.org(t, "zz", "")
+
+	w.seed(t, "yan", "Y", "safe_environment", "2099-01-01 00:00:00.000Z", true, false)
+
+	for _, o := range []*core.Record{y, q} {
+		o.Set("archived", true)
+
+		if err := app.Save(o); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// the helper and a direct record delete are both refused with a 400
+	wantOrgErr(t, core.DeleteOrg(app, ctx, y), 400)
+	wantOrgErr(t, app.Delete(y), 400)
+
+	if _, err := app.FindRecordById(core.CollectionNameOrgs, y.Id); err != nil {
+		t.Fatal("the org must still exist")
+	}
+
+	// an org without credentials still deletes
+	if err := core.DeleteOrg(app, ctx, q); err != nil {
+		t.Fatalf("delete without credentials: %v", err)
+	}
+}
+
+func TestCredentialReminderDelivery(t *testing.T) {
+	w := newCredWorld(t)
+	app := w.f.app
+	ctx := core.WithAuditContext(context.Background(), core.AuditActor{Type: core.AuditActorTypeSystem}, "")
+
+	var sent []*core.CredentialReminder
+
+	prev := core.CredentialReminderSender
+	core.CredentialReminderSender = func(_ core.App, r *core.CredentialReminder) error {
+		sent = append(sent, r)
+
+		return nil
+	}
+
+	t.Cleanup(func() { core.CredentialReminderSender = prev })
+
+	// pat (P, no tagged coordinator: the admins) and mix (D, gwen is tagged)
+	w.seed(t, "pat", "P", "safe_environment", "2030-01-20 00:00:00.000Z", true, false)
+	w.seed(t, "mix", "D", "safe_environment", "2030-01-25 00:00:00.000Z", true, false)
+
+	// a revoked and an unverified credential are never reminded
+	w.seed(t, "ned", "N", "safe_environment", "2030-01-20 00:00:00.000Z", true, true)
+	w.seed(t, "yan", "Y", "safe_environment", "2030-01-20 00:00:00.000Z", false, false)
+
+	run := func(now string) {
+		t.Helper()
+
+		if _, err := core.RunCredentialLifecycle(app, ctx, at(now)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	emails := func(r *core.CredentialReminder) []string {
+		var out []string
+		for _, c := range r.Coordinators {
+			out = append(out, c.Email())
+		}
+
+		slices.Sort(out)
+
+		return out
+	}
+
+	run("2030-01-01 00:00:00.000Z")
+
+	if len(sent) != 2 {
+		t.Fatalf("first run: %d reminders", len(sent))
+	}
+
+	byHolder := map[string]*core.CredentialReminder{}
+	for _, r := range sent {
+		byHolder[r.Holder.Email()] = r
+	}
+
+	if r := byHolder["pat@closure.test"]; r == nil || r.Threshold != 30 || r.DaysLeft != 19 ||
+		!slices.Equal(emails(r), []string{"pat@closure.test"}) {
+		t.Fatalf("pat: %+v", r)
+	}
+
+	if r := byHolder["mix@closure.test"]; r == nil || !slices.Equal(emails(r), []string{"gwen@closure.test"}) {
+		t.Fatalf("mix: %+v", r)
+	}
+
+	// reruns, also after a restart (state is in the row): nothing is sent twice
+	run("2030-01-01 12:00:00.000Z")
+	run("2030-01-02 00:00:00.000Z")
+
+	if len(sent) != 2 {
+		t.Fatalf("rerun resent: %d", len(sent))
+	}
+
+	// the 7 day offset: one more each, once
+	run("2030-01-15 00:00:00.000Z")
+	run("2030-01-15 06:00:00.000Z")
+
+	// pat has 5 days left, mix still 10
+	if len(sent) != 3 {
+		t.Fatalf("7 day run: %d reminders", len(sent))
+	}
+
+	if last := sent[len(sent)-1]; last.Threshold != 7 || last.TypeName != "safe_environment" {
+		t.Fatalf("unexpected: %+v", last)
+	}
+
+	run("2030-01-19 00:00:00.000Z")
+	run("2030-01-20 00:00:00.000Z")
+
+	if len(sent) != 4 || sent[3].Holder.Email() != "mix@closure.test" {
+		t.Fatalf("mix 7 day run: %d reminders", len(sent))
 	}
 }
