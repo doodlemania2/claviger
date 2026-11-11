@@ -102,5 +102,6 @@ test("Households page: a person who is not a guardian sees it read-only", async 
 
 test("Households page: Spanish on request", async ({ guarded: page }) => {
     await page.goto("/households/mine?lang=es");
-    await expect(page.getByRole("heading", { name: "Mi hogar" })).toBeVisible();
+    await expect(page).toHaveTitle("Mi hogar");
+    await expect(page.locator("html")).toHaveAttribute("lang", "es");
 });

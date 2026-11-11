@@ -121,6 +121,18 @@ Notes:
 - Same conventions as the other hosted pages: no inline script or style, the strict Content-Security-Policy, accessible mode (`docs/accessibility.md`), every control has a label, a failed save moves focus to an `role="alert"` line. The text is in the message catalog (`orgs.households.*`, `js.households.*`): English and Spanish (formal "usted") and drafts in the other shipped languages.
 - Tests: `apis/households_pages_test.go` and the Playwright spec `e2e/tests/85-households-page.spec.ts`.
 
+## The admin UI
+
+Superusers find **Households** in the side menu (`#/households`, #80 80-5). A superuser is staff of every org, so the household routes accept the admin token as it is; no backend change was needed.
+
+- Pick an **organization** and a **status** (all, active, archived). The status filter works on the loaded list (the first 200 households of the org).
+- Select a household to see its people with their flags, birth date, allergies, medical notes and login. The encrypted values are readable here, as they are for any staff.
+- **Edit** the household (name, street, city, region, postal code, home phone, status; other keys of the stored address are kept), **Add person**, edit a person (role, guardian, minor, birth date, health notes, login, status), toggle the guardian flag, or remove a person. The model guards answer in words (for example 409 when the last guardian of a household with a minor would go).
+- When the key-encryption key is missing the page says so ("configure a key-encryption key (CLAVIGER_KEK)") instead of showing the bare 409.
+- **Merge another in**, **Split** (tick the people to move and name the new household) and **Find duplicates** call `POST /api/households/{id}/merge` `{from}`, `POST /api/households/{id}/split` `{members, name}` and `GET /api/households/duplicates?org=ID`. A server without those routes answers 404 and the page says "... is not available on this server".
+- The duplicate list is read leniently: a list or `{items|candidates|duplicates}`, each entry with two sides (`a`/`b`, or a two-element `members`/`households`) carrying a member id and name and a household id and name, plus `reason`. "Merge second into first" merges the household of the second side into that of the first.
+- Tests: the Playwright spec `e2e/tests/86-households-admin.spec.ts`.
+
 ## Rules for your own collections
 
 A collection about a person carries a relation `member` to `_householdMembers` and a **copy** `household` (a relation to `_households`). The copy keeps the rules to one hop. Go helpers build the rules (`core/household_rules.go`):

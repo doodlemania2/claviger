@@ -83,6 +83,11 @@ window.app.store = store({
             label: "Organizations",
         },
         {
+            href: "#/households",
+            icon: "ri-home-heart-line",
+            label: "Households",
+        },
+        {
             href: "#/oidc",
             icon: "ri-id-card-line",
             label: "OpenID Connect",
