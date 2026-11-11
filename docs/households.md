@@ -102,6 +102,25 @@ Birth date, allergies and medical notes of a person are shown to staff, to guard
 
 Every change is a normal record write, so it lands in the audit log with the actor, the changed fields and `meta.orgId` (and `meta.household` for people).
 
+## The hosted page "My household"
+
+`GET /households/mine` is the page of the person (#80, 80-6). It sits at the root like `/recovery`, because it belongs to the person and not to one org: a person can be in several households of several orgs. Its script and style are the org page assets (`/orgs/assets/households.js`, `hosted.css`).
+
+The page is a shell: it looks nothing up on the server, so a stranger learns nothing. The person signs in with the ordinary sign-in of the member collection (password, second factor, passkey, email code) and the page then calls `GET /api/households/mine`.
+
+| Who | What the page shows |
+|---|---|
+| A guardian (or staff who belong to the household) | One form for the household (name, street, city, region, postal code, home phone) and one per person (name, role). For a minor also birth date, allergies and medical notes, and a photo. Each form saves with `PATCH` and reports success or the error in its own message line. |
+| Anyone else in the household | The same people and flags, read only, with a line that says only a guardian can change it. They see the health data the API sends them, nothing more. |
+
+Notes:
+
+- The address is stored as JSON. The page edits `street`, `city`, `region` and `postal` and keeps any other key it finds.
+- When the key-encryption key is not set up yet, the API answers `409 ... not encrypted` on any write of an encrypted field. The page shows a friendly message ("your church has not finished turning on protection ... tell the church office") instead of the raw error. A 403, a 404 and a 429 are translated the same way; other errors show the server message after a short localized line.
+- **Photo** uses `POST /api/households/{id}/members/{member}/photo` (multipart field `photo`) and `DELETE` on the same path. If the server answers 404 or 405 (a build without those routes), the page replaces the controls with "Photos are not available yet" and carries on. The picture is fetched with the person's token and shown as a `data:` URL, because the page policy allows `data:` but not `blob:`.
+- Same conventions as the other hosted pages: no inline script or style, the strict Content-Security-Policy, accessible mode (`docs/accessibility.md`), every control has a label, a failed save moves focus to an `role="alert"` line. The text is in the message catalog (`orgs.households.*`, `js.households.*`): English and Spanish (formal "usted") and drafts in the other shipped languages.
+- Tests: `apis/households_pages_test.go` and the Playwright spec `e2e/tests/85-households-page.spec.ts`.
+
 ## Rules for your own collections
 
 A collection about a person carries a relation `member` to `_householdMembers` and a **copy** `household` (a relation to `_households`). The copy keeps the rules to one hop. Go helpers build the rules (`core/household_rules.go`):
