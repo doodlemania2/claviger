@@ -1064,18 +1064,88 @@ func upgradeHouseholdCollection(app App, name string, wants []householdUpgrade) 
 		return err
 	}
 
+	// written with UPDATE statements and not through a record load: on
+	// PostgreSQL a "SELECT *" prepared before the change fails after it
 	for id, fields := range saved {
-		rec, err := app.FindRecordById(name, id)
-		if err != nil {
-			return err
-		}
+		rec := NewRecord(col)
+		rec.Id = id
 
 		for f, v := range fields {
 			rec.Set(f, v)
+
+			dv, ok := col.Fields.GetByName(f).(DriverValuer)
+			if !ok {
+				return fmt.Errorf("field %s cannot be written", f)
+			}
+
+			val, err := dv.DriverValue(rec)
+			if err != nil {
+				return err
+			}
+
+			if _, err := app.DB().Update(name, dbx.Params{f: val}, dbx.HashExp{"id": id}).Execute(); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// PrepareHouseholdImport drops, from the household collections of app, the
+// plain sensitive fields that the import payload carries as encrypted fields,
+// so that importing the collections of a database whose fields were already
+// upgraded does not leave two fields of the same name (an import keeps the
+// existing fields it does not find by id). It is for a freshly bootstrapped
+// target (migrate-db) and refuses to drop a field of a table that holds rows.
+func PrepareHouseholdImport(app App, payload []map[string]any) error {
+	for _, item := range payload {
+		name, _ := item["name"].(string)
+		if name != CollectionNameHouseholds && name != CollectionNameHouseholdMembers {
+			continue
 		}
 
-		if err := app.UnsafeWithoutHooks().SaveNoValidate(rec); err != nil {
-			return err
+		col, err := app.FindCollectionByNameOrId(name)
+		if err != nil {
+			continue
+		}
+
+		fields, _ := item["fields"].([]any)
+		changed := false
+
+		for _, f := range fields {
+			fm, _ := f.(map[string]any)
+
+			ty, _ := fm["type"].(string)
+			if ty != FieldTypeEncryptedText && ty != FieldTypeEncryptedJSON {
+				continue
+			}
+
+			fname, _ := fm["name"].(string)
+
+			cur := col.Fields.GetByName(fname)
+			if cur == nil || cur.Type() == FieldTypeEncryptedText || cur.Type() == FieldTypeEncryptedJSON {
+				continue
+			}
+
+			var n int
+			if err := app.DB().Select("count(*)").From(name).Row(&n); err != nil {
+				return err
+			}
+
+			if n > 0 {
+				return fmt.Errorf("%s already holds rows: cannot replace the plain field %s", name, fname)
+			}
+
+			col.Fields.RemoveByName(fname)
+
+			changed = true
+		}
+
+		if changed {
+			if err := app.Save(col); err != nil {
+				return err
+			}
 		}
 	}
 

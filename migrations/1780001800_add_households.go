@@ -16,7 +16,7 @@ import (
 // in core.HouseholdRules.
 //
 // The address, phone, birth date, allergies and medical notes are created as
-// plain fields. The server turns them into encrypted fields at the first start
+// plain fields. The server swaps them for encrypted fields at the first start
 // with a key-encryption key (core.UpgradeHouseholdEncryption), and the routes
 // refuse to store sensitive values in them before that. The migration does not
 // depend on a key, so an installation without one can upgrade, and a database
@@ -46,17 +46,15 @@ func init() {
 
 		// plain fields first: the migration must not depend on a key (a
 		// database is migrated once and may be opened with another key later).
-		// core.UpgradeHouseholdEncryption turns them into encrypted fields at
+		// core.UpgradeHouseholdEncryption swaps them for encrypted fields at
 		// the first start with a key, and the routes refuse sensitive values
-		// until then.
-		// not system fields: the upgrade replaces them with encrypted fields
-		// (the type of a field cannot change under the same id)
+		// until then. They are not system fields: the type of a field cannot
+		// change under the same id, so the upgrade replaces them.
 		text := func(name string, max int) core.Field {
 			return &core.TextField{Name: name, Max: max}
 		}
 
-		// text, not json, so that the column is TEXT on every database and the
-		// values can be encrypted in place later
+		// text, not json, so that the column is TEXT on every database
 		jsonField := func(name string, max int64) core.Field {
 			return &core.TextField{Name: name, Max: int(max)}
 		}

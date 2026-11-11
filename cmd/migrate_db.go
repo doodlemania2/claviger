@@ -711,6 +711,12 @@ func (m *migrateRun) importCollections(ctx context.Context) error {
 		return err
 	}
 
+	// fork-local (#80): the household fields are plain until the first start
+	// with a key; the source may be past that
+	if err := core.PrepareHouseholdImport(m.dst, data); err != nil {
+		return fmt.Errorf("import collections: %w", err)
+	}
+
 	if err := m.dst.ImportCollections(data, false); err != nil {
 		hint := ""
 		for _, c := range m.collections {
