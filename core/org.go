@@ -227,8 +227,12 @@ func inOrgDeletion(ctx context.Context) bool {
 // DeleteOrg permanently deletes an organization with its memberships and tags.
 // It refuses while the org has child orgs, while org-owned records still
 // reference it (their required `org` relation blocks the delete) and while it
-// is not archived.
+// is not archived. It also refuses (400) while credentials (#81) belong to it.
 func DeleteOrg(app App, ctx context.Context, org *Record) error {
+	if err := requireNoCredentials(app, org); err != nil {
+		return err
+	}
+
 	if !org.GetBool("archived") {
 		return orgErr(409, "Archive the organization before deleting it.")
 	}
