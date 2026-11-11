@@ -28,11 +28,18 @@ type PageText struct {
 // empty), Accept-Language, then meta.defaultLanguage. A valid ?lang= is
 // remembered in the lang cookie.
 func NewPageText(e *core.RequestEvent, recordLang string) *PageText {
+	return NewPageTextDefault(e, recordLang, e.App.Settings().Meta.DefaultLang())
+}
+
+// NewPageTextDefault is NewPageText with another last-resort language: a page
+// about an org passes core.OrgDefaultLanguage, so the org's own locale applies
+// when the person has made no choice of their own.
+func NewPageTextDefault(e *core.RequestEvent, recordLang, def string) *PageText {
 	b := core.I18n(e.App)
 
 	b.RememberChoice(e.Response, e.Request)
 
-	lang := b.FromRequest(e.Request, recordLang, e.App.Settings().Meta.DefaultLang())
+	lang := b.FromRequest(e.Request, recordLang, def)
 
 	return &PageText{Lang: lang, RTL: i18n.Dir(lang) == "rtl", b: b}
 }
