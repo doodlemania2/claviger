@@ -100,14 +100,24 @@ Notes:
 
 A daily job (06:17) keeps the dashboard status and writes the events that a passage of time would otherwise leave out:
 
-- **`credential_expiring`**: when the days left cross a threshold. Thresholds are 60, 30 and 7 days by default. An org changes them with `settings.credentialReminderDays` (up to six values, each 1 to 365). One entry per threshold crossed, at most.
+- **`credential_expiring`**: when the days left cross a threshold. Thresholds are 30 and 7 days by default. An org changes them with `settings.credentialReminderDays` (1 to 5 different whole numbers, each 1 to 365; saving the org with anything else is refused). One entry per threshold crossed, at most.
 - **`credential_lapsed`**: once, when a credential's expiry passes. It sets `status` to `lapsed`.
 
 Both are audit entries (collection `_credentials`, with `meta.orgId`, `meta.type` and `meta.user`) and are delivered to webhooks as `credential.expiring` and `credential.lapsed`. Subscribe with the event filters `_credentials:credential_expiring`, `_credentials:credential_lapsed`, `_credentials:*` or `*:credential_lapsed`.
 
 The job is idempotent. Each step is a compare-and-swap update and only the run that changed the row writes the entry, so running it twice, or on two servers, never duplicates. Revoked and still-unverified credentials get no reminder.
 
-It does not send email. Claviger raises the event; deliver the reminder to the person and the coordinators through a webhook to your own tooling. (Sending the mail from Claviger itself is an open question.)
+### Reminder emails
+
+When a threshold is crossed, Claviger also emails the **holder** and the org's **coordinators**. Each threshold sends at most once per credential: the crossed threshold is stored on the credential row (`reminderStage`), so a restart, a second run or a second server never resends, and renewing the credential restarts the reminders. If the days left jump past a threshold (the job did not run, or the credential was recorded late), only the tightest threshold crossed is mailed.
+
+- **Coordinators** are the active members (not viewers) of the issuing org who carry the `safeguarding` tag. If nobody has the tag, the active owners and admins are mailed instead (`core.OrgCoordinators`). Owners and admins can always record and verify credentials, tag or no tag; the tag adds members to them.
+- **Language** is the org default (`settings.locale`, then the app default language), the same as the invitation email. English and Spanish are written out; the other shipped catalogs carry the English text until they are translated.
+- **Content** is the credential type name, the org name and the expiry date (the coordinator mail also names the holder). Nothing else about the credential is sent.
+- A person **without an email address** (a minor without a login, for one) is skipped. A holder who is also a coordinator gets one mail.
+- Sending is best effort: a failure is logged and not retried, because the threshold is already recorded. The audit entry and the webhook are unchanged and do not depend on the mail.
+
+The tag is an ordinary org tag. Create it in the org's tags (`POST /api/orgs/{id}/tags`, name `safeguarding`) and assign it to members.
 
 ## Who is cleared
 
@@ -144,3 +154,7 @@ Not legal advice. These points are kept in front of the people who run this:
 - Deleting an org does not remove its credentials: the `org` relation has no cascade, so an org that still issued credentials cannot be deleted by accident. A superuser removes the rows first (they are records of the `_credentials` collection), then deletes the org.
 - Deleting a user removes their credentials (cascade). Their recorder and verifier links are cleared on the credentials they handled.
 - Restoring a backup or editing the database by hand is fine: the stored `status` is only for the dashboard, and the job corrects it on the next run. Access never depends on it.
+
+## Deleting an org
+
+An org with any `_credentials` row cannot be deleted: `DELETE /api/orgs/{id}`, a direct record delete and a batch delete all fail with a 400 ("The organization cannot be deleted while safeguarding credentials belong to it."). The attestations are a safeguarding record; remove them deliberately (as a superuser, following your retention policy) before deleting the org.

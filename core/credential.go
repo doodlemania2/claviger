@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
 	"github.com/doodlemania2/claviger/tools/hook"
 	"github.com/doodlemania2/claviger/tools/types"
 )
@@ -64,7 +65,7 @@ const (
 	AuditActionCredentialLapsed   = "credential_lapsed"
 
 	// DefaultCredentialExpiringDays is the "expiring soon" window of the
-	// access-status route, and the largest default reminder.
+	// access-status route.
 	DefaultCredentialExpiringDays = 60
 
 	credentialCronId   = "__pbCredentialLifecycle__"
@@ -73,7 +74,10 @@ const (
 
 // DefaultCredentialReminderDays are the reminder thresholds in days before
 // the expiry (org setting credentialReminderDays overrides them).
-var DefaultCredentialReminderDays = []int{60, 30, 7}
+var DefaultCredentialReminderDays = []int{30, 7}
+
+// MaxCredentialReminderDays is how many thresholds an org may configure.
+const MaxCredentialReminderDays = 5
 
 var credentialKeyRegex = regexp.MustCompile(`^[a-z0-9_]{2,40}$`)
 
@@ -90,6 +94,24 @@ func CredentialsAvailable(app App) bool {
 func ValidCredentialKey(s string) bool { return credentialKeyRegex.MatchString(s) }
 
 // ---- org settings ------------------------------------------------------------
+
+// requireNoCredentials refuses (400) while any credential belongs to the org.
+func requireNoCredentials(app App, org *Record) error {
+	if !CredentialsAvailable(app) {
+		return nil
+	}
+
+	rows, err := app.FindRecordsByFilter(CollectionNameCredentials, "org={:org}", "", 1, 0, dbx.Params{"org": org.Id})
+	if err != nil {
+		return err
+	}
+
+	if len(rows) > 0 {
+		return orgErr(400, "The organization cannot be deleted while safeguarding credentials belong to it.")
+	}
+
+	return nil
+}
 
 func credentialOrgSettings(org *Record) map[string]any {
 	out := map[string]any{}
@@ -113,7 +135,8 @@ func CredentialDocumentsEnabled(org *Record) bool {
 }
 
 // CredentialReminderDays returns the reminder thresholds of an org, largest
-// first (setting credentialReminderDays, 1 to 365 each, at most 6).
+// first (setting credentialReminderDays, 1 to 365 each, at most 5; a save of
+// the org refuses anything else, see validateOrgCredentialReminderDays).
 func CredentialReminderDays(org *Record) []int {
 	days := slices.Clone(DefaultCredentialReminderDays)
 
@@ -126,7 +149,7 @@ func CredentialReminderDays(org *Record) []int {
 			}
 		}
 
-		if len(parsed) > 0 && len(parsed) <= 6 {
+		if len(parsed) > 0 && len(parsed) <= MaxCredentialReminderDays {
 			days = parsed
 		}
 	}
@@ -136,7 +159,99 @@ func CredentialReminderDays(org *Record) []int {
 	return days
 }
 
+// validateOrgCredentialReminderDays refuses a credentialReminderDays setting
+// that is not a list of 1 to MaxCredentialReminderDays distinct whole numbers
+// from 1 to 365.
+func validateOrgCredentialReminderDays(e *RecordEvent) error {
+	v, ok := credentialOrgSettings(e.Record)["credentialReminderDays"]
+	if !ok {
+		return e.Next()
+	}
+
+	bad := validation.Errors{"settings": validation.NewError("validation_credential_reminder_days",
+		fmt.Sprintf("credentialReminderDays must be a list of 1 to %d different whole numbers from 1 to 365.", MaxCredentialReminderDays))}
+
+	list, isList := v.([]any)
+	if !isList || len(list) == 0 || len(list) > MaxCredentialReminderDays {
+		return bad
+	}
+
+	seen := map[float64]bool{}
+
+	for _, item := range list {
+		f, isNum := item.(float64)
+		if !isNum || f != float64(int(f)) || f < 1 || f > 365 || seen[f] {
+			return bad
+		}
+
+		seen[f] = true
+	}
+
+	return e.Next()
+}
+
 // ---- who may coordinate ------------------------------------------------------
+
+// OrgCoordinators returns the user records of the safeguarding coordinators of
+// the org: its active members (not viewers) tagged CredentialCoordinatorTag.
+// When nobody carries the tag it falls back to the active owners and admins.
+// Users without an email address are included; callers decide what to do.
+func OrgCoordinators(app App, orgId string) ([]*Record, error) {
+	members, err := app.FindRecordsByFilter(CollectionNameOrgMembers,
+		"org={:org} && status='active' && role!='viewer'", "created", 0, 0, dbx.Params{"org": orgId})
+	if err != nil {
+		return nil, err
+	}
+
+	var tagged, staff []string
+
+	for _, m := range members {
+		switch m.GetString("role") {
+		case OrgRoleOwner, OrgRoleAdmin:
+			staff = append(staff, m.GetString("user"))
+		}
+
+		if slices.Contains(OrgTagNames(app, m), CredentialCoordinatorTag) {
+			tagged = append(tagged, m.GetString("user"))
+		}
+	}
+
+	ids := tagged
+	if len(ids) == 0 {
+		ids = staff
+	}
+
+	if len(ids) == 0 {
+		return []*Record{}, nil
+	}
+
+	users, err := app.FindRecordsByIds(OrgUserCollectionName(), ids)
+	if err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
+// CredentialReminder is one reminder to deliver: the holder and the
+// coordinators of the issuing org learn that a credential nears its expiry.
+type CredentialReminder struct {
+	Org          *Record
+	Holder       *Record
+	Coordinators []*Record
+	// TypeName is the display name of the credential type (the key when the
+	// type is gone).
+	TypeName string
+	Expires  time.Time
+	DaysLeft int
+	// Threshold is the reminder offset in days that was crossed.
+	Threshold int
+}
+
+// CredentialReminderSender delivers a reminder by email. The mails package
+// sets it (core cannot import it); nil means no email is sent. It must skip
+// recipients without an address.
+var CredentialReminderSender func(app App, r *CredentialReminder) error
 
 // CredentialActor is who performs a credential operation.
 type CredentialActor struct {
@@ -1114,10 +1229,48 @@ func RunCredentialLifecycle(app App, ctx context.Context, now time.Time) (*Crede
 
 		if changed {
 			report.Expiring++
+
+			sendCredentialReminder(app, c, daysLeft, threshold)
 		}
 	}
 
 	return report, nil
+}
+
+// sendCredentialReminder emails the holder and the coordinators once the
+// threshold row update has won. Best effort: a failure is logged and not
+// retried (the update already recorded the threshold, so nothing resends).
+func sendCredentialReminder(app App, c *Record, daysLeft, threshold int) {
+	if CredentialReminderSender == nil {
+		return
+	}
+
+	org, err := app.FindRecordById(CollectionNameOrgs, c.GetString("org"))
+	if err != nil || org.GetBool("archived") {
+		return
+	}
+
+	holder, err := app.FindRecordById(OrgUserCollectionName(), c.GetString("user"))
+	if err != nil {
+		return
+	}
+
+	coordinators, err := OrgCoordinators(app, org.Id)
+	if err != nil {
+		app.Logger().Warn("Failed to find the credential coordinators", "org", org.Id, "error", err.Error())
+	}
+
+	typeName := c.GetString("type")
+	if t, err := FindCredentialType(app, org.Id, typeName); err == nil && t.GetString("name") != "" {
+		typeName = t.GetString("name")
+	}
+
+	if err := CredentialReminderSender(app, &CredentialReminder{
+		Org: org, Holder: holder, Coordinators: coordinators, TypeName: typeName,
+		Expires: c.GetDateTime("expires").Time(), DaysLeft: daysLeft, Threshold: threshold,
+	}); err != nil {
+		app.Logger().Warn("Failed to send a credential reminder", "credential", c.Id, "error", err.Error())
+	}
 }
 
 func writeCredentialAudit(app App, ctx context.Context, action string, c *Record, extra map[string]any) error {
@@ -1165,6 +1318,23 @@ func (app *BaseApp) registerCredentialHooks() {
 
 			if v := e.Record.GetString("verifiedBy"); v != "" && v == e.Record.GetString("user") {
 				return credErr(400, "A credential cannot be verified by its holder.")
+			}
+
+			return e.Next()
+		},
+	})
+
+	app.OnRecordValidate(CollectionNameOrgs).Bind(&hook.Handler[*RecordEvent]{
+		Id:   "__pbCredentialOrgSettings__",
+		Func: validateOrgCredentialReminderDays,
+	})
+
+	// an org that still has credentials cannot be deleted, by any path
+	app.OnRecordDelete(CollectionNameOrgs).Bind(&hook.Handler[*RecordEvent]{
+		Id: "__pbCredentialOrgDelete__",
+		Func: func(e *RecordEvent) error {
+			if err := requireNoCredentials(e.App, e.Record); err != nil {
+				return err
 			}
 
 			return e.Next()
