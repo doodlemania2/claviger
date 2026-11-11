@@ -84,7 +84,9 @@ API keys are refused on the staff routes. The `_recoveryCodes` collection has no
 
 ## QR codes
 
-The `qr` channel creates a longer token and a link, `/recovery#code=<token>`. The token is in the part after `#`, which browsers do not send to the server. The staff page shows the link as text. **It does not draw a QR code**, because the project has no QR library and does not add dependencies for this. Make the QR code with a generator that runs on your own device. Do not paste the link into a website.
+The `qr` channel creates a longer token and a link, `/recovery#code=<token>`. The token is in the part after `#`, which browsers do not send to the server. The issue response carries the link as `url` and the same link drawn as an SVG QR code in `qr`. The server draws it (`tools/qr`, which wraps `github.com/skip2/go-qrcode`), so no third-party service sees the link, and nothing is fetched by the page. The staff page puts the SVG into the page as DOM nodes with an accessible name ("Recovery QR code for <name>") and keeps the link as text under it for people who cannot scan. The SVG uses presentation attributes only, so the page's Content-Security-Policy is unchanged.
+
+The QR is part of the single response that shows the code once; it is not stored and not logged. A response with a QR is as sensitive as the link, so do not screenshot it or leave it on a shared screen.
 
 ## Audit
 

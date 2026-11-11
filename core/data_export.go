@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path"
 	"slices"
 	"strconv"
@@ -50,14 +49,12 @@ const (
 	// DataExportFormatVersion is the version of the ZIP layout and manifest.
 	DataExportFormatVersion = 1
 
-	// DataExportMaxFileMBEnv and DataExportMaxTotalMBEnv override the limits
+	// DataExportMaxFileMBEnv and DataExportMaxTotalMBEnv override (deprecated, see
+	// Settings.DataExport) the limits
 	// for files of file fields (a larger single file, or files beyond the
 	// total, are listed in the manifest and left out of the ZIP).
 	DataExportMaxFileMBEnv  = "CLAVIGER_EXPORT_MAX_FILE_MB"
 	DataExportMaxTotalMBEnv = "CLAVIGER_EXPORT_MAX_TOTAL_MB"
-
-	dataExportDefaultMaxFileMB  = 100
-	dataExportDefaultMaxTotalMB = 1024
 
 	dataExportPageSize = 500
 )
@@ -184,13 +181,6 @@ func dataMapHash(rows []dataMapRow) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func dataExportLimit(env string, defaultMB int64) int64 {
-	if v, err := strconv.ParseInt(strings.TrimSpace(os.Getenv(env)), 10, 64); err == nil && v > 0 {
-		return v << 20
-	}
-	return defaultMB << 20
-}
-
 type dataExporter struct {
 	app     App
 	subject *Record
@@ -255,8 +245,8 @@ func WriteDataExport(app App, subject *Record, dst io.Writer) (*DataExportManife
 		subject:  subject,
 		zw:       zip.NewWriter(dst),
 		m:        m,
-		maxFile:  dataExportLimit(DataExportMaxFileMBEnv, dataExportDefaultMaxFileMB),
-		maxTotal: dataExportLimit(DataExportMaxTotalMBEnv, dataExportDefaultMaxTotalMB),
+		maxFile:  int64(DataExportMaxFileMB(app)) << 20,
+		maxTotal: int64(DataExportMaxTotalMB(app)) << 20,
 	}
 	defer func() {
 		if ex.fsys != nil {

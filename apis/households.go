@@ -20,6 +20,11 @@ import (
 //	DELETE /api/households/{id}/members/{member}
 //	POST   /api/households/{id}/members/{member}/guardian    make the person a guardian
 //	DELETE /api/households/{id}/members/{member}/guardian    step down / remove the guardian flag
+//	POST   /api/households/{id}/merge                        {from}: move the people of another household here (staff)
+//	POST   /api/households/{id}/split                        {members, name}: move people to a new household (staff or a head)
+//	GET    /api/households/duplicates                        ?org=ID: people who may be the same person (staff)
+//	POST   /api/households/{id}/members/{member}/photo       multipart, field "photo" (staff, a guardian, the person)
+//	DELETE /api/households/{id}/members/{member}/photo
 //
 // Org staff are the owners and admins of the household's org and the members
 // tagged "registrar". They can read and change every household of the org and
@@ -32,6 +37,7 @@ func bindHouseholdsApi(rg *router.RouterGroup[*core.RequestEvent]) {
 	g.GET("", householdsList)
 	g.POST("", householdsCreate)
 	g.GET("/mine", householdsMine)
+	g.GET("/duplicates", householdsDuplicates)
 	g.GET("/{id}", householdsView)
 	g.PATCH("/{id}", householdsUpdate)
 	g.POST("/{id}/members", householdMembersAdd)
@@ -39,6 +45,10 @@ func bindHouseholdsApi(rg *router.RouterGroup[*core.RequestEvent]) {
 	g.DELETE("/{id}/members/{member}", householdMembersRemove)
 	g.POST("/{id}/members/{member}/guardian", householdGuardianSet)
 	g.DELETE("/{id}/members/{member}/guardian", householdGuardianUnset)
+	g.POST("/{id}/merge", householdsMerge)
+	g.POST("/{id}/split", householdsSplit)
+	g.POST("/{id}/members/{member}/photo", householdPhotoSet)
+	g.DELETE("/{id}/members/{member}/photo", householdPhotoRemove)
 }
 
 func householdGate(e *core.RequestEvent) error {
@@ -367,6 +377,142 @@ func householdGuardian(e *core.RequestEvent, guardian bool) error {
 	}
 
 	m, err = core.SetHouseholdGuardian(e.App, auditContext(e), actor, org, h, m, guardian)
+	if err != nil {
+		return orgHTTP(e, err)
+	}
+
+	return e.JSON(http.StatusOK, householdMemberJSON(m, true))
+}
+
+func householdsMerge(e *core.RequestEvent) error {
+	h, org, actor, err := householdSession(e)
+	if err != nil {
+		return err
+	}
+
+	var body struct {
+		From string `json:"from" form:"from"`
+	}
+
+	if err := e.BindBody(&body); err != nil {
+		return e.BadRequestError("Failed to read the request data.", err)
+	}
+
+	if err := core.MergeHouseholds(e.App, auditContext(e), actor, org, h, body.From); err != nil {
+		return orgHTTP(e, err)
+	}
+
+	// reload: the move bypassed the record in hand
+	h, err = e.App.FindRecordById(core.CollectionNameHouseholds, h.Id)
+	if err != nil {
+		return e.InternalServerError("", err)
+	}
+
+	out, err := householdView(e, h, actor)
+	if err != nil {
+		return e.InternalServerError("", err)
+	}
+
+	return e.JSON(http.StatusOK, out)
+}
+
+func householdsSplit(e *core.RequestEvent) error {
+	h, org, actor, err := householdSession(e)
+	if err != nil {
+		return err
+	}
+
+	var body struct {
+		Members []string `json:"members" form:"members"`
+		Name    string   `json:"name" form:"name"`
+	}
+
+	if err := e.BindBody(&body); err != nil {
+		return e.BadRequestError("Failed to read the request data.", err)
+	}
+
+	from, to, err := core.SplitHousehold(e.App, auditContext(e), actor, org, h, body.Members, body.Name)
+	if err != nil {
+		return orgHTTP(e, err)
+	}
+
+	views := map[string]any{}
+
+	for key, rec := range map[string]*core.Record{"from": from, "to": to} {
+		rec, err = e.App.FindRecordById(core.CollectionNameHouseholds, rec.Id)
+		if err != nil {
+			return e.InternalServerError("", err)
+		}
+
+		v, err := householdView(e, rec, core.NewHouseholdActor(e.App, org, rec, e.Auth))
+		if err != nil {
+			return e.InternalServerError("", err)
+		}
+
+		views[key] = v
+	}
+
+	return e.JSON(http.StatusOK, views)
+}
+
+func householdsDuplicates(e *core.RequestEvent) error {
+	if err := householdGate(e); err != nil {
+		return err
+	}
+
+	org, err := core.FindOrg(e.App, e.Request.URL.Query().Get("org"))
+	if err != nil {
+		return e.NotFoundError("Organization not found.", nil)
+	}
+
+	if actor := core.NewHouseholdActor(e.App, org, nil, e.Auth); !actor.Staff {
+		return e.NotFoundError("Organization not found.", nil)
+	}
+
+	groups, truncated, err := core.HouseholdDuplicates(e.App, org.Id)
+	if err != nil {
+		return e.InternalServerError("", err)
+	}
+
+	return e.JSON(http.StatusOK, map[string]any{"items": groups, "truncated": truncated})
+}
+
+func householdPhotoSet(e *core.RequestEvent) error {
+	h, org, actor, err := householdSession(e)
+	if err != nil {
+		return err
+	}
+
+	m, err := householdMemberFromPath(e, h)
+	if err != nil {
+		return err
+	}
+
+	files, err := e.FindUploadedFiles("photo")
+	if err != nil || len(files) != 1 {
+		return e.BadRequestError("Send exactly one image in the multipart field \"photo\".", err)
+	}
+
+	m, err = core.SetHouseholdMemberPhoto(e.App, auditContext(e), actor, org, h, m, files[0])
+	if err != nil {
+		return orgHTTP(e, err)
+	}
+
+	return e.JSON(http.StatusOK, householdMemberJSON(m, true))
+}
+
+func householdPhotoRemove(e *core.RequestEvent) error {
+	h, org, actor, err := householdSession(e)
+	if err != nil {
+		return err
+	}
+
+	m, err := householdMemberFromPath(e, h)
+	if err != nil {
+		return err
+	}
+
+	m, err = core.RemoveHouseholdMemberPhoto(e.App, auditContext(e), actor, org, h, m)
 	if err != nil {
 		return orgHTTP(e, err)
 	}

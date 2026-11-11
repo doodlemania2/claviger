@@ -83,6 +83,11 @@ window.app.store = store({
             label: "Organizations",
         },
         {
+            href: "#/households",
+            icon: "ri-home-heart-line",
+            label: "Households",
+        },
+        {
             href: "#/oidc",
             icon: "ri-id-card-line",
             label: "OpenID Connect",
@@ -148,6 +153,12 @@ window.app.store = store({
                 href: "#/settings/sms",
                 icon: "ri-message-2-line",
                 label: "SMS",
+            },
+            {
+                // fork-local (#88)
+                href: "#/settings/data-export",
+                icon: "ri-download-cloud-2-line",
+                label: "Data export",
             },
         ],
         Sync: [

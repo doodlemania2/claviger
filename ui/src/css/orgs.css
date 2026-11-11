@@ -22,3 +22,15 @@
         word-break: break-all;
     }
 }
+
+/* Fork-local (Claviger #80, 80-5): households page */
+.page-households {
+    .households-table,
+    .household-members-table,
+    .household-duplicates-table {
+        width: 100%;
+    }
+    tr.active {
+        background: var(--secondaryAltColor, rgba(127, 127, 127, 0.1));
+    }
+}

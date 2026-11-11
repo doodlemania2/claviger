@@ -26,10 +26,11 @@ import (
 // a fresh passkey assertion, or the account password when there is no passkey.
 // See docs/data-export.md.
 
-var (
-	dataExportSelfRateRule  = core.RateLimitRule{MaxRequests: 3, Duration: 3600}
-	dataExportAdminRateRule = core.RateLimitRule{MaxRequests: 60, Duration: 3600}
-)
+// The limits come from Settings.DataExport. The limit is part of the limiter
+// key, so a changed setting takes effect at once (counters start over).
+func dataExportRateRule(max int) core.RateLimitRule {
+	return core.RateLimitRule{MaxRequests: max, Duration: 3600}
+}
 
 func bindDataExportApi(_ core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 	me := rg.Group("/me")
@@ -86,7 +87,8 @@ func dataExportSelf(e *core.RequestEvent) error {
 		return e.ForbiddenError("Superusers request exports through /api/gdpr/subjects/{id}/export.", nil)
 	}
 
-	if err := checkRateLimit(e, "@pb_gdpr_export_"+e.Auth.Id, dataExportSelfRateRule); err != nil {
+	selfMax := core.DataExportSelfRequestsPerHour(e.App)
+	if err := checkRateLimit(e, "@pb_gdpr_export_"+strconv.Itoa(selfMax)+"_"+e.Auth.Id, dataExportRateRule(selfMax)); err != nil {
 		return e.TooManyRequestsError("Too many requests, please try again later.", nil)
 	}
 
@@ -127,7 +129,8 @@ func dataExportAdmin(e *core.RequestEvent) error {
 		return apiKeyForbidden(e)
 	}
 
-	if err := checkRateLimit(e, "@pb_gdpr_export_admin_"+e.Auth.Id, dataExportAdminRateRule); err != nil {
+	adminMax := core.DataExportAdminRequestsPerHour(e.App)
+	if err := checkRateLimit(e, "@pb_gdpr_export_admin_"+strconv.Itoa(adminMax)+"_"+e.Auth.Id, dataExportRateRule(adminMax)); err != nil {
 		return e.TooManyRequestsError("Too many requests, please try again later.", nil)
 	}
 

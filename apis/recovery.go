@@ -9,6 +9,7 @@ import (
 	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/doodlemania2/claviger/core"
 	"github.com/doodlemania2/claviger/mails"
+	"github.com/doodlemania2/claviger/tools/qr"
 	"github.com/doodlemania2/claviger/tools/router"
 	"github.com/doodlemania2/claviger/tools/types"
 )
@@ -147,6 +148,14 @@ func recoveryIssuedJSON(e *core.RequestEvent, org *core.Record, res *core.Recove
 	case res.Token != "":
 		out["token"] = res.Token
 		out["url"] = strings.TrimRight(e.App.Settings().Meta.AppURL, "/") + "/recovery#code=" + res.Token
+
+		// drawn here so no third party ever sees the link; it only travels in
+		// this response, never in a URL or a log line
+		if svg, err := qr.SVG(out["url"].(string), "QR code"); err != nil {
+			e.App.Logger().Warn("Failed to draw a recovery QR code", "error", err)
+		} else {
+			out["qr"] = svg
+		}
 	default:
 		out["code"] = res.DisplayCode()
 	}

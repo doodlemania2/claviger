@@ -3,6 +3,7 @@ import { pageCollections } from "@/collections/pageCollections";
 import { pageAudit } from "@/audit/pageAudit";
 import { pageWebhooks } from "@/webhooks/pageWebhooks";
 import { pageOrgs } from "@/orgs/pageOrgs";
+import { pageHouseholds } from "@/households/pageHouseholds"; // fork-local (#80)
 import { pageOidc } from "@/oidc/pageOidc";
 import { pageLogs } from "@/logs/pageLogs";
 import { pageApplicationSettings } from "@/settings/application/pageApplicationSettings";
@@ -11,6 +12,7 @@ import { pageApiKeysSettings } from "@/settings/apikeys/pageApiKeysSettings";
 import { pageFieldKeysSettings } from "@/settings/fieldkeys/pageFieldKeysSettings"; // fork-local (#75)
 import { pageCaptchaSettings } from "@/settings/captcha/pageCaptchaSettings";
 import { pageSmsSettings } from "@/settings/sms/pageSmsSettings"; // fork-local (#83)
+import { pageDataExportSettings } from "@/settings/dataExport/pageDataExportSettings"; // fork-local (#88)
 import { pageCronsSettings } from "@/settings/crons/pageCronsSettings";
 import { pageMailSettings } from "@/settings/mail/pageMailSettings";
 import { pageSQLConsole } from "@/settings/sql/pageSQLConsole";
@@ -180,6 +182,7 @@ app.routes.superuserOnly("#/logs", pageLogs);
 app.routes.superuserOnly("#/audit", pageAudit);
 app.routes.superuserOnly("#/webhooks", pageWebhooks);
 app.routes.superuserOnly("#/orgs", pageOrgs);
+app.routes.superuserOnly("#/households", pageHouseholds); // fork-local (#80)
 app.routes.superuserOnly("#/oidc", pageOidc);
 app.routes.superuserOnly("#/settings", pageApplicationSettings);
 app.routes.superuserOnly("#/settings/mail", pageMailSettings);
@@ -191,6 +194,7 @@ app.routes.superuserOnly("#/settings/api-keys", pageApiKeysSettings);
 app.routes.superuserOnly("#/settings/encryption-keys", pageFieldKeysSettings); // fork-local (#75)
 app.routes.superuserOnly("#/settings/captcha", pageCaptchaSettings);
 app.routes.superuserOnly("#/settings/sms", pageSmsSettings); // fork-local (#83)
+app.routes.superuserOnly("#/settings/data-export", pageDataExportSettings); // fork-local (#88)
 app.routes.superuserOnly("#/settings/export-collections", pageExportCollections);
 app.routes.superuserOnly("#/settings/import-collections", pageImportCollections);
 app.routes.superuserOnly("#/settings/sql", pageSQLConsole);
