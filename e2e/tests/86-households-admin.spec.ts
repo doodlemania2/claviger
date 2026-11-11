@@ -1,8 +1,6 @@
 import { test, expect, state, api } from "../fixtures";
 
-// The Households section of the admin UI (#80, 80-5). Merge, split and duplicates are written
-// against the contract of the merge/split branch: on a build without those routes the page says
-// so in words (404), which is what this spec accepts.
+// The Households section of the admin UI (#80, 80-5), including merge, split and duplicates (80-4).
 
 test.describe.configure({ mode: "serial" });
 
@@ -16,6 +14,8 @@ test.beforeAll(async () => {
     alpha = await api("POST", "/api/households", { org: orgId, name: "Alpha family", first: { name: "Ann Alpha", role: "head", guardian: true } });
     beta = await api("POST", "/api/households", { org: orgId, name: "Beta family", first: { name: "Bob Beta", role: "head", guardian: true } });
     await api("POST", `/api/households/${alpha.id}/members`, { name: "Cleo Alpha", role: "child", isMinor: true });
+    // stays behind when Ann and Cleo split off (a split may not move everyone)
+    await api("POST", `/api/households/${alpha.id}/members`, { name: "Dan Alpha", role: "adult" });
 });
 
 test("Households admin: list, filter by status, and open a household", async ({ admin, problems }) => {
@@ -72,24 +72,42 @@ test("Households admin: the last guardian cannot be removed (the guard answers 4
     await expect(admin.locator("#households_error")).toContainText(/guardian/i);
 });
 
-test("Households admin: merge, split and duplicates (or a clear 404 message without the routes)", async ({ admin, problems }) => {
-    problems.ignore(/status of 404/);
+test("Households admin: split, merge and duplicates", async ({ admin, problems }) => {
+    problems.ignore(/status of 409/);
     await admin.goto(`/_/#/households?org=${orgId}&household=${alpha.id}`);
     const detail = admin.locator("#household_detail");
     await expect(detail).toContainText("Cleo Alpha");
-
-    await detail.getByRole("button", { name: "Split" }).click();
     const modal = admin.locator(".org-form-modal");
+
+    // moving the child away from every guardian is refused by the guard, in words
+    await detail.getByRole("button", { name: "Split" }).click();
     await modal.getByLabel("Name of the new household").fill("Cleo household");
     await modal.getByLabel(/Move Cleo Alpha/).check();
     await modal.getByRole("button", { name: "Split", exact: true }).click();
-    // success closes the modal and selects the new household; a build without the route explains itself
-    await expect(admin.locator(".org-form-modal .alert.danger, #household_detail:has-text('Cleo household')").first()).toBeVisible();
-    if (await modal.count()) {
-        await expect(modal.locator(".alert.danger")).toContainText("not available on this server");
-        await modal.getByRole("button", { name: "Cancel" }).click();
-    }
+    await expect(modal.locator(".alert.danger")).toContainText("active adult guardian");
+
+    // with her guardian it goes through
+    await modal.getByLabel(/Move Ann Alpha/).check();
+    await modal.getByRole("button", { name: "Split", exact: true }).click();
+    await expect(modal).toHaveCount(0);
+    await expect(detail).toContainText("Cleo household");
+
+    const list = await api("GET", `/api/households?org=${orgId}`);
+    const cleo = list.items.find((h: any) => h.name === "Cleo household");
+    expect(cleo, "the new household exists").toBeTruthy();
+
+    // an archived household (Beta, archived by the first test) cannot be merged
+    await expect(api("POST", `/api/households/${cleo.id}/merge`, { from: beta.id })).rejects.toThrow(/409/);
+
+    // an active one can; the UI then shows the moved person
+    const gamma = await api("POST", "/api/households", { org: orgId, name: "Gamma family", first: { name: "Gus Gamma", role: "head", guardian: true } });
+    const merged = await api("POST", `/api/households/${cleo.id}/merge`, { from: gamma.id });
+    expect((merged.members || []).map((m: any) => m.name).sort()).toEqual(["Ann Alpha", "Cleo Alpha", "Gus Gamma"]);
+    // the merge happened outside this page, so load it again
+    await admin.goto(`/_/#/households?org=${orgId}&household=${cleo.id}`);
+    await admin.reload();
+    await expect(detail).toContainText("Gus Gamma");
 
     await admin.getByRole("button", { name: "Find duplicates" }).click();
-    await expect(admin.locator("#households_error, #household_duplicates table, #household_duplicates :text('No candidates found.')").first()).toBeVisible();
+    await expect(admin.locator("#household_duplicates table, #household_duplicates :text('No candidates found.')").first()).toBeVisible();
 });
