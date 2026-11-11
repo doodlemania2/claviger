@@ -95,12 +95,54 @@ All need a signed-in user. API keys are refused.
 | `DELETE /api/households/{id}/members/{member}` | remove the row |
 | `POST /api/households/{id}/members/{member}/guardian` | make the person a guardian |
 | `DELETE /api/households/{id}/members/{member}/guardian` | clear the flag |
+| `POST /api/households/{id}/merge` | `{from}`: move every person of household `from` into `{id}` (staff) |
+| `POST /api/households/{id}/split` | `{members: [ids], name}`: move people into a new household (staff, or an active head) |
+| `GET /api/households/duplicates?org=ID` | people who may be the same person (staff) |
+| `POST /api/households/{id}/members/{member}/photo` | multipart, field `photo` |
+| `DELETE /api/households/{id}/members/{member}/photo` | remove the photo |
 
 `birthDate` is a date such as `2014-05-17`. Another household, or one you have no part in, answers 404.
 
 Birth date, allergies and medical notes of a person are shown to staff, to guardians and to the person. Other members see name, role and flags.
 
 Every change is a normal record write, so it lands in the audit log with the actor, the changed fields and `meta.orgId` (and `meta.household` for people).
+
+## Merge and split
+
+Both run in **one transaction** and write **one audit entry**. The people are moved with plain updates, so there are no per-person entries. Entries hold ids only: no names, birth dates or anything encrypted.
+
+**Merge** (`POST /api/households/{id}/merge`, body `{"from": "<household>"}`). Staff of the target's org only. The source must be another household of the same org (anything else answers 404), and both must be `active` (409). Every person row of the source moves to `{id}`, whatever its status. Nothing is merged automatically: two rows for one person stay two rows, and staff remove one (use [duplicates](#duplicates)). The source is set to `archived`. It is refused with a 409 when the result would be an active minor without an active adult guardian, or when the same login sits in both households. The answer is the target household with its people, as `GET /api/households/{id}`. Audit action `household_merge`, target `_households`/`{id}`, `meta`: `orgId`, `mergedFrom`, `movedMembers` (ids), `copiesRewritten`.
+
+**Split** (`POST /api/households/{id}/split`, body `{"members": ["<member>", ...], "name": "<new household>"}`). Staff, or an active adult person with role `head` in that household. The new household is `active` and in the same org. It starts with no address and no phone: those are sensitive and staff or a guardian enter them on purpose. The guards hold on **both** sides: a side that would hold an active minor without an active adult guardian refuses the split (409). Someone must stay in the source household, so moving everyone is a 400, as is naming a person of another household or nobody. The answer is `{"from": household, "to": household}`, each shaped as `GET /api/households/{id}`. Audit action `household_split`, target `_households/<new id>`, `meta`: `orgId`, `splitFrom`, `movedMembers`, `copiesRewritten`. To undo a merge, split with the recorded ids.
+
+**Dependent records.** Collections that describe a person carry a relation to `_householdMembers` and a copy of the household. Merge and split rewrite that copy for every moved person in the same transaction. A collection counts when it has a single-valued relation to `_householdMembers` and a single-valued relation to `_households`: the fields named `member` and `household` win, otherwise exactly one of each. Anything ambiguous is left alone.
+
+### Duplicates
+
+`GET /api/households/duplicates?org=ID` (staff). Looks at active people of active households of the org and returns groups of at most 200:
+
+```json
+{"items": [{"reason": "same_name_birth_year", "members": [{"id": "", "name": "", "household": "", "householdName": ""}]}], "truncated": false}
+```
+
+`same_name_birth_year`: the same normalized name (lowercase, letters and digits, single spaces) and the same birth year, in any household. `same_name_household`: the same name inside one household. The birth year is read (decrypted) on the server and is **never returned**; neither is the birth date. While `birthDate` is still a plain field (no key), only the same-household rule runs.
+
+## Photos
+
+`POST /api/households/{id}/members/{member}/photo` takes a multipart body with one image in the field `photo` (`image/jpeg`, `image/png` or `image/webp`, up to 5 MB; the type is checked on the content, not the file name). `DELETE` on the same path removes it. Both answer with the person. Allowed: staff, an active guardian of the household (for any person, the same rule as `PATCH` on the person), and the person themselves. A photo of a person of another household in the path answers 404.
+
+The photo is a protected file. Read it through the normal file route with a file token (`GET /api/files/token`, then `/api/files/_householdMembers/{member}/{name}?token=...`). The view rule of `_householdMembers` decides: the person, the active members of the household, and staff of the org. Nobody else gets the file.
+
+## Repairing drifted copies
+
+`BindHouseholdCopy` keeps the `household` copy in step on every save, but a restore or a hand edit of the database can leave it wrong. Stop the server, then:
+
+```
+claviger households repair-copies --dry-run
+claviger households repair-copies
+```
+
+It lists, per dependent collection, how many records have a copy that differs from the household of their member, and fixes them in one transaction (the member row is the truth). It is idempotent.
 
 ## Rules for your own collections
 
