@@ -46,9 +46,10 @@ func init() {
 			// the person being recovered; the rows go with the account
 			&core.RelationField{Name: "user", System: true, Required: true, CollectionId: userCollectionId, MaxSelect: 1, CascadeDelete: true},
 			&core.RelationField{Name: "org", System: true, Required: true, CollectionId: orgs.Id, MaxSelect: 1, CascadeDelete: true},
-			// staff: not required, so that deleting a staff account is never blocked
-			&core.RelationField{Name: "issuedBy", System: true, CollectionId: userCollectionId, MaxSelect: 1},
-			&core.RelationField{Name: "confirmedBy", System: true, CollectionId: userCollectionId, MaxSelect: 1},
+			// staff ids as text, not relations: a superuser may issue too (and lives in
+			// another collection), and deleting a staff account must never be blocked
+			&core.TextField{Name: "issuedBy", System: true, Max: 100},
+			&core.TextField{Name: "confirmedBy", System: true, Max: 100},
 			&core.SelectField{Name: "channel", System: true, Required: true, MaxSelect: 1, Values: core.RecoveryChannels},
 			&core.SelectField{Name: "verification", System: true, Required: true, MaxSelect: 1, Values: core.RecoveryVerifications},
 			&core.TextField{Name: "note", System: true, Max: core.RecoveryNoteMax},
