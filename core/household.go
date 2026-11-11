@@ -954,6 +954,12 @@ func auditHouseholdMeta(app App, entry *AuditEntry, record *Record) {
 	entry.Meta["household"] = h.Id
 }
 
+type householdUpgrade struct {
+	collection string
+	field      string
+	json       bool
+}
+
 // ---- encryption upgrade -------------------------------------------------------
 
 // FieldEncryptionAvailable reports whether a key-encryption key is configured.
@@ -974,44 +980,102 @@ func UpgradeHouseholdEncryption(app App) error {
 		return nil
 	}
 
-	type want struct {
-		collection string
-		field      string
-		json       bool
-	}
+	todo := map[string][]householdUpgrade{}
 
-	for _, w := range []want{
+	for _, w := range []householdUpgrade{
 		{CollectionNameHouseholds, "address", true},
 		{CollectionNameHouseholds, "homePhone", false},
 		{CollectionNameHouseholdMembers, "birthDate", false},
 		{CollectionNameHouseholdMembers, "allergies", true},
 		{CollectionNameHouseholdMembers, "medical", true},
 	} {
-		col, err := app.FindCollectionByNameOrId(w.collection)
+		col, err := app.FindCachedCollectionByNameOrId(w.collection)
 		if err != nil {
 			return err
 		}
 
-		f := col.Fields.GetByName(w.field)
-		if f == nil || f.Type() == FieldTypeEncryptedText || f.Type() == FieldTypeEncryptedJSON {
+		if f := col.Fields.GetByName(w.field); f != nil && f.Type() != FieldTypeEncryptedText && f.Type() != FieldTypeEncryptedJSON {
+			todo[w.collection] = append(todo[w.collection], w)
+		}
+	}
+
+	for _, name := range []string{CollectionNameHouseholds, CollectionNameHouseholdMembers} {
+		wants := todo[name]
+		if len(wants) == 0 {
 			continue
 		}
 
-		var repl Field
+		if err := app.RunInTransaction(func(txApp App) error {
+			return upgradeHouseholdCollection(txApp, name, wants)
+		}); err != nil {
+			return fmt.Errorf("failed to encrypt the fields of %s: %w", name, err)
+		}
+	}
+
+	return nil
+}
+
+// upgradeHouseholdCollection replaces the plain fields with encrypted fields
+// of the same name (a new field id: the type of a field cannot change under
+// the same id) and writes back the values that were stored in the plain ones.
+func upgradeHouseholdCollection(app App, name string, wants []householdUpgrade) error {
+	col, err := app.FindCollectionByNameOrId(name)
+	if err != nil {
+		return err
+	}
+
+	// the plain values written around the routes (the admin API, SQL)
+	saved := map[string]map[string]string{} // record id -> field -> value
+
+	for _, w := range wants {
+		var rows []struct {
+			Id    string `db:"id"`
+			Value string `db:"v"`
+		}
+
+		if err := app.DB().NewQuery("SELECT [[id]] AS id, COALESCE(CAST([[" + w.field + "]] AS TEXT), '') AS v FROM {{" + name + "}} WHERE [[" + w.field + "]] IS NOT NULL").All(&rows); err != nil {
+			return err
+		}
+
+		for _, r := range rows {
+			if r.Value == "" || r.Value == "null" {
+				continue
+			}
+
+			if saved[r.Id] == nil {
+				saved[r.Id] = map[string]string{}
+			}
+
+			saved[r.Id][w.field] = r.Value
+		}
+	}
+
+	for _, w := range wants {
+		col.Fields.RemoveByName(w.field)
+
 		if w.json {
-			repl = &EncryptedJSONField{Id: f.GetId(), Name: w.field, System: true, MaxSize: 64 << 10}
+			col.Fields.Add(&EncryptedJSONField{Name: w.field, MaxSize: 64 << 10})
 		} else {
-			repl = &EncryptedTextField{Id: f.GetId(), Name: w.field, System: true, Max: 500}
+			col.Fields.Add(&EncryptedTextField{Name: w.field, Max: 500})
+		}
+	}
+
+	if err := app.Save(col); err != nil {
+		return err
+	}
+
+	for id, fields := range saved {
+		rec, err := app.FindRecordById(name, id)
+		if err != nil {
+			return err
 		}
 
-		col.Fields.Add(repl)
-
-		if err := app.SaveNoValidate(col); err != nil {
-			return fmt.Errorf("failed to encrypt %s.%s: %w", w.collection, w.field, err)
+		for f, v := range fields {
+			rec.Set(f, v)
 		}
 
-		if _, err := ConvertFieldValues(context.Background(), app, FieldKeyOptions{Collection: w.collection, Field: w.field}); err != nil {
-			return fmt.Errorf("failed to encrypt the values of %s.%s: %w", w.collection, w.field, err)
+		if err := app.UnsafeWithoutHooks().SaveNoValidate(rec); err != nil {
+			return err
 		}
 	}
 

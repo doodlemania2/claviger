@@ -902,6 +902,10 @@ func TestHouseholdFieldsUpgradeToEncrypted(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if _, err := app.DB().Update(core.CollectionNameHouseholds, dbx.Params{"address": `{"city":"Plain"}`, "homePhone": "+1 555 7"}, dbx.HashExp{"id": h.Id}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+
 	// the key arrives
 	setTestKEK(t)
 
@@ -930,6 +934,15 @@ func TestHouseholdFieldsUpgradeToEncrypted(t *testing.T) {
 	loaded, err := app.FindRecordById(core.CollectionNameHouseholdMembers, m.Id)
 	if err != nil || loaded.GetString("birthDate") != "1980-01-02" {
 		t.Fatalf("the value must read back: %v %q", err, loaded.GetString("birthDate"))
+	}
+
+	hh, err := app.FindRecordById(core.CollectionNameHouseholds, h.Id)
+	if err != nil || !strings.Contains(hh.GetString("address"), `"city":"Plain"`) || hh.GetString("homePhone") != "+1 555 7" {
+		t.Fatalf("the household values must read back: %v %q %q", err, hh.GetString("address"), hh.GetString("homePhone"))
+	}
+
+	if raw := rawColumn(t, app, hcol, h.Id, "address"); !strings.HasPrefix(raw, "enc:v1:") || strings.Contains(raw, "Plain") {
+		t.Errorf("the stored address was not encrypted: %q", raw)
 	}
 
 	// now sensitive values are accepted, and the run is idempotent

@@ -49,12 +49,16 @@ func init() {
 		// core.UpgradeHouseholdEncryption turns them into encrypted fields at
 		// the first start with a key, and the routes refuse sensitive values
 		// until then.
+		// not system fields: the upgrade replaces them with encrypted fields
+		// (the type of a field cannot change under the same id)
 		text := func(name string, max int) core.Field {
-			return &core.TextField{Name: name, System: true, Max: max}
+			return &core.TextField{Name: name, Max: max}
 		}
 
+		// text, not json, so that the column is TEXT on every database and the
+		// values can be encrypted in place later
 		jsonField := func(name string, max int64) core.Field {
-			return &core.JSONField{Name: name, System: true, MaxSize: max}
+			return &core.TextField{Name: name, Max: int(max)}
 		}
 
 		households := core.NewBaseCollection(core.CollectionNameHouseholds)

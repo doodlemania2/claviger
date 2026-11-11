@@ -738,6 +738,11 @@ func populateForkDB(t *testing.T, app core.App) {
 	if err := app.Save(people); err != nil {
 		t.Fatal(err)
 	}
+	// #80: the household fields are encrypted at the first start with a key;
+	// do it here, before the copy, so that serving each side does not change it
+	if err := core.UpgradeHouseholdEncryption(app); err != nil {
+		t.Fatal(err)
+	}
 	for i := range 3 {
 		r := core.NewRecord(people)
 		r.Set("name", fmt.Sprintf("person %d", i))
