@@ -54,12 +54,31 @@ async function stepped(run) {
   return r;
 }
 
+// drawQr puts the server-drawn SVG in the page as DOM nodes (never as a string
+// of markup), so the strict Content-Security-Policy and the escaping of the
+// page stay as they are. The link under it stays as the fallback.
+function drawQr(box, svg, name) {
+  if (!svg) return;
+  const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+  const node = doc.documentElement;
+  if (!node || node.nodeName !== "svg" || doc.querySelector("parsererror")) return;
+  const label = t("js.recovery.qrLabel", { name });
+  node.setAttribute("aria-label", label);
+  const title = node.querySelector("title");
+  if (title) title.textContent = label;
+  box.append(document.importNode(node, true));
+  box.hidden = false;
+}
+
 function showResult(body, name) {
   const code = root.querySelector("#codeText");
   const note = root.querySelector("#resultNote");
   const extra = root.querySelector("#resultExtra");
   code.classList.remove("link");
   extra.textContent = "";
+  const qrBox = root.querySelector("#qrBox");
+  qrBox.textContent = "";
+  qrBox.hidden = true;
 
   if (body.pending) {
     root.querySelector("#resultTitle").textContent = name;
@@ -70,6 +89,7 @@ function showResult(body, name) {
     code.classList.add("link");
     code.textContent = body.url;
     note.textContent = t("js.recovery.linkNote");
+    drawQr(qrBox, body.qr, name);
   } else {
     root.querySelector("#resultTitle").textContent = t("js.recovery.codeFor", { name });
     code.textContent = body.code;

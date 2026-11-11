@@ -31,6 +31,7 @@ Generated on: 2026-06-07
 | github.com/muhlemmer/gu | Unlicense | https://github.com/muhlemmer/gu/blob/v0.3.1/LICENSE |
 | github.com/muhlemmer/httpforwarded | BSD-3-Clause | https://github.com/muhlemmer/httpforwarded/blob/v0.1.0/LICENSE |
 | github.com/rs/cors | MIT | https://github.com/rs/cors/blob/v1.11.1/LICENSE |
+| github.com/skip2/go-qrcode | MIT | https://github.com/skip2/go-qrcode/blob/da1b6568686e/LICENSE |
 | github.com/zitadel/oidc/v3 | Apache-2.0 | https://github.com/zitadel/oidc/blob/v3.51.17/LICENSE |
 | github.com/zitadel/schema | BSD-3-Clause | https://github.com/zitadel/schema/blob/v1.3.2/LICENSE |
 | github.com/asaskevich/govalidator | MIT | https://github.com/asaskevich/govalidator/blob/a9d515a09cc2/LICENSE |

@@ -103,6 +103,7 @@ var recoveryPageTemplates = template.Must(template.Must(orgsPageTemplates.Clone(
 
 <section id="result" hidden aria-live="polite">
 <h2 id="resultTitle"></h2>
+<div id="qrBox" class="qrbox" hidden></div>
 <p id="codeText" class="codebig"></p>
 <p id="resultNote" class="muted"></p>
 <p id="resultExtra" class="muted"></p>
