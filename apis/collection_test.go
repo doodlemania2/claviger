@@ -47,7 +47,7 @@ func TestCollectionsList(t *testing.T) {
 			ExpectedContent: []string{
 				`"page":1`,
 				`"perPage":30`,
-				`"totalItems":44`,
+				`"totalItems":45`,
 				`"items":[{`,
 				`"name":"` + core.CollectionNameSuperusers + `"`,
 				`"name":"` + core.CollectionNameAuthOrigins + `"`,
@@ -87,12 +87,12 @@ func TestCollectionsList(t *testing.T) {
 			ExpectedContent: []string{
 				`"page":7`,
 				`"perPage":2`,
-				`"totalItems":44`,
+				`"totalItems":45`,
 				`"items":[{`,
-				// newest first (_dataRequests #88 88-1, the two credential collections #81, _dataMap #88,
+				// newest first (_recoveryCodes #83, _dataRequests #88 88-1, the two credential collections #81, _dataMap #88,
 				// _orgClosure #84 and _oauthDeviceCodes come first), then _scimGroups and _scimTokens (#79c),
 				// _invitations (#79b) and the three org collections (#79a, same migration, order not
-				// asserted); page 7 starts with _fieldKeys
+				// asserted); page 7 holds _fieldKeys
 				`"name":"` + core.CollectionNameFieldKeys + `"`,
 			},
 			ExpectedEvents: map[string]int{
