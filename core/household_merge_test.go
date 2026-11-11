@@ -201,7 +201,7 @@ func TestHouseholdMergeRefusals(t *testing.T) {
 	w = newHHWorld(t)
 	app = w.f.app
 
-	if _, err := app.NonconcurrentDB().NewQuery("UPDATE _householdMembers SET guardian=false").Execute(); err != nil {
+	if _, err := app.NonconcurrentDB().NewQuery("UPDATE {{_householdMembers}} SET [[guardian]]=false").Execute(); err != nil {
 		t.Fatal(err)
 	}
 

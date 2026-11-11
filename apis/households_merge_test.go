@@ -122,7 +122,7 @@ func TestHouseholdsMerge(t *testing.T) {
 		{name: "a merge that breaks the guard is refused", who: "bob", method: "POST", url: url, body: body, status: 409,
 			factory: func(t testing.TB) *tests.TestApp {
 				app := hhMergeFactory(t)
-				_, err := app.NonconcurrentDB().NewQuery("UPDATE _householdMembers SET guardian=false").Execute()
+				_, err := app.NonconcurrentDB().NewQuery("UPDATE {{_householdMembers}} SET [[guardian]]=false").Execute()
 				orgMust(t, err)
 
 				return app
