@@ -515,8 +515,26 @@ func TestRecoveryQRChannelReturnsATokenAndALink(t *testing.T) {
 		t.Fatalf("qr response %v", body)
 	}
 
+	// the QR is drawn on the server from the same link; the token is not
+	// readable in the markup
+	svg, _ := body["qr"].(string)
+	if !strings.HasPrefix(svg, "<svg ") || !strings.Contains(svg, `role="img"`) || strings.Contains(svg, token) || strings.Contains(svg, "<script") {
+		t.Fatalf("qr svg %q", svg)
+	}
+
 	if status, res := env.redeem(token); status != http.StatusOK || res["token"] == nil {
 		t.Fatalf("redeem the token: %d %v", status, res)
+	}
+}
+
+func TestRecoveryDisplayChannelHasNoQR(t *testing.T) {
+	t.Parallel()
+
+	env := newRecoveryEnv(t)
+
+	status, body := env.issue(env.fresh("carol"), "dave", "id_checked", nil)
+	if status != http.StatusCreated || body["qr"] != nil || body["code"] == nil {
+		t.Fatalf("%d %v", status, body)
 	}
 }
 

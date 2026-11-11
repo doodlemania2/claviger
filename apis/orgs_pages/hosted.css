@@ -60,3 +60,5 @@ header.bar button { width: auto; margin: 0; }
 .stack label { max-width: 32rem; }
 .stack select, .stack textarea { width: 100%; }
 .stack button { width: auto; min-width: 12rem; }
+.qrbox { margin: 0 0 1rem; }
+.qrbox svg { display: block; width: 16rem; max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; }
