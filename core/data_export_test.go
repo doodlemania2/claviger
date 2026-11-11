@@ -157,6 +157,7 @@ func seedBuiltinRows(t testing.TB, app core.App, subject *core.Record) []string 
 	}
 
 	var seeded []string
+	rowIds := map[string]string{}
 	for _, m := range maps {
 		name := m.GetString("collection")
 		if !m.GetBool("builtin") || name == "users" || name == "_superusers" {
@@ -236,8 +237,16 @@ func seedBuiltinRows(t testing.TB, app core.App, subject *core.Record) []string 
 		if err := app.UnsafeWithoutHooks().SaveNoValidate(row); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
+		rowIds[name] = row.Id
 		if !none {
 			seeded = append(seeded, name)
+		}
+	}
+
+	// #80: a household is reached through the member row that points to it
+	if hid, mid := rowIds[core.CollectionNameHouseholds], rowIds[core.CollectionNameHouseholdMembers]; hid != "" && mid != "" {
+		if _, err := app.DB().Update(core.CollectionNameHouseholdMembers, dbx.Params{"household": hid}, dbx.HashExp{"id": mid}).Execute(); err != nil {
+			t.Fatal(err)
 		}
 	}
 

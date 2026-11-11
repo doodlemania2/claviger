@@ -511,6 +511,15 @@ func dataExportSubjectFilter(app App, col *Collection, paths []string, subject *
 			continue
 		}
 
+		// fork-local (#80): "<collection>_via_<field>.<userField>" reaches the
+		// rows through a back relation, as in the API rules: the rows that
+		// some row of <collection> points to through <field>, where that row's
+		// <userField> is the subject
+		if via, ok := dataExportViaExp(app, col, p, subject); ok {
+			exps = append(exps, via)
+			continue
+		}
+
 		f := col.Fields.GetByName(p)
 		if f == nil {
 			problems = append(problems, "no field "+p)
@@ -661,4 +670,35 @@ func dataExportReadme(m *DataExportManifest) string {
 		b.WriteString("\nSome parts could not be exported. See \"errors\" and \"files.skipped\" in manifest.json.\n")
 	}
 	return b.String()
+}
+
+// dataExportViaExp builds the filter of a back-relation subject path (see
+// dataExportSubjectFilter). It reports false for anything that is not one.
+func dataExportViaExp(app App, col *Collection, path string, subject *Record) (dbx.Expression, bool) {
+	rel, userField, ok := strings.Cut(path, ".")
+	if !ok || userField == "" {
+		return nil, false
+	}
+
+	from, field, ok := strings.Cut(rel, "_via_")
+	if !ok || from == "" || field == "" {
+		return nil, false
+	}
+
+	src, err := app.FindCachedCollectionByNameOrId(from)
+	if err != nil {
+		return nil, false
+	}
+
+	r, _ := src.Fields.GetByName(field).(*RelationField)
+	u, _ := src.Fields.GetByName(userField).(*RelationField)
+
+	if r == nil || r.CollectionId != col.Id || r.IsMultiple() || u == nil || u.CollectionId != subject.Collection().Id || u.IsMultiple() {
+		return nil, false
+	}
+
+	return dbx.NewExp(
+		"[[id]] IN (SELECT [["+field+"]] FROM {{"+src.Name+"}} WHERE [["+userField+"]]={:__via_subject})",
+		dbx.Params{"__via_subject": subject.Id},
+	), true
 }
