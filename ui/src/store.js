@@ -149,6 +149,12 @@ window.app.store = store({
                 icon: "ri-message-2-line",
                 label: "SMS",
             },
+            {
+                // fork-local (#88)
+                href: "#/settings/data-export",
+                icon: "ri-download-cloud-2-line",
+                label: "Data export",
+            },
         ],
         Sync: [
             {
