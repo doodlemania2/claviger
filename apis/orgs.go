@@ -27,7 +27,8 @@ import (
 //	PATCH  /api/orgs/{id}/members/{member}           role, status, tags
 //	DELETE /api/orgs/{id}/members/{member}           remove (or leave)
 //
-// and the invitations routes of invitations.go (#79b).
+// and the invitations routes of invitations.go (#79b), the credentials routes
+// (#81) and the recovery routes of recovery.go (#83).
 //
 // The authorization lives in core (org_members.go) so that invitations and
 // SCIM use the same guards. Every change is saved with the audit context, so
@@ -49,6 +50,7 @@ func bindOrgsApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 	sub.PATCH("/{id}/members/{member}", orgMembersUpdate)
 	sub.DELETE("/{id}/members/{member}", orgMembersRemove)
 	bindInvitationsApi(app, rg, sub) // fork-local (#79b)
+	bindRecoveryApi(app, rg, sub)    // fork-local (#83)
 	bindOrgTagsApi(sub)              // fork-local (#79b)
 	bindSCIMTokensApi(sub)           // fork-local (#79c)
 	bindCredentialsApi(sub)          // fork-local (#81)

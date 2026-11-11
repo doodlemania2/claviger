@@ -16,6 +16,7 @@ let me = null; // the signed-in record
 let canManage = false;
 let myRank = 0;
 let tags = [];
+let recoveryLinked = false;
 
 function say(text, kind) {
   statusEl.textContent = text || "";
@@ -58,6 +59,12 @@ async function loadMembers() {
   const body = root.querySelector("#members tbody");
   body.textContent = "";
   if (!r.ok) return guard(r);
+  const mine = r.body.items.find((m) => me && m.user === me.id);
+  if (mine && !recoveryLinked && (canManage || (mine.tags || []).includes("greeter"))) {
+    // staff of the recovery codes (#83) get a way to the page
+    recoveryLinked = true;
+    root.querySelector("#myRole").after(el("a", { class: "recoverylink", href: "/orgs/recovery/" + encodeURIComponent(slug) }, tx("js.admin.recoveryLink")));
+  }
   for (const m of r.body.items) {
     const isSelf = me && m.user === me.id;
     const editable = canManage && RANK[m.role] <= myRank;

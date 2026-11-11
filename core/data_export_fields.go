@@ -72,6 +72,11 @@ var builtinDataExport = map[string]dataExportSpec{
 		"allergies", "medical", "status", "source", "created", "updated",
 	}},
 	CollectionNameHouseholds: {Fields: []string{"id", "org", "name", "address", "homePhone", "status", "created", "updated"}},
+	// #83: who vouched for the person and how; never the reference or the hash
+	CollectionNameRecoveryCodes: {Fields: []string{
+		"id", "org", "issuedBy", "confirmedBy", "channel", "verification", "note", "expires", "usedAt",
+		"reportedAt", "attempts", "created", "updated",
+	}},
 
 	CollectionNameOrgMembers: {Fields: []string{
 		"id", "org", "role", "status", "tags", "source", "externalId", "created", "updated",

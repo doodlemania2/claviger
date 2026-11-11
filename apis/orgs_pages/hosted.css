@@ -53,3 +53,10 @@ td button, .inline button { width: auto; margin: 0; margin-inline-end: 4px; padd
 .tag { display: inline-block; margin: 0 0 4px; margin-inline-end: 4px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: .85rem; }
 .linklike { width: auto; margin: 0; padding: 0; color: var(--accent); background: none; border: 0; font-weight: 500; text-decoration: underline; }
 header.bar button { width: auto; margin: 0; }
+.codebig { margin: 12px 0; padding: 16px 8px; text-align: center; border: 2px solid var(--accent); border-radius: 10px;
+  font: 700 2.2rem/1.2 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .12em; overflow-wrap: anywhere; user-select: all; }
+.codebig.link { font-size: 1.1rem; letter-spacing: 0; }
+.codeinput { font-size: 1.6rem; letter-spacing: .15em; text-transform: uppercase; text-align: center; }
+.stack label { max-width: 32rem; }
+.stack select, .stack textarea { width: 100%; }
+.stack button { width: auto; min-width: 12rem; }

@@ -3,6 +3,7 @@
 Organizations (#79a) let one Claviger instance serve several groups (parishes, ministries, tenants), each with its own members and roles. With no organization created nothing changes: no extra checks run, and the new collections stay empty.
 
 Safeguarding credentials that gate access on an expiring background check or training are described in [`docs/credentials.md`](credentials.md).
+Staff-vouched recovery codes for people who cannot use an email reset are described in [`docs/recovery.md`](recovery.md).
 
 Design notes and the evidence behind the rules are in `docs/specs/79-orgs-roles-scim.md`. Invitations (79b, below) and the hosted org page ship with this release. SCIM provisioning (79c) is described in [`docs/scim.md`](scim.md).
 
