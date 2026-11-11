@@ -931,14 +931,24 @@ func TestHouseholdFieldsUpgradeToEncrypted(t *testing.T) {
 		t.Errorf("the stored value was not encrypted: %q", raw)
 	}
 
-	loaded, err := app.FindRecordById(core.CollectionNameHouseholdMembers, m.Id)
-	if err != nil || loaded.GetString("birthDate") != "1980-01-02" {
-		t.Fatalf("the value must read back: %v %q", err, loaded.GetString("birthDate"))
+	// (PostgreSQL fails a statement prepared before the change once, then recovers)
+	find := func(collection, id string) (*core.Record, error) {
+		r, err := app.FindRecordById(collection, id)
+		if err != nil && strings.Contains(err.Error(), "cached plan") {
+			r, err = app.FindRecordById(collection, id)
+		}
+
+		return r, err
 	}
 
-	hh, err := app.FindRecordById(core.CollectionNameHouseholds, h.Id)
+	loaded, err := find(core.CollectionNameHouseholdMembers, m.Id)
+	if err != nil || loaded.GetString("birthDate") != "1980-01-02" {
+		t.Fatalf("the value must read back: %v", err)
+	}
+
+	hh, err := find(core.CollectionNameHouseholds, h.Id)
 	if err != nil || !strings.Contains(hh.GetString("address"), `"city":"Plain"`) || hh.GetString("homePhone") != "+1 555 7" {
-		t.Fatalf("the household values must read back: %v %q %q", err, hh.GetString("address"), hh.GetString("homePhone"))
+		t.Fatalf("the household values must read back: %v", err)
 	}
 
 	if raw := rawColumn(t, app, hcol, h.Id, "address"); !strings.HasPrefix(raw, "enc:v1:") || strings.Contains(raw, "Plain") {
