@@ -965,11 +965,10 @@ func FieldEncryptionAvailable(app App) bool {
 
 // UpgradeHouseholdEncryption turns the sensitive fields of the household
 // collections into encrypted fields, and encrypts the values already stored.
-// The migration creates them as encrypted fields when a key-encryption key
-// exists, and as plain fields (with a warning) when it does not, so that an
-// installation without a key can still upgrade. The sealed check of the
-// routes keeps sensitive data out of the plain fields. This runs at start-up
-// and does nothing when there is no key or nothing to upgrade.
+// The migration creates them as plain fields (it must not depend on a key);
+// the sealed check of the routes keeps sensitive data out of them until this
+// has run. It runs at start-up and does nothing when there is no key or
+// nothing to upgrade.
 func UpgradeHouseholdEncryption(app App) error {
 	if !HouseholdsAvailable(app) || !FieldEncryptionAvailable(app) {
 		return nil
@@ -1035,7 +1034,13 @@ func (app *BaseApp) registerHouseholdHooks() {
 	app.OnServe().Bind(&hook.Handler[*ServeEvent]{
 		Id: "__pbHouseholdEncryption__",
 		Func: func(e *ServeEvent) error {
-			if err := UpgradeHouseholdEncryption(e.App); err != nil {
+			if !FieldEncryptionAvailable(e.App) {
+				if col, err := e.App.FindCachedCollectionByNameOrId(CollectionNameHouseholdMembers); err == nil {
+					if f := col.Fields.GetByName("birthDate"); f != nil && f.Type() == FieldTypeText {
+						e.App.Logger().Warn("No key-encryption key is configured: the household fields for address, phone, birth date, allergies and medical notes are not encrypted and cannot be written. Set CLAVIGER_KEK and restart.")
+					}
+				}
+			} else if err := UpgradeHouseholdEncryption(e.App); err != nil {
 				e.App.Logger().Warn("Failed to encrypt the household fields", "error", fmt.Sprint(err))
 			}
 

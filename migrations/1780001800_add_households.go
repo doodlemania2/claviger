@@ -15,12 +15,12 @@ import (
 // system collection cannot be edited afterwards). The list and view rules are
 // in core.HouseholdRules.
 //
-// The address, phone, birth date, allergies and medical notes are encrypted
-// fields when a key-encryption key is configured. Without one the migration
-// still runs (an installation without a key must be able to upgrade) and
-// creates plain fields with a warning; the routes refuse to store sensitive
-// values in them, and the server turns them into encrypted fields at the
-// first start with a key (core.UpgradeHouseholdEncryption).
+// The address, phone, birth date, allergies and medical notes are created as
+// plain fields. The server turns them into encrypted fields at the first start
+// with a key-encryption key (core.UpgradeHouseholdEncryption), and the routes
+// refuse to store sensitive values in them before that. The migration does not
+// depend on a key, so an installation without one can upgrade, and a database
+// migrated under one key can be opened with another.
 func init() {
 	core.SystemMigrations.Register(func(txApp core.App) error {
 		if _, err := txApp.FindCollectionByNameOrId(core.CollectionNameHouseholdMembers); err == nil {
@@ -44,24 +44,16 @@ func init() {
 
 		userCollectionId := rel.CollectionId
 
-		sealed := core.FieldEncryptionAvailable(txApp)
-		if !sealed {
-			txApp.Logger().Warn("No key-encryption key is configured: the household fields for address, phone, birth date, allergies and medical notes are created as plain fields and cannot be written until a key is set (CLAVIGER_KEK). They are encrypted at the first start with a key.")
-		}
-
+		// plain fields first: the migration must not depend on a key (a
+		// database is migrated once and may be opened with another key later).
+		// core.UpgradeHouseholdEncryption turns them into encrypted fields at
+		// the first start with a key, and the routes refuse sensitive values
+		// until then.
 		text := func(name string, max int) core.Field {
-			if sealed {
-				return &core.EncryptedTextField{Name: name, System: true, Max: max}
-			}
-
 			return &core.TextField{Name: name, System: true, Max: max}
 		}
 
 		jsonField := func(name string, max int64) core.Field {
-			if sealed {
-				return &core.EncryptedJSONField{Name: name, System: true, MaxSize: max}
-			}
-
 			return &core.JSONField{Name: name, System: true, MaxSize: max}
 		}
 
@@ -103,7 +95,7 @@ func init() {
 			&core.AutodateField{Name: "updated", System: true, OnCreate: true, OnUpdate: true},
 		)
 		people.AddIndex("idx_householdMembers_household", false, "household", "")
-		people.AddIndex("idx_householdMembers_household_user", true, "household, user", "user != ''")
+		people.AddIndex("idx_householdMembers_household_user", true, "household, user", "`user` != ''")
 		people.AddIndex("idx_householdMembers_user", false, "user", "")
 
 		if err := txApp.Save(people); err != nil {

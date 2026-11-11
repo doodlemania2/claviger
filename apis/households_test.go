@@ -44,6 +44,9 @@ func hhKEK(t testing.TB) {
 func hhFactory(t testing.TB) *tests.TestApp {
 	app := orgsFactory(t)
 
+	// the migration creates plain fields; the server encrypts them at start-up
+	orgMust(t, core.UpgradeHouseholdEncryption(app))
+
 	roles, err := app.FindCollectionByNameOrId(core.CollectionNameOrgRoles)
 	orgMust(t, err)
 

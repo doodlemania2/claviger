@@ -49,6 +49,11 @@ func newHHWorld(t testing.TB) *hhWorld {
 	aw := newAncestorWorld(t)
 	app := aw.f.app
 
+	// the migration creates plain fields; the server encrypts them at start-up
+	if err := core.UpgradeHouseholdEncryption(app); err != nil {
+		t.Fatal(err)
+	}
+
 	w := &hhWorld{ancestorWorld: aw, ctx: core.WithAuditContext(context.Background(), core.AuditActor{Type: core.AuditActorTypeSystem}, "")}
 
 	orgs, _ := app.FindAllRecords(core.CollectionNameOrgs)

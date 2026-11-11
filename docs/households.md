@@ -17,9 +17,9 @@ Two hidden system collections:
 
 The member row **is** the person. A login (`user`) is optional. Other collections point at the member row when they are about a person, and at the user when they are about an account holder.
 
-Address, home phone, birth date, allergies and medical notes are **encrypted fields** when a key-encryption key is configured (`CLAVIGER_KEK`, see the field encryption guide). Rules cannot read them, so rules use the plain flags `isMinor`, `guardian` and `status` next to them.
+Address, home phone, birth date, allergies and medical notes are **encrypted fields** (see the field encryption guide). Rules cannot read them, so rules use the plain flags `isMinor`, `guardian` and `status` next to them.
 
-If no key exists when the migration runs, the migration still succeeds and creates those five fields as plain fields, with a warning in the log. In that state the routes refuse to store any value in them (409). At the first start with a key, Claviger turns them into encrypted fields and encrypts the values already there. Set the key before you put children's data in.
+The migration creates those five fields as plain fields, so it never depends on a key. At every start of the server, if a key-encryption key is configured (`CLAVIGER_KEK`), Claviger turns them into encrypted fields and encrypts the values already there. Until that has happened the routes refuse to store any value in them (409), and the server logs a warning at start. **Set the key before you put children's data in.**
 
 The photo is a protected file.
 
