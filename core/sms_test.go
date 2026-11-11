@@ -79,7 +79,7 @@ func TestSMSSettingsEncryptedAtRest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(data["value"].(string)), "twilio-top-secret") {
+	if strings.Contains(data["value"].(string), "twilio-top-secret") {
 		t.Fatal("secret stored in plaintext despite the encryption env")
 	}
 }
