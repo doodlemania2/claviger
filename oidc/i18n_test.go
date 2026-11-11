@@ -64,7 +64,7 @@ func TestSignInAndConsentPagesAreLocalized(t *testing.T) {
 				t.Errorf("unexpected CSP %q", csp)
 			}
 
-			if !pageDataRe.MatchString(body) || strings.Contains(strings.ReplaceAll(pageDataRe.ReplaceAllString(body, ""), `<script type="module" src=`, ""), "<script") {
+			if !pageDataRe.MatchString(body) || strings.Contains(strings.ReplaceAll(strings.ReplaceAll(pageDataRe.ReplaceAllString(body, ""), `<script type="module" src=`, ""), `<script src="/a11y/a11y-mode.js">`, ""), "<script") {
 				t.Error("the strings must travel as a JSON data block and nothing else may be inline script")
 			}
 		})
@@ -158,7 +158,7 @@ func assertLocalizedExtPage(t *testing.T, rec *httptest.ResponseRecorder, lang s
 		t.Errorf("unexpected CSP %q", csp)
 	}
 
-	if strings.Contains(strings.ReplaceAll(pageDataRe.ReplaceAllString(body, ""), `<script type="module" src=`, ""), "<script") {
+	if strings.Contains(strings.ReplaceAll(strings.ReplaceAll(pageDataRe.ReplaceAllString(body, ""), `<script type="module" src=`, ""), `<script src="/a11y/a11y-mode.js">`, ""), "<script") {
 		t.Error("nothing but the JSON data block and the module script may be a script")
 	}
 
@@ -178,7 +178,7 @@ func TestChooserPageIsLocalized(t *testing.T) {
 		rtl          bool
 		wants        []string
 	}{
-		{"es", "es-ES,es;q=0.9", false, []string{"Elige una cuenta", "Usar otra cuenta", "Cerrar sesión en todas las cuentas", `data-page="chooser"`}},
+		{"es", "es-ES,es;q=0.9", false, []string{"Elija una cuenta", "Usar otra cuenta", "Cerrar sesión en todas las cuentas", `data-page="chooser"`}},
 		{"ar", "ar", true, []string{"اختر حسابًا", "استخدام حساب آخر", "تسجيل الخروج من جميع الحسابات"}},
 	} {
 		t.Run(tc.lang, func(t *testing.T) {
@@ -287,5 +287,5 @@ func TestDevicePagesAreLocalized(t *testing.T) {
 	delete(b.cookies, "lang")
 
 	done := b.do("GET", verify, map[string]string{"Accept-Language": "es"}, nil)
-	assertLocalizedExtPage(t, done, "es", false, []string{"Dispositivo conectado", "Ya puedes volver a tu dispositivo."}, []string{"Device connected"})
+	assertLocalizedExtPage(t, done, "es", false, []string{"Dispositivo conectado", "Ya puede volver a su dispositivo."}, []string{"Device connected"})
 }
