@@ -369,6 +369,7 @@ func TestHouseholdsWithoutAKey(t *testing.T) {
 		noKey("a phone is refused", "bob", "POST", "/api/households", `{"org":"`+orgP1+`","name":"Plain","homePhone":"1"}`, 409),
 		noKey("a birth date is refused", "alice", "POST", "/api/households/"+hhH1+"/members", `{"name":"Kid","birthDate":"2020-01-01"}`, 409),
 		noKey("health notes are refused", "alice", "POST", "/api/households/"+hhH1+"/members", `{"name":"Kid","allergies":{"a":1}}`, 409),
+		noKey("the duplicate list works without a key (names only, no birth years)", "alice", "GET", "/api/households/duplicates?org="+orgP1, "", 200, `"items":[`),
 		noKey("a person without them is fine", "alice", "POST", "/api/households/"+hhH1+"/members", `{"name":"Gran","role":"adult"}`, 200),
 	})
 }
