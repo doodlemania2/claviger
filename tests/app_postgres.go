@@ -108,7 +108,16 @@ type testPostgres struct {
 	adminURL string
 	tplName  string
 	cloneMu  sync.Mutex
+
+	// last time the template's timestamp comment was refreshed (guarded by cloneMu)
+	touched time.Time
 }
+
+// staleTemplateAge is how old a template's timestamp must be before another
+// test process drops it as leaked. A live template is re-stamped on use (see
+// clone), so this only has to be longer than the gap between two clones, but
+// it is kept above the longest CI job as well.
+const staleTemplateAge = 3 * time.Hour
 
 var (
 	testPGOnce sync.Once
@@ -248,6 +257,7 @@ func (p *testPostgres) clone() (string, error) {
 	for range 20 {
 		err = adminExec(p.adminURL, fmt.Sprintf(`CREATE DATABASE "%s" TEMPLATE "%s"`, name, p.tplName))
 		if err == nil {
+			p.touch()
 			return name, nil
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -271,7 +281,7 @@ func buildPostgresTemplate() (*testPostgres, error) {
 	if err := adminExec(adminURL, `CREATE DATABASE "`+p.tplName+`"`); err != nil {
 		return nil, err
 	}
-	_ = adminExec(adminURL, fmt.Sprintf(`COMMENT ON DATABASE "%s" IS '%d'`, p.tplName, time.Now().Unix()))
+	p.touch()
 
 	if err := p.fill(); err != nil {
 		dropDatabase(adminURL, p.tplName)
@@ -279,6 +289,18 @@ func buildPostgresTemplate() (*testPostgres, error) {
 	}
 
 	return p, nil
+}
+
+// touch re-stamps the template so a test process started later (packages run
+// in parallel against one server) does not mistake it for a leaked one. A slow
+// package once ran past the old 30-minute cutoff and lost its template mid-run.
+// Call with cloneMu held, or before the template is shared.
+func (p *testPostgres) touch() {
+	if time.Since(p.touched) < time.Minute {
+		return
+	}
+	p.touched = time.Now()
+	_ = adminExec(p.adminURL, fmt.Sprintf(`COMMENT ON DATABASE "%s" IS '%d'`, p.tplName, p.touched.Unix()))
 }
 
 func dropStaleTemplates(adminURL string) {
@@ -290,7 +312,7 @@ func dropStaleTemplates(adminURL string) {
 
 	rows, err := db.Query(`SELECT datname FROM pg_database
 		WHERE datname LIKE 'pbtpl\_%' AND shobj_description(oid, 'pg_database') ~ '^[0-9]+$'
-		AND shobj_description(oid, 'pg_database')::bigint < $1`, time.Now().Add(-30*time.Minute).Unix())
+		AND shobj_description(oid, 'pg_database')::bigint < $1`, time.Now().Add(-staleTemplateAge).Unix())
 	if err != nil {
 		return
 	}
