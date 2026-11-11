@@ -10,6 +10,7 @@ import { pageBackupsSettings } from "@/settings/backups/pageBackupsSettings";
 import { pageApiKeysSettings } from "@/settings/apikeys/pageApiKeysSettings";
 import { pageFieldKeysSettings } from "@/settings/fieldkeys/pageFieldKeysSettings"; // fork-local (#75)
 import { pageCaptchaSettings } from "@/settings/captcha/pageCaptchaSettings";
+import { pageSmsSettings } from "@/settings/sms/pageSmsSettings"; // fork-local (#83)
 import { pageCronsSettings } from "@/settings/crons/pageCronsSettings";
 import { pageMailSettings } from "@/settings/mail/pageMailSettings";
 import { pageSQLConsole } from "@/settings/sql/pageSQLConsole";
@@ -189,6 +190,7 @@ app.routes.superuserOnly("#/settings/crons", pageCronsSettings);
 app.routes.superuserOnly("#/settings/api-keys", pageApiKeysSettings);
 app.routes.superuserOnly("#/settings/encryption-keys", pageFieldKeysSettings); // fork-local (#75)
 app.routes.superuserOnly("#/settings/captcha", pageCaptchaSettings);
+app.routes.superuserOnly("#/settings/sms", pageSmsSettings); // fork-local (#83)
 app.routes.superuserOnly("#/settings/export-collections", pageExportCollections);
 app.routes.superuserOnly("#/settings/import-collections", pageImportCollections);
 app.routes.superuserOnly("#/settings/sql", pageSQLConsole);

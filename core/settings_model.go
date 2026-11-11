@@ -133,6 +133,7 @@ type settings struct {
 	Batch        BatchConfig        `form:"batch" json:"batch"`
 	Logs         LogsConfig         `form:"logs" json:"logs"`
 	Captcha      CaptchaConfig      `form:"captcha" json:"captcha"`
+	SMS          SMSConfig          `form:"sms" json:"sms"` // fork-local (#83)
 	Audit        AuditConfig        `form:"audit" json:"audit"`
 }
 
@@ -298,6 +299,7 @@ func (s *Settings) PostValidate(ctx context.Context, app App) error {
 		validation.Field(&s.RateLimits),
 		validation.Field(&s.TrustedProxy),
 		validation.Field(&s.Captcha),
+		validation.Field(&s.SMS),
 		validation.Field(&s.Audit),
 	)
 }
@@ -356,10 +358,13 @@ func (s *Settings) MarshalJSON() ([]byte, error) {
 // the audit log (to detect and redact changes, #110).
 func (st *settings) secretFields() map[string]*string {
 	return map[string]*string{
-		"smtp.password":     &st.SMTP.Password,
-		"s3.secret":         &st.S3.Secret,
-		"backups.s3.secret": &st.Backups.S3.Secret,
-		"captcha.secretKey": &st.Captcha.SecretKey,
+		"smtp.password":           &st.SMTP.Password,
+		"s3.secret":               &st.S3.Secret,
+		"backups.s3.secret":       &st.Backups.S3.Secret,
+		"captcha.secretKey":       &st.Captcha.SecretKey,
+		"sms.twilio.authToken":    &st.SMS.Twilio.AuthToken,
+		"sms.twilio.apiKeySecret": &st.SMS.Twilio.APIKeySecret,
+		"sms.webhook.secret":      &st.SMS.Webhook.Secret,
 	}
 }
 
