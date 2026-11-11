@@ -64,6 +64,15 @@ var builtinDataExport = map[string]dataExportSpec{
 		"document", "revoked", "revokedReason", "revokedAt", "status", "lapsedAt", "created", "updated",
 	}},
 
+	// #80: a person sees their own member row and the shared contact data of
+	// their household, never another member's details (the subject path of
+	// each entry only reaches the person's own row)
+	CollectionNameHouseholdMembers: {Fields: []string{
+		"id", "household", "name", "role", "guardian", "isMinor", "birthDate", "photo",
+		"allergies", "medical", "status", "source", "created", "updated",
+	}},
+	CollectionNameHouseholds: {Fields: []string{"id", "org", "name", "address", "homePhone", "status", "created", "updated"}},
+
 	CollectionNameOrgMembers: {Fields: []string{
 		"id", "org", "role", "status", "tags", "source", "externalId", "created", "updated",
 	}},

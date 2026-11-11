@@ -69,6 +69,14 @@ var builtinDataMap = []DataMapEntry{
 	{Collection: CollectionNameCredentialTypes, Treatment: DataMapTreatmentNone,
 		Note: "Credential type definitions (#81). Not about a person."},
 
+	// ---- households (#80) ----
+	{Collection: CollectionNameHouseholdMembers, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"user"},
+		PersonalFields: []string{"name", "birthDate", "photo", "allergies", "medical"},
+		Note:           "A person of a household (#80). Export: the person's own row only, never another member's details. A minor has no login, so a minor's row is not reached through a user."},
+	{Collection: CollectionNameHouseholds, Treatment: DataMapTreatmentExport, SubjectPaths: []string{CollectionNameHouseholdMembers + "_via_household.user"},
+		PersonalFields: []string{"address", "homePhone"},
+		Note:           "The shared contact data of the household (#80), exported to each member with a login. Kept on erasure of one member: it belongs to the others too."},
+
 	// ---- OpenID Connect provider ----
 	{Collection: CollectionNameOAuthConsents, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"recordRef"},
 		Note: "Export: client, scopes, dates."},

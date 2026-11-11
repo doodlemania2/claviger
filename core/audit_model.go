@@ -428,7 +428,8 @@ func auditNextAndWrite(e *RecordEvent, action string) error {
 		return e.Next()
 	}
 
-	auditOrgMeta(entry, e.Record) // #79a: meta.orgId / meta.orgIds
+	auditOrgMeta(entry, e.Record)              // #79a: meta.orgId / meta.orgIds
+	auditHouseholdMeta(e.App, entry, e.Record) // #80: the org of a household member
 
 	if v, _ := e.Context.Value(auditCtxKey{}).(auditCtxValue); v.actor.Type != "" {
 		entry.Actor = v.actor

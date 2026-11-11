@@ -89,6 +89,9 @@ var APIKeyForbiddenCollections = []string{
 	CollectionNameSCIMTokens,  // #79c: hashed SCIM tokens
 	CollectionNameSCIMGroups,  // #79c: provisioning state
 	CollectionNameCredentials, // #81: safeguarding attestations about people; no machine access
+
+	CollectionNameHouseholds,       // #80: families and children; no machine access
+	CollectionNameHouseholdMembers, // #80
 }
 
 // APIKeyInfo describes the key that authenticated a request.
