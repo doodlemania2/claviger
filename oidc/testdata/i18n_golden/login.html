@@ -7,8 +7,13 @@
 <title>Sign in</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/oidc/assets/oidc.css">
+<link rel="stylesheet" href="/a11y/a11y-mode.css">
+<script src="/a11y/a11y-mode.js"></script>
 </head>
 <body>
+<a class="skip" href="#app">Skip to the main content</a>
+<header class="a11y-bar"><button type="button" id="a11yToggle" class="a11y-toggle" aria-pressed="false" hidden>Larger text and high contrast</button></header>
+
 <main class="card" id="app" data-page="login" data-request="ID" data-collection="users">
 <h1>Sign in</h1>
 
@@ -16,11 +21,11 @@
 <p class="sub">to continue to <strong>Third Party App</strong></p>
 <form id="pw" hidden>
 <label>Email or username<input name="identity" autocomplete="username webauthn" required></label>
-<label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+<label>Password<input name="password" type="password" autocomplete="current-password" required aria-describedby="status"></label>
 <button type="submit">Sign in</button>
 </form>
 <form id="totp" hidden>
-<label>Authenticator code or backup code<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<label>Code from your authenticator app, or a backup code<input name="code" inputmode="numeric" autocomplete="one-time-code" required aria-describedby="status"></label>
 <button type="submit">Verify</button>
 </form>
 <div id="captchaBox" hidden></div>

@@ -76,6 +76,9 @@ var webhookExcludedCollections = map[string]struct{}{
 	CollectionNameAuditLog:          {},
 	CollectionNameWebhooks:          {},
 	CollectionNameWebhookDeliveries: {},
+	// #80: children's names, birth dates and health notes never leave in a webhook
+	CollectionNameHouseholds:       {},
+	CollectionNameHouseholdMembers: {},
 }
 
 // webhookEventTypes maps the audit action to the delivered event type.

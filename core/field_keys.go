@@ -271,6 +271,13 @@ func encryptedFieldsOf(collection *Collection) []Field {
 	return result
 }
 
+// SetFieldKeySource makes src the key-encryption key source of this app only,
+// in place of [FieldKeySourceLoader]. Call it after bootstrap and before any
+// encrypted field is used (migrate-db uses it for its target app).
+func SetFieldKeySource(app App, src keys.KeySource) {
+	app.Store().Set(fieldKeySourceStoreKey, src)
+}
+
 func fieldKeySource(app App) (keys.KeySource, error) {
 	if v, ok := app.Store().GetOk(fieldKeySourceStoreKey); ok {
 		if src, ok := v.(keys.KeySource); ok {

@@ -3,6 +3,7 @@
 Organizations (#79a) let one Claviger instance serve several groups (parishes, ministries, tenants), each with its own members and roles. With no organization created nothing changes: no extra checks run, and the new collections stay empty.
 
 Safeguarding credentials that gate access on an expiring background check or training are described in [`docs/credentials.md`](credentials.md).
+Staff-vouched recovery codes for people who cannot use an email reset are described in [`docs/recovery.md`](recovery.md).
 
 Design notes and the evidence behind the rules are in `docs/specs/79-orgs-roles-scim.md`. Invitations (79b, below) and the hosted org page ship with this release. SCIM provisioning (79c) is described in [`docs/scim.md`](scim.md).
 
@@ -173,6 +174,8 @@ The default subject is "You are invited to join {ORG_NAME} on {APP_NAME}". An or
 ```json
 { "invitationEmail": { "subject": "Welcome to {ORG_NAME}", "body": "<p>{INVITER} invited you as {ROLE}.</p><p><a href=\"{INVITE_URL}\">Join</a></p>" } }
 ```
+
+`settings.locale` (for example `"es"`) sets the default language of the invitation email and the invitation page for that org; see `docs/localization.md`.
 
 Placeholders: `{ORG_NAME}`, `{ORG_SLUG}`, `{ROLE}`, `{INVITER}`, `{INVITE_URL}`, `{EXPIRES}`, `{APP_NAME}`, `{APP_URL}`. Values are HTML-escaped in the body. The body goes inside the standard mail layout; the text part is derived from the HTML.
 

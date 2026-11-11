@@ -31,7 +31,8 @@ func TestAuditSettingsUpdate(t *testing.T) {
 			"meta": {"appName": "audited"},
 			"smtp": {"enabled": true, "host": "mail.example.com", "port": 587, "password": "smtp-top-secret"},
 			"s3": {"enabled": true, "bucket": "b", "region": "r", "endpoint": "https://example.com", "accessKey": "ak", "secret": "s3-top-secret"},
-			"captcha": {"secretKey": "captcha-top-secret"}
+			"captcha": {"secretKey": "captcha-top-secret"},
+			"sms": {"enabled": true, "provider": "webhook", "twilio": {"authToken": "sms-twilio-top-secret", "apiKeySecret": "sms-key-top-secret"}, "webhook": {"url": "https://hooks.example.com/x", "secret": "sms-hook-top-secret"}}
 		}`),
 		Headers:        map[string]string{"Authorization": auditSuperuserToken},
 		ExpectedStatus: 200,
@@ -51,14 +52,14 @@ func TestAuditSettingsUpdate(t *testing.T) {
 			}
 
 			raw := e.GetString("changedFields") + tests.CompactJSON(e.GetString("before")) + tests.CompactJSON(e.GetString("after"))
-			for _, secret := range []string{"smtp-top-secret", "s3-top-secret", "captcha-top-secret"} {
+			for _, secret := range []string{"smtp-top-secret", "s3-top-secret", "captcha-top-secret", "sms-twilio-top-secret", "sms-key-top-secret", "sms-hook-top-secret"} {
 				if strings.Contains(raw, secret) {
 					t.Fatalf("Secret %q leaked into the audit entry: %s", secret, raw)
 				}
 			}
 
 			changed := e.GetString("changedFields")
-			for _, k := range []string{`"meta.appName"`, `"smtp.host"`, `"smtp.password"`, `"s3.secret"`, `"captcha.secretKey"`} {
+			for _, k := range []string{`"meta.appName"`, `"smtp.host"`, `"smtp.password"`, `"s3.secret"`, `"captcha.secretKey"`, `"sms.twilio.authToken"`, `"sms.twilio.apiKeySecret"`, `"sms.webhook.secret"`} {
 				if !strings.Contains(changed, k) {
 					t.Fatalf("Expected %s in changedFields %s", k, changed)
 				}

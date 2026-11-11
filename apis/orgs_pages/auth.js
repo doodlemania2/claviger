@@ -159,7 +159,16 @@ export async function initSignIn({ root, collection, captcha, onToken, identity 
   let mfaId = "";
   let otpId = "";
 
-  const fail = (text) => { statusEl.textContent = text; statusEl.hidden = !text; };
+  // The message sits right under the forms and the fields point at it
+  // (aria-describedby in the page); a failure also marks them invalid.
+  const fail = (text) => {
+    statusEl.textContent = text;
+    statusEl.hidden = !text;
+    for (const f of root.querySelectorAll("#pw input, #totp input, #otpForm input")) {
+      if (text) f.setAttribute("aria-invalid", "true");
+      else f.removeAttribute("aria-invalid");
+    }
+  };
   const tooMany = (r) => r.status === 429;
 
   if (identity) pw.elements.identity.value = identity;

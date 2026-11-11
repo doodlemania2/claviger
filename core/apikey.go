@@ -84,11 +84,15 @@ var APIKeyForbiddenCollections = []string{
 	CollectionNameOrgs,
 	CollectionNameOrgMembers,
 	CollectionNameOrgRoles,
-	CollectionNameOrgClosure,  // #84: derived, written by hooks only
-	CollectionNameInvitations, // #79b: hashed invitation tokens
-	CollectionNameSCIMTokens,  // #79c: hashed SCIM tokens
-	CollectionNameSCIMGroups,  // #79c: provisioning state
-	CollectionNameCredentials, // #81: safeguarding attestations about people; no machine access
+	CollectionNameOrgClosure,    // #84: derived, written by hooks only
+	CollectionNameInvitations,   // #79b: hashed invitation tokens
+	CollectionNameSCIMTokens,    // #79c: hashed SCIM tokens
+	CollectionNameSCIMGroups,    // #79c: provisioning state
+	CollectionNameCredentials,   // #81: safeguarding attestations about people; no machine access
+	CollectionNameRecoveryCodes, // #83: hashes of live recovery codes
+
+	CollectionNameHouseholds,       // #80: families and children; no machine access
+	CollectionNameHouseholdMembers, // #80
 }
 
 // APIKeyInfo describes the key that authenticated a request.

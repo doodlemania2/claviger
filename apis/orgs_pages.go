@@ -66,24 +66,25 @@ const orgsPageHead = `{{define "head"}}<!doctype html>
 <title>{{.Title}}</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/orgs/assets/hosted.css">
-{{.Text.DataBlock}}</head>
-<body>{{end}}
+{{.Text.A11yHead}}{{.Text.DataBlock}}</head>
+<body>
+{{.Text.A11yBar}}{{end}}
 {{define "signin"}}<section id="signin" hidden>
 <h2>{{.Text.T "js.signIn"}}</h2>
 <form id="pw" hidden>
 <label>{{.Text.T "js.identityLabel"}}<input name="identity" autocomplete="username webauthn" required></label>
-<label>{{.Text.T "js.passwordLabel"}}<input name="password" type="password" autocomplete="current-password" required></label>
+<label>{{.Text.T "js.passwordLabel"}}<input name="password" type="password" autocomplete="current-password" required aria-describedby="status"></label>
 <button type="submit">{{.Text.T "js.signIn"}}</button>
 </form>
 <form id="totp" hidden>
-<label>{{.Text.T "js.totpLabel"}}<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<label>{{.Text.T "js.totpLabel"}}<input name="code" inputmode="numeric" autocomplete="one-time-code" required aria-describedby="status"></label>
 <button type="submit">{{.Text.T "js.verify"}}</button>
 </form>
 <div id="otpBox" hidden>
 <div class="or"><span>{{.Text.T "js.or"}}</span></div>
 <button id="otpSend" type="button" class="secondary">{{.Text.T "js.emailMeCode"}}</button>
 <form id="otpForm" hidden>
-<label>{{.Text.T "js.codeFromEmail"}}<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<label>{{.Text.T "js.codeFromEmail"}}<input name="code" inputmode="numeric" autocomplete="one-time-code" required aria-describedby="status"></label>
 <button type="submit">{{.Text.T "js.signIn"}}</button>
 </form>
 </div>
@@ -160,7 +161,7 @@ var orgsPageTemplates = template.Must(template.New("pages").Parse(orgsPageHead +
 
 <h2>{{.Text.T "orgs.members"}}</h2>
 <div class="tablewrap"><table id="members">
-<thead><tr><th>{{.Text.T "orgs.col.member"}}</th><th>{{.Text.T "orgs.col.role"}}</th><th>{{.Text.T "orgs.col.status"}}</th><th>{{.Text.T "orgs.col.tags"}}</th><th></th></tr></thead>
+<thead><tr><th scope="col">{{.Text.T "orgs.col.member"}}</th><th scope="col">{{.Text.T "orgs.col.role"}}</th><th scope="col">{{.Text.T "orgs.col.status"}}</th><th scope="col">{{.Text.T "orgs.col.tags"}}</th><th scope="col"><span class="sr-only">{{.Text.T "orgs.col.actions"}}</span></th></tr></thead>
 <tbody></tbody>
 </table></div>
 
@@ -175,7 +176,7 @@ var orgsPageTemplates = template.Must(template.New("pages").Parse(orgsPageHead +
 
 <h2>{{.Text.T "orgs.invitations"}}</h2>
 <div class="tablewrap"><table id="invitations">
-<thead><tr><th>{{.Text.T "orgs.email"}}</th><th>{{.Text.T "orgs.col.role"}}</th><th>{{.Text.T "orgs.col.tags"}}</th><th>{{.Text.T "orgs.col.status"}}</th><th>{{.Text.T "orgs.col.expiresAccepted"}}</th><th>{{.Text.T "orgs.col.sent"}}</th><th></th></tr></thead>
+<thead><tr><th scope="col">{{.Text.T "orgs.email"}}</th><th scope="col">{{.Text.T "orgs.col.role"}}</th><th scope="col">{{.Text.T "orgs.col.tags"}}</th><th scope="col">{{.Text.T "orgs.col.status"}}</th><th scope="col">{{.Text.T "orgs.col.expiresAccepted"}}</th><th scope="col">{{.Text.T "orgs.col.sent"}}</th><th scope="col"><span class="sr-only">{{.Text.T "orgs.col.actions"}}</span></th></tr></thead>
 <tbody></tbody>
 </table></div>
 
@@ -187,7 +188,7 @@ var orgsPageTemplates = template.Must(template.New("pages").Parse(orgsPageHead +
 </form>
 <p id="scimNew" class="msg ok" role="status" hidden></p>
 <div class="tablewrap"><table id="scimTokens">
-<thead><tr><th>{{.Text.T "orgs.col.name"}}</th><th>{{.Text.T "orgs.col.token"}}</th><th>{{.Text.T "orgs.col.created"}}</th><th>{{.Text.T "orgs.col.lastUsed"}}</th><th>{{.Text.T "orgs.col.expires"}}</th><th>{{.Text.T "orgs.col.status"}}</th><th></th></tr></thead>
+<thead><tr><th scope="col">{{.Text.T "orgs.col.name"}}</th><th scope="col">{{.Text.T "orgs.col.token"}}</th><th scope="col">{{.Text.T "orgs.col.created"}}</th><th scope="col">{{.Text.T "orgs.col.lastUsed"}}</th><th scope="col">{{.Text.T "orgs.col.expires"}}</th><th scope="col">{{.Text.T "orgs.col.status"}}</th><th scope="col"><span class="sr-only">{{.Text.T "orgs.col.actions"}}</span></th></tr></thead>
 <tbody></tbody>
 </table></div>
 <form id="scimSettings">
@@ -312,7 +313,7 @@ func orgsInvitePage(e *core.RequestEvent) error {
 		recordLang = core.RecordLanguage(e.App, account)
 	}
 
-	text := NewPageText(e, recordLang)
+	text := NewPageTextDefault(e, recordLang, core.OrgDefaultLanguage(e.App, org))
 
 	return renderOrgsPage(e, http.StatusOK, "invite", orgsPageData{
 		Text:  text,

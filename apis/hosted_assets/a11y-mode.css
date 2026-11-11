@@ -1,0 +1,78 @@
+/* Accessibility layer of the hosted pages (#83, 83-3). Loaded after the page's
+   own stylesheet. It only uses the colour variables the pages define
+   (--bg --card --fg --muted --line --accent --accent-fg --err-* --ok-*), so one
+   file serves /passkeys, /orgs/* and /oidc/*. WCAG 2.2 AA is the target. */
+
+:root {
+  --ctl: #6b7280;   /* border of a control: 4.8:1 on white (1.4.11 asks for 3:1) */
+  --focus: #1d4fbf;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --ctl: #8c95a5; --focus: #9db8ff; }
+}
+
+/* ---- always on: focus, targets, motion ---- */
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+input, select, textarea { border-color: var(--ctl); }
+button.secondary { border-color: var(--ctl); }
+button, input, select, textarea { min-height: 24px; }
+input[type="checkbox"], input[type="radio"] { min-height: 0; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+.skip { position: absolute; inset-inline-start: 8px; top: -100px; z-index: 10; padding: 8px 12px;
+  background: var(--card); color: var(--fg); border: 2px solid var(--fg); border-radius: 8px; }
+.skip:focus { top: 8px; }
+
+/* the toggle sits in its own row above the page */
+body { display: flex; flex-direction: column; align-items: center; }
+.a11y-bar { align-self: stretch; display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.a11y-bar button.a11y-toggle { width: auto; margin: 0; padding: 6px 12px; font-size: .9rem; font-weight: 500;
+  color: var(--fg); background: transparent; border: 1px solid var(--ctl); }
+.a11y-bar button.a11y-toggle[aria-pressed="true"] { color: var(--accent-fg); background: var(--accent); border-color: var(--accent); }
+body > main { margin-block: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+/* ---- strong contrast: the operating system asks for it, or large mode ---- */
+@media (prefers-contrast: more) {
+  :root { --bg: #ffffff; --card: #ffffff; --fg: #000000; --muted: #2b2b2b; --line: #000000; --ctl: #000000;
+    --accent: #0a2f7a; --accent-fg: #ffffff; --err-bg: #ffffff; --err-fg: #7a0000; --ok-bg: #ffffff; --ok-fg: #004d1f; --focus: #0a2f7a; }
+  .msg { border: 2px solid currentColor; }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root { --bg: #000000; --card: #000000; --fg: #ffffff; --muted: #e6e6e6; --line: #ffffff; --ctl: #ffffff;
+    --accent: #ffe14d; --accent-fg: #000000; --err-bg: #000000; --err-fg: #ffb3ad; --ok-bg: #000000; --ok-fg: #9df0b4; --focus: #ffe14d; }
+}
+
+html[data-a11y="large"] { --bg: #ffffff; --card: #ffffff; --fg: #000000; --muted: #2b2b2b; --line: #000000; --ctl: #000000;
+  --accent: #0a2f7a; --accent-fg: #ffffff; --err-bg: #ffffff; --err-fg: #7a0000; --ok-bg: #ffffff; --ok-fg: #004d1f; --focus: #0a2f7a; }
+@media (prefers-color-scheme: dark) {
+  html[data-a11y="large"] { --bg: #000000; --card: #000000; --fg: #ffffff; --muted: #e6e6e6; --line: #ffffff; --ctl: #ffffff;
+    --accent: #ffe14d; --accent-fg: #000000; --err-bg: #000000; --err-fg: #ffb3ad; --ok-bg: #000000; --ok-fg: #9df0b4; --focus: #ffe14d; }
+}
+
+/* ---- large mode: bigger text, 44px targets, thick outlines ---- */
+html[data-a11y="large"] body { font-size: 20px; line-height: 1.6; }
+html[data-a11y="large"] h1 { font-size: 1.9rem; }
+html[data-a11y="large"] h2 { font-size: 1.4rem; }
+html[data-a11y="large"] .card { max-width: 560px; border-width: 2px; }
+html[data-a11y="large"] .card.wide { max-width: 1100px; }
+html[data-a11y="large"] label { margin-top: 18px; }
+html[data-a11y="large"] input, html[data-a11y="large"] select, html[data-a11y="large"] textarea {
+  min-height: 44px; padding: 10px 12px; border-width: 2px; }
+html[data-a11y="large"] input[type="checkbox"], html[data-a11y="large"] input[type="radio"] { min-height: 0; width: 24px; height: 24px; }
+html[data-a11y="large"] button, html[data-a11y="large"] .skip { min-height: 44px; min-width: 44px; padding: 10px 16px; border-width: 2px; }
+html[data-a11y="large"] .linklike, html[data-a11y="large"] button.link { padding: 8px 4px; }
+html[data-a11y="large"] a { text-decoration: underline; padding-block: 8px; }
+html[data-a11y="large"] .muted, html[data-a11y="large"] .sub { font-size: 1rem; }
+html[data-a11y="large"] table { font-size: 1rem; }
+html[data-a11y="large"] .msg { border: 2px solid currentColor; padding: 12px 14px; }
+html[data-a11y="large"] :focus-visible { outline-width: 4px; outline-offset: 3px; }
+html[data-a11y="large"] .or { font-size: 1rem; }
+html[data-a11y="large"] .a11y-bar button.a11y-toggle { padding: 8px 16px; font-size: 1rem; }
+html[data-a11y="large"] .who .muted, html[data-a11y="large"] .who .why { font-size: 1rem; }
+html[data-a11y="large"] .avatar { width: 44px; height: 44px; }

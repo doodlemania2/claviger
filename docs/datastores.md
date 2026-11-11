@@ -20,6 +20,7 @@ CLAVIGER_DB_URL='postgres://user:password@host:5432/dbname?sslmode=require'
 - The `auxiliary.db` file (request logs) stays a local SQLite file in `pb_data`, one per replica. It is disposable, and the OTLP log export already ships logs somewhere durable. Only the data database moves.
 - The connection string carries the password. It is kept out of error messages, but treat the environment like any other secret store.
 - The driver is the pure Go `pgx`, so `CGO_ENABLED=0` builds keep working. It adds about 5 MB to the binary, whether or not you use it.
+- Claviger sets pgx's `default_query_exec_mode=describe_exec` unless your URL already sets a mode. pgx's default caches a prepared statement per connection, and Postgres then fails the first read after a collection's fields change ("cached plan must not change result type"). The cost is one extra round trip per query.
 
 ### What works
 

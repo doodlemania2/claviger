@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	neturl "net/url"
 	"os"
 	"strings"
 	"time"
@@ -26,6 +27,8 @@ const DBURLEnv = "CLAVIGER_DB_URL"
 // PostgresDBConnect returns a [DBConnectFunc] that opens the provided
 // PostgreSQL connection URL. The dbPath argument is ignored.
 func PostgresDBConnect(url string) DBConnectFunc {
+	url = postgresExecModeURL(url)
+
 	return func(_ string) (*dbx.DB, error) {
 		// instrumented driver wrapper while traces/metrics are active
 		if db, err := openTelemetryPostgres(url); db != nil || err != nil {
@@ -87,4 +90,31 @@ func redactDBURL(err error, url string) error {
 	}
 
 	return fmt.Errorf("%s", strings.ReplaceAll(err.Error(), url, "<redacted>"))
+}
+
+// postgresExecModeURL sets pgx's default_query_exec_mode to "describe_exec" unless the
+// URL already chooses one. pgx's default caches a server-side prepared
+// statement per connection, and PostgreSQL then fails the first reuse after a
+// collection's columns change ("cached plan must not change result type").
+func postgresExecModeURL(raw string) string {
+	const key = "default_query_exec_mode"
+
+	if strings.Contains(raw, key) {
+		return raw
+	}
+
+	if !strings.Contains(raw, "://") {
+		return strings.TrimSpace(raw) + " " + key + "=describe_exec"
+	}
+
+	u, err := neturl.Parse(raw)
+	if err != nil {
+		return raw
+	}
+
+	q := u.Query()
+	q.Set(key, "describe_exec")
+	u.RawQuery = q.Encode()
+
+	return u.String()
 }

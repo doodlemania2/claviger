@@ -16,6 +16,7 @@ func bindSettingsApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 	subGroup.PATCH("", settingsSet)
 	subGroup.POST("/test/s3", settingsTestS3)
 	subGroup.POST("/test/email", settingsTestEmail)
+	subGroup.POST("/test/sms", settingsTestSMS) // fork-local (#83)
 
 	// @todo move to collections
 	subGroup.POST("/apple/generate-client-secret", settingsGenerateAppleClientSecret)

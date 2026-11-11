@@ -7,11 +7,16 @@
 <title>Signed out</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/oidc/assets/oidc.css">
+<link rel="stylesheet" href="/a11y/a11y-mode.css">
+<script src="/a11y/a11y-mode.js"></script>
 </head>
 <body>
+<a class="skip" href="#app">Skip to the main content</a>
+<header class="a11y-bar"><button type="button" id="a11yToggle" class="a11y-toggle" aria-pressed="false" hidden>Larger text and high contrast</button></header>
+
 <main class="card" id="app" data-page="info" data-request="ID" data-collection="">
 <h1>You are signed out</h1>
-<p class="msg ok" role="alert">You can close this window.</p>
+<p class="msg ok" id="pageMsg" role="status">You can close this window.</p>
 
 
 </main>

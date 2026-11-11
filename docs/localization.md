@@ -46,6 +46,10 @@ An unsupported value is skipped, not an error: `?lang=xx` falls through to the n
 
 For an email there is no browser, so it is the account's preferred language, then `meta.defaultLanguage`. The invitation email goes to the invited address, so it uses that address's account when one exists.
 
+**Default language of an org (#83, 83-4).** An org can have its own default language: put `"locale": "es"` in the `settings` JSON of the org (superuser edit of `_orgs`; the same object as `invitationEmail`). It is the default for the invitation page (`/orgs/invite/{token}`) and the invitation email, and it comes **after** every choice the person made: `?lang=`, the `lang` cookie, their own account, Accept-Language. For an email the order is the invitee's account, then the org, then `meta.defaultLanguage`. A value that names no available language is ignored (the app default applies). The member page `/orgs/{slug}` is a shell that does not look the org up, so a stranger cannot learn which slugs exist; it therefore does not use the org's locale.
+
+Per-user language needed no new field: the `lang` field of the auth collection is the user's preference, and the users collection is the deployment's own. Spanish is the first language reviewed for accessible login (`docs/accessibility.md`).
+
 ### Settings
 
 `meta.defaultLanguage` (a tag such as `en` or `pt-BR`) and `meta.languageField` (the name of the auth collection field with the preferred language, default `lang`) are part of the settings (`PATCH /api/settings`, `{"meta": {...}}`). To let members choose, add a text (or select) field named `lang` to the auth collection, with values such as `es` or `pt-BR`. The REST API already lets a user update their own record, so a profile page can offer a language picker.

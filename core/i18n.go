@@ -76,3 +76,20 @@ func RecordLanguage(app App, record *Record) string {
 
 	return record.GetString(name)
 }
+
+// OrgDefaultLanguage is the default language for pages and emails about an
+// org (#83 83-4): settings.locale of the org when it names an available
+// language, otherwise meta.defaultLanguage. It ranks below every choice the
+// person made (?lang=, the lang cookie, their own account, Accept-Language)
+// and above the app default.
+func OrgDefaultLanguage(app App, org *Record) string {
+	if org != nil {
+		if v, ok := orgSettings(org)["locale"].(string); ok && v != "" {
+			if tag, found := I18n(app).Resolve(v); found {
+				return tag
+			}
+		}
+	}
+
+	return app.Settings().Meta.DefaultLang()
+}

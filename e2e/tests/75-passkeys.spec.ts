@@ -81,7 +81,7 @@ test("Passkeys page: register a passkey after a password sign-in, then sign in w
     expect(credentials[0].isResidentCredential).toBe(true);
     // the authenticator holds the credential before the browser has sent the finish request,
     // so wait for the server to store it (on a loaded runner that takes a moment)
-    await expect(page.getByText("Passkey registered.")).toBeVisible();
+    await expect(page.getByText("Passkey added.")).toBeVisible();
     await expect.poll(async () => (await api("GET", "/api/collections/_webauthnCredentials/records")).items.length, { timeout: 15_000 }).toBe(1);
 
     // sign out and sign in with the passkey alone

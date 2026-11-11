@@ -143,6 +143,12 @@ window.app.store = store({
                 icon: "ri-shield-check-line",
                 label: "Captcha",
             },
+            {
+                // fork-local (#83)
+                href: "#/settings/sms",
+                icon: "ri-message-2-line",
+                label: "SMS",
+            },
         ],
         Sync: [
             {

@@ -89,6 +89,10 @@ func TestDataMapEntriesAreWellFormed(t *testing.T) {
 		var fields []string
 		_ = json.Unmarshal([]byte(r.GetString("personalFields")), &fields)
 		for _, f := range append(paths, fields...) {
+			// "<collection>_via_<field>.<user field>": a back-relation path (#80)
+			if strings.Contains(f, "_via_") {
+				continue
+			}
 			if col.Fields.GetByName(f) == nil {
 				t.Errorf("%s: unknown field %q", name, f)
 			}
