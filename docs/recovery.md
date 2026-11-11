@@ -48,7 +48,7 @@ Text message notices are not built yet. The code `sendRecoveryNoticeSMS` in `api
 - [ ] I read the code aloud or showed the screen. I did not send it in a message.
 - [ ] I did not write anything sensitive in the note.
 - [ ] The person has used the code and made a passkey before they leave. If not, the code will expire. Issue a new one.
-- [ ] If the person was asked to be recovered by a phone call or message: stop. Ask them to come in. This is the most common trick.
+- [ ] If someone asks you by phone or message to recover another person, do not. Ask them to come in. This is the most common trick.
 
 ## Limits and safety
 
