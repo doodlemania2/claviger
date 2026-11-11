@@ -47,6 +47,7 @@ import (
 
 	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/keys"
 	"github.com/spf13/cobra"
 )
 
@@ -93,6 +94,11 @@ type MigrateDBOptions struct {
 	SkipViews bool
 	// Out receives the progress output (default: discarded).
 	Out io.Writer
+	// EncryptionEnv is the name of the env variable with the app encryption
+	// key (the --encryptionEnv flag). The target derives the key-encryption
+	// key from it when no CLAVIGER_KEK* source is set, as the server does; the
+	// settings themselves are still copied as stored.
+	EncryptionEnv string
 
 	// test hook: called after the batch was committed; an error stops the run
 	afterBatch func(table string, batch int) error
@@ -127,7 +133,7 @@ type MigrateDBReport struct {
 
 // NewMigrateDBCommand creates the `migrate-db` command.
 func NewMigrateDBCommand(app core.App) *cobra.Command {
-	opts := MigrateDBOptions{}
+	opts := MigrateDBOptions{EncryptionEnv: app.EncryptionEnv()}
 	var verbose bool
 
 	command := &cobra.Command{
@@ -608,6 +614,15 @@ func (m *migrateRun) bootstrapTarget() error {
 	if err := m.dst.Bootstrap(); err != nil {
 		_ = os.RemoveAll(tmp)
 		return fmt.Errorf("cannot bootstrap the target: %w", err)
+	}
+
+	// encrypted fields (#75, #80) need the key-encryption key on the target
+	if m.opts.EncryptionEnv != "" {
+		if src, err := keys.LoadWithOld(os.Getenv, m.opts.EncryptionEnv); err == nil {
+			core.SetFieldKeySource(m.dst, src)
+		} else if !errors.Is(err, keys.ErrNoKeySource) {
+			return fmt.Errorf("cannot load the key-encryption key: %w", err)
+		}
 	}
 
 	return nil
