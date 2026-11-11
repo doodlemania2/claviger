@@ -153,6 +153,7 @@
   "orgs.col.created": "Ginawa",
   "orgs.col.lastUsed": "Huling ginamit",
   "orgs.col.expires": "Mag-e-expire",
+  "orgs.col.actions": "Mga aksyon",
   "orgs.scim.title": "SCIM provisioning",
   "orgs.scim.tenantUrlHtml": "Tenant URL: {url}",
   "orgs.scim.tokenName": "Pangalan ng token",
@@ -319,5 +320,7 @@
   "oidc.device.used": "Nagamit na ang code na ito.",
   "oidc.device.expired": "Nag-expire na ang code na ito. Magsimulang muli sa iyong device.",
   "oidc.device.browser": "Sinimulan ang kahilingang ito sa ibang browser. Magsimulang muli sa iyong device.",
-  "oidc.device.signInEnded": "Natapos na ang sign-in na iyon. Magsimulang muli sa iyong device."
+  "oidc.device.signInEnded": "Natapos na ang sign-in na iyon. Magsimulang muli sa iyong device.",
+  "a11y.toggle": "Mas malaking text at mataas na contrast",
+  "a11y.skip": "Lumaktaw sa pangunahing nilalaman"
 }

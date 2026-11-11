@@ -153,6 +153,7 @@
   "orgs.col.created": "创建时间",
   "orgs.col.lastUsed": "最近使用",
   "orgs.col.expires": "过期时间",
+  "orgs.col.actions": "操作",
   "orgs.scim.title": "SCIM 配置",
   "orgs.scim.tenantUrlHtml": "租户 URL：{url}",
   "orgs.scim.tokenName": "令牌名称",
@@ -319,5 +320,7 @@
   "oidc.device.used": "此代码已被使用。",
   "oidc.device.expired": "此代码已过期。请在您的设备上重新开始。",
   "oidc.device.browser": "此请求是在另一个浏览器中发起的。请在您的设备上重新开始。",
-  "oidc.device.signInEnded": "该登录已结束。请在您的设备上重新开始。"
+  "oidc.device.signInEnded": "该登录已结束。请在您的设备上重新开始。",
+  "a11y.toggle": "更大文字和高对比度",
+  "a11y.skip": "跳到主要内容"
 }

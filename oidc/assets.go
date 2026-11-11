@@ -60,9 +60,14 @@ let mfaId = "";
 
 if (root.dataset.loginHint) pw.elements.identity.value = root.dataset.loginHint;
 
+// the message sits right under the forms and the fields point at it (aria-describedby in the page)
 function fail(text) {
   statusEl.textContent = text;
   statusEl.hidden = !text;
+  for (const f of root.querySelectorAll("#pw input, #totp input")) {
+    if (text) f.setAttribute("aria-invalid", "true");
+    else f.removeAttribute("aria-invalid");
+  }
 }
 
 async function finish(token) {

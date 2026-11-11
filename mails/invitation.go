@@ -52,11 +52,11 @@ func InvitationURL(app core.App, token string) string {
 // ("" when unknown).
 func SendOrgInvitation(app core.App, org, inv *core.Record, inviter, token string) error {
 	// fork-local (#97): the invitation is sent in the language of the invitee's
-	// account when there is one, otherwise in the app default
+	// account when there is one, otherwise in the org's locale (settings.locale), then the app default
 	bundle := core.I18n(app)
 	lang := bundle.Negotiate(i18n.Preference{
 		Record:  inviteeLanguage(app, inv.GetString("email")),
-		Default: app.Settings().Meta.DefaultLang(),
+		Default: core.OrgDefaultLanguage(app, org),
 	})
 
 	if inviter == "" {

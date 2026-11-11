@@ -153,6 +153,7 @@
   "orgs.col.created": "Criado",
   "orgs.col.lastUsed": "Último uso",
   "orgs.col.expires": "Expira",
+  "orgs.col.actions": "Ações",
   "orgs.scim.title": "Provisionamento SCIM",
   "orgs.scim.tenantUrlHtml": "URL do locatário: {url}",
   "orgs.scim.tokenName": "Nome do token",
@@ -319,5 +320,7 @@
   "oidc.device.used": "Este código já foi usado.",
   "oidc.device.expired": "Este código expirou. Comece novamente no seu dispositivo.",
   "oidc.device.browser": "Esta solicitação foi iniciada em outro navegador. Comece novamente no seu dispositivo.",
-  "oidc.device.signInEnded": "Essa sessão foi encerrada. Comece novamente no seu dispositivo."
+  "oidc.device.signInEnded": "Essa sessão foi encerrada. Comece novamente no seu dispositivo.",
+  "a11y.toggle": "Texto maior e alto contraste",
+  "a11y.skip": "Ir para o conteúdo principal"
 }

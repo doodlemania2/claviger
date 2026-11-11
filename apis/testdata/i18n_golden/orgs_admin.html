@@ -8,8 +8,13 @@
 <title>Organization</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/orgs/assets/hosted.css">
+<link rel="stylesheet" href="/a11y/a11y-mode.css">
+<script src="/a11y/a11y-mode.js"></script>
 </head>
 <body>
+<a class="skip" href="#app">Skip to the main content</a>
+<header class="a11y-bar"><button type="button" id="a11yToggle" class="a11y-toggle" aria-pressed="false" hidden>Larger text and high contrast</button></header>
+
 <main class="card wide" id="app" data-page="org" data-slug="parish-1" data-collection="users">
 <p id="pstatus" class="msg err" role="alert" hidden></p>
 <div id="captchaBox" hidden></div>
@@ -24,18 +29,18 @@
 <h2>Sign in</h2>
 <form id="pw" hidden>
 <label>Email or username<input name="identity" autocomplete="username webauthn" required></label>
-<label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+<label>Password<input name="password" type="password" autocomplete="current-password" required aria-describedby="status"></label>
 <button type="submit">Sign in</button>
 </form>
 <form id="totp" hidden>
-<label>Authenticator code or backup code<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<label>Code from your authenticator app, or a backup code<input name="code" inputmode="numeric" autocomplete="one-time-code" required aria-describedby="status"></label>
 <button type="submit">Verify</button>
 </form>
 <div id="otpBox" hidden>
 <div class="or"><span>or</span></div>
 <button id="otpSend" type="button" class="secondary">Email me a sign-in code</button>
 <form id="otpForm" hidden>
-<label>Code from the email<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<label>Code from the email<input name="code" inputmode="numeric" autocomplete="one-time-code" required aria-describedby="status"></label>
 <button type="submit">Sign in</button>
 </form>
 </div>
@@ -55,7 +60,7 @@
 
 <h2>Members</h2>
 <div class="tablewrap"><table id="members">
-<thead><tr><th>Member</th><th>Role</th><th>Status</th><th>Tags</th><th></th></tr></thead>
+<thead><tr><th scope="col">Member</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Tags</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
 <tbody></tbody>
 </table></div>
 
@@ -70,7 +75,7 @@
 
 <h2>Invitations</h2>
 <div class="tablewrap"><table id="invitations">
-<thead><tr><th>Email</th><th>Role</th><th>Tags</th><th>Status</th><th>Expires / accepted</th><th>Sent</th><th></th></tr></thead>
+<thead><tr><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Tags</th><th scope="col">Status</th><th scope="col">Expires / accepted</th><th scope="col">Sent</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
 <tbody></tbody>
 </table></div>
 
@@ -82,7 +87,7 @@
 </form>
 <p id="scimNew" class="msg ok" role="status" hidden></p>
 <div class="tablewrap"><table id="scimTokens">
-<thead><tr><th>Name</th><th>Token</th><th>Created</th><th>Last used</th><th>Expires</th><th>Status</th><th></th></tr></thead>
+<thead><tr><th scope="col">Name</th><th scope="col">Token</th><th scope="col">Created</th><th scope="col">Last used</th><th scope="col">Expires</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
 <tbody></tbody>
 </table></div>
 <form id="scimSettings">

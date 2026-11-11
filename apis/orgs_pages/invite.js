@@ -23,6 +23,7 @@ function show(name) {
 function say(text, kind) {
   statusEl.textContent = text || "";
   statusEl.className = "msg " + (kind || "err");
+  statusEl.setAttribute("role", kind === "ok" ? "status" : "alert");
   statusEl.hidden = !text;
 }
 

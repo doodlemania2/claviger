@@ -4,353 +4,66 @@
 <meta charset="utf-8">
 <title>Passkeys</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  :root { color-scheme: light dark; }
-  body { font: 15px/1.5 -apple-system, system-ui, sans-serif; max-width: 480px; margin: 4em auto; padding: 0 1em; }
-  h1 { font-size: 1.5em; margin-bottom: 0.2em; }
-  .muted { opacity: 0.65; font-size: 0.9em; }
-  label { display: block; margin-top: 1em; }
-  input[type=text], input[type=email], input[type=password] {
-    width: 100%; box-sizing: border-box; padding: 0.5em; font-size: 1em;
-    border: 1px solid #888; border-radius: 4px; background: transparent; color: inherit;
-  }
-  button { padding: 0.55em 1em; font-size: 1em; border-radius: 4px; border: 1px solid #888;
-           background: #4a8cff; color: white; cursor: pointer; margin-top: 1em; }
-  button.secondary { background: transparent; color: inherit; }
-  button[disabled] { opacity: 0.5; cursor: not-allowed; }
-  .msg { margin-top: 1em; padding: 0.6em; border-radius: 4px; }
-  .msg.err { background: #fdecea; color: #5a1410; }
-  .msg.ok  { background: #e6f4ea; color: #14532d; }
-  ul.creds { list-style: none; padding: 0; }
-  ul.creds li { display: flex; align-items: center; gap: 0.5em; padding: 0.5em 0; border-bottom: 1px solid #ddd3; }
-  ul.creds li .meta { flex: 1; }
-  ul.creds li .meta small { display: block; opacity: 0.6; }
-  hr { border: none; border-top: 1px solid #8884; margin: 2em 0; }
-</style>
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/passkeys/assets/passkeys-page.css">
+<link rel="stylesheet" href="/a11y/a11y-mode.css">
+<script src="/a11y/a11y-mode.js"></script>
 </head>
 <body>
+<a class="skip" href="#app">Skip to the main content</a>
+<header class="a11y-bar"><button type="button" id="a11yToggle" class="a11y-toggle" aria-pressed="false" hidden>Larger text and high contrast</button></header>
 
+<main class="card" id="app" tabindex="-1">
 <h1>Passkeys</h1>
-<p class="muted">Sign in with — or register — a passkey on this device.</p>
+<p class="muted">Sign in with a passkey, or add one on this device.</p>
 
 <div id="msg"></div>
 
-<section id="anon">
-  <h2 style="font-size:1.1em;">Sign in with a passkey</h2>
-  <label>Email or username
-    <input type="text" id="identity" autocomplete="username webauthn" autofocus>
-  </label>
+<section id="anon" aria-labelledby="anonHeading">
+  <h2 id="anonHeading">Sign in with a passkey</h2>
+  <label for="identity">Email or username</label>
+  <input type="text" id="identity" autocomplete="username webauthn">
   <div id="captchaBox" hidden></div>
-  <button id="btnLogin">Sign in with passkey</button>
-  <p class="muted" id="pwHint" style="margin-top:1.5em;">
-    No passkey yet? <a href="#" id="linkPasswordLogin">Sign in with password to register one.</a>
+  <button type="button" id="btnLogin">Sign in with passkey</button>
+  <div id="loginMsg"></div>
+  <p class="muted hint" id="pwHint">
+    No passkey yet? <button type="button" class="linklike" id="linkPasswordLogin" aria-controls="pwForm" aria-expanded="false">Sign in with your password to add one.</button>
   </p>
 
   <div id="recovery" hidden>
-    <p class="muted" style="margin-top:1.5em;">
-      Lost your passkey, or setting up for the first time?
-      <a href="#" id="linkRecovery">Email me a link to set one up.</a>
+    <p class="muted hint">
+      Lost your passkey, or is this your first time?
+      <button type="button" class="linklike" id="linkRecovery" aria-controls="recoveryForm" aria-expanded="false">Email me a link to set one up.</button>
     </p>
     <div id="recoveryForm" hidden>
-      <label>Email
-        <input type="email" id="recoveryEmail" autocomplete="email">
-      </label>
-      <button id="btnRecovery">Send link</button>
+      <label for="recoveryEmail">Email</label>
+      <input type="email" id="recoveryEmail" autocomplete="email">
+      <button type="button" id="btnRecovery">Send link</button>
+      <div id="recoveryMsg"></div>
     </div>
   </div>
 
   <div id="pwForm" hidden>
     <hr>
-    <h2 style="font-size:1.1em;">Sign in with password</h2>
-    <label>Email
-      <input type="email" id="pwEmail" autocomplete="username">
-    </label>
-    <label>Password
-      <input type="password" id="pwPass" autocomplete="current-password">
-    </label>
-    <button id="btnPwLogin">Sign in</button>
+    <h2>Sign in with password</h2>
+    <label for="pwEmail">Email</label>
+    <input type="email" id="pwEmail" autocomplete="username">
+    <label for="pwPass">Password</label>
+    <input type="password" id="pwPass" autocomplete="current-password">
+    <button type="button" id="btnPwLogin">Sign in</button>
+    <div id="pwMsg"></div>
   </div>
 </section>
 
-<section id="authed" hidden>
-  <p>Signed in as <strong id="me"></strong>. <a href="#" id="linkLogout">Sign out</a></p>
-  <button id="btnRegister">Register a new passkey on this device</button>
-  <h3 style="font-size:1em; margin-top:2em;">Your passkeys</h3>
+<section id="authed" aria-labelledby="authedHeading" hidden>
+  <h2 id="authedHeading">Your passkeys</h2>
+  <p>Signed in as <strong id="me"></strong>. <button type="button" class="linklike" id="linkLogout">Sign out</button></p>
+  <button type="button" id="btnRegister">Add a passkey on this device</button>
   <ul class="creds" id="creds"></ul>
 </section>
+</main>
 
-<script type="module">
-import { PasskeysClient } from "/api/passkeys-client.js";
-
-const COLLECTION = new URLSearchParams(location.search).get("collection") || "users";
-const STORAGE_KEY = "pb_passkeys_auth_" + COLLECTION;
-const BASE_URL = location.origin;
-
-const $ = (id) => document.getElementById(id);
-
-function showMsg(text, kind) {
-  const el = $("msg");
-  if (!text) { el.innerHTML = ""; return; }
-  el.innerHTML = '<div class="msg ' + (kind || "ok") + '"></div>';
-  el.firstChild.textContent = text;
-}
-function loadAuth() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); } catch (e) { return null; }
-}
-function saveAuth(v) {
-  if (v) localStorage.setItem(STORAGE_KEY, JSON.stringify(v));
-  else localStorage.removeItem(STORAGE_KEY);
-}
-// ---- optional captcha (auth-methods "captcha") --------------------------
-// The provider script is loaded ONLY when the collection requires a captcha
-// for the action being performed, and never otherwise.
-let captchaCfg = null;
-const captchaScripts = {};
-const CAPTCHA_SRC = {
-  turnstile: () => "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit",
-  hcaptcha: () => "https://js.hcaptcha.com/1/api.js?render=explicit",
-  recaptchaV2: () => "https://www.google.com/recaptcha/api.js?render=explicit",
-  recaptchaV3: (cfg) => "https://www.google.com/recaptcha/api.js?render=" + encodeURIComponent(cfg.siteKey),
-};
-function loadCaptchaScript(cfg) {
-  const src = CAPTCHA_SRC[cfg.provider] && CAPTCHA_SRC[cfg.provider](cfg);
-  if (!src) return Promise.reject(new Error("Unsupported captcha provider."));
-  if (!captchaScripts[src]) {
-    captchaScripts[src] = new Promise((resolve, reject) => {
-      const el = document.createElement("script");
-      el.src = src; el.async = true;
-      el.onload = resolve;
-      el.onerror = () => reject(new Error("Could not load the captcha."));
-      document.head.appendChild(el);
-    });
-  }
-  return captchaScripts[src];
-}
-async function getCaptchaToken(action) {
-  const cfg = captchaCfg;
-  if (!cfg || !cfg.required || cfg.required.indexOf(action) < 0) return undefined;
-  await loadCaptchaScript(cfg);
-  if (cfg.provider === "recaptchaV3") {
-    await new Promise((r) => grecaptcha.ready(r));
-    return grecaptcha.execute(cfg.siteKey, { action });
-  }
-  const api = cfg.provider === "turnstile" ? window.turnstile : cfg.provider === "hcaptcha" ? window.hcaptcha : window.grecaptcha;
-  if (cfg.provider === "recaptchaV2") await new Promise((r) => grecaptcha.ready(r));
-  const box = $("captchaBox");
-  box.hidden = false;
-  box.textContent = "";
-  const holder = document.createElement("div");
-  box.appendChild(holder);
-  return new Promise((resolve, reject) => {
-    const done = (fn, v) => { box.hidden = true; box.textContent = ""; fn(v); };
-    api.render(holder, {
-      sitekey: cfg.siteKey,
-      action: cfg.provider === "turnstile" ? action : undefined,
-      callback: (token) => done(resolve, token),
-      "error-callback": () => done(reject, new Error("Captcha failed, please try again.")),
-      "expired-callback": () => done(reject, new Error("Captcha expired, please try again.")),
-    });
-  });
-}
-
-function client() {
-  const auth = loadAuth();
-  return new PasskeysClient({
-    getCaptchaToken,
-    baseUrl: BASE_URL,
-    collection: COLLECTION,
-    authToken: auth ? auth.token : null,
-    // a step-up replaces the token; keep the stored session in step
-    onToken: (token) => {
-      const cur = loadAuth();
-      if (cur) saveAuth({ token, record: cur.record });
-    },
-  });
-}
-
-let autofillAbort = null;
-
-// Conditional UI: the identity input carries autocomplete="username webauthn",
-// so when the collection allows usernameless sign-in the browser offers saved
-// passkeys right in the field. Picking one signs in with no typing.
-async function startAutofill() {
-  if (autofillAbort) return;
-  try {
-    if (!window.PublicKeyCredential || !PublicKeyCredential.isConditionalMediationAvailable) return;
-    if (!(await PublicKeyCredential.isConditionalMediationAvailable())) return;
-    autofillAbort = new AbortController();
-    const result = await client().autofillLogin(autofillAbort.signal);
-    autofillAbort = null;
-    saveAuth({ token: result.token, record: result.record });
-    render();
-    showMsg("Signed in.", "ok");
-  } catch (e) {
-    autofillAbort = null;
-    if (e && e.name === "AbortError") return;
-    // autofill is best effort: stay quiet and leave the manual button working
-  }
-}
-
-function stopAutofill() {
-  if (autofillAbort) { autofillAbort.abort(); autofillAbort = null; }
-}
-
-async function setupMethods() {
-  try {
-    const methods = await client().methods();
-    captchaCfg = (methods && methods.captcha) || null;
-    const wa = (methods && methods.webauthn) || {};
-    if (wa.passkeyOnly) {
-      // no password to fall back on: offer the emailed link instead
-      $("pwHint").hidden = true;
-      $("pwForm").hidden = true;
-      $("recovery").hidden = false;
-    }
-    if (wa.discoverable) startAutofill();
-  } catch (e) {
-    // leave the defaults in place
-  }
-}
-
-async function sendRecovery() {
-  showMsg("");
-  try {
-    await client().requestReset($("recoveryEmail").value);
-    showMsg("If that address has an account, a link is on its way.", "ok");
-  } catch (e) {
-    showMsg("Could not send the link: " + e.message, "err");
-  }
-}
-
-async function loginWithPasskey() {
-  showMsg("");
-  stopAutofill();
-  try {
-    const result = await client().login($("identity").value);
-    saveAuth({ token: result.token, record: result.record });
-    render();
-    showMsg("Signed in.", "ok");
-  } catch (e) {
-    showMsg("Login failed: " + e.message, "err");
-  }
-}
-
-async function passwordLogin() {
-  showMsg("");
-  try {
-    const headers = { "Content-Type": "application/json" };
-    const captcha = await getCaptchaToken("login");
-    if (captcha) headers["X-Captcha-Token"] = captcha;
-    const res = await fetch(BASE_URL + "/api/collections/" + encodeURIComponent(COLLECTION) + "/auth-with-password", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ identity: $("pwEmail").value, password: $("pwPass").value }),
-    });
-    const body = await res.json();
-    if (!res.ok) throw new Error(body.message || ("HTTP " + res.status));
-    saveAuth({ token: body.token, record: body.record });
-    render();
-    showMsg("Signed in. You can now register a passkey.", "ok");
-  } catch (e) {
-    showMsg("Password login failed: " + e.message, "err");
-  }
-}
-
-async function registerPasskey() {
-  showMsg("");
-  try {
-    const friendly = prompt("Name this passkey (e.g. \"MacBook Touch ID\")") || "";
-    await client().register(friendly);
-    showMsg("Passkey registered.", "ok");
-    loadCredentials();
-  } catch (e) {
-    showMsg("Registration failed: " + e.message, "err");
-  }
-}
-
-async function loadCredentials() {
-  const ul = $("creds");
-  ul.textContent = "";
-  try {
-    const list = await client().list();
-    const items = Array.isArray(list) ? list : (list.items || []);
-    if (!items.length) {
-      const li = document.createElement("li");
-      li.className = "muted";
-      li.textContent = "No registered passkeys yet.";
-      ul.appendChild(li);
-      return;
-    }
-    for (const c of items) {
-      const li = document.createElement("li");
-      const meta = document.createElement("div");
-      meta.className = "meta";
-      const name = document.createElement("div");
-      name.textContent = c.name || "Unnamed passkey";
-      const sub = document.createElement("small");
-      sub.textContent = (c.created ? "Registered: " + c.created : "") +
-        (c.lastUsed ? " · Last used: " + c.lastUsed : " · Not used yet") +
-        (c.signCount !== undefined ? " · Uses: " + c.signCount : "");
-      meta.appendChild(name);
-      meta.appendChild(sub);
-
-      const renameBtn = document.createElement("button");
-      renameBtn.className = "secondary";
-      renameBtn.textContent = "Rename";
-      renameBtn.style.marginTop = "0";
-      renameBtn.onclick = async () => {
-        const newName = prompt("New name:", c.name || "");
-        if (!newName) return;
-        try { await client().rename(c.id, newName); loadCredentials(); }
-        catch (e) { showMsg("Rename failed: " + e.message, "err"); }
-      };
-
-      const delBtn = document.createElement("button");
-      delBtn.className = "secondary";
-      delBtn.textContent = "Delete";
-      delBtn.style.marginTop = "0";
-      delBtn.onclick = async () => {
-        if (!confirm("Delete this passkey?")) return;
-        try { await client().remove(c.id); loadCredentials(); }
-        catch (e) { showMsg("Delete failed: " + e.message, "err"); }
-      };
-
-      li.appendChild(meta);
-      li.appendChild(renameBtn);
-      li.appendChild(delBtn);
-      ul.appendChild(li);
-    }
-  } catch (e) {
-    showMsg("Failed to load credentials: " + e.message, "err");
-  }
-}
-
-function render() {
-  const auth = loadAuth();
-  if (auth && auth.record) {
-    $("anon").hidden = true;
-    $("authed").hidden = false;
-    $("me").textContent = auth.record.email || auth.record.id;
-    loadCredentials();
-  } else {
-    $("anon").hidden = false;
-    $("authed").hidden = true;
-  }
-}
-
-$("btnLogin").addEventListener("click", loginWithPasskey);
-$("btnPwLogin").addEventListener("click", passwordLogin);
-$("btnRegister").addEventListener("click", registerPasskey);
-$("linkPasswordLogin").addEventListener("click", (e) => { e.preventDefault(); $("pwForm").hidden = false; });
-$("linkLogout").addEventListener("click", (e) => { e.preventDefault(); saveAuth(null); render(); setupMethods(); });
-$("linkRecovery").addEventListener("click", (e) => { e.preventDefault(); $("recoveryForm").hidden = false; });
-$("btnRecovery").addEventListener("click", sendRecovery);
-
-if (!window.PublicKeyCredential) {
-  showMsg("This browser does not support WebAuthn / passkeys.", "err");
-}
-render();
-if (!loadAuth()) setupMethods();
-</script>
+<script type="module" src="/passkeys/assets/passkeys-page.js"></script>
 </body>
 </html>

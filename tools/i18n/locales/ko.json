@@ -153,6 +153,7 @@
   "orgs.col.created": "생성일",
   "orgs.col.lastUsed": "마지막 사용",
   "orgs.col.expires": "만료",
+  "orgs.col.actions": "작업",
   "orgs.scim.title": "SCIM 프로비저닝",
   "orgs.scim.tenantUrlHtml": "테넌트 URL: {url}",
   "orgs.scim.tokenName": "토큰 이름",
@@ -319,5 +320,7 @@
   "oidc.device.used": "이 코드는 이미 사용되었습니다.",
   "oidc.device.expired": "이 코드가 만료되었습니다. 기기에서 처음부터 다시 시작하세요.",
   "oidc.device.browser": "이 요청은 다른 브라우저에서 시작되었습니다. 기기에서 처음부터 다시 시작하세요.",
-  "oidc.device.signInEnded": "해당 로그인이 종료되었습니다. 기기에서 처음부터 다시 시작하세요."
+  "oidc.device.signInEnded": "해당 로그인이 종료되었습니다. 기기에서 처음부터 다시 시작하세요.",
+  "a11y.toggle": "큰 글씨와 높은 대비",
+  "a11y.skip": "본문으로 건너뛰기"
 }

@@ -7,11 +7,16 @@
 <title>Sign-in problem</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/oidc/assets/oidc.css">
+<link rel="stylesheet" href="/a11y/a11y-mode.css">
+<script src="/a11y/a11y-mode.js"></script>
 </head>
 <body>
+<a class="skip" href="#app">Skip to the main content</a>
+<header class="a11y-bar"><button type="button" id="a11yToggle" class="a11y-toggle" aria-pressed="false" hidden>Larger text and high contrast</button></header>
+
 <main class="card" id="app" data-page="error" data-request="ID" data-collection="">
 <h1>Sign-in problem</h1>
-<p class="msg err" role="alert">This request has expired. Return to the app and try again.</p>
+<p class="msg err" id="pageMsg" role="alert">This request has expired. Return to the app and try again.</p>
 
 
 </main>

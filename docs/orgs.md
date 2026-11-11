@@ -175,6 +175,8 @@ The default subject is "You are invited to join {ORG_NAME} on {APP_NAME}". An or
 { "invitationEmail": { "subject": "Welcome to {ORG_NAME}", "body": "<p>{INVITER} invited you as {ROLE}.</p><p><a href=\"{INVITE_URL}\">Join</a></p>" } }
 ```
 
+`settings.locale` (for example `"es"`) sets the default language of the invitation email and the invitation page for that org; see `docs/localization.md`.
+
 Placeholders: `{ORG_NAME}`, `{ORG_SLUG}`, `{ROLE}`, `{INVITER}`, `{INVITE_URL}`, `{EXPIRES}`, `{APP_NAME}`, `{APP_URL}`. Values are HTML-escaped in the body. The body goes inside the standard mail layout; the text part is derived from the HTML.
 
 ### Hosted pages
