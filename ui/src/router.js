@@ -3,6 +3,7 @@ import { pageCollections } from "@/collections/pageCollections";
 import { pageAudit } from "@/audit/pageAudit";
 import { pageWebhooks } from "@/webhooks/pageWebhooks";
 import { pageOrgs } from "@/orgs/pageOrgs";
+import { pageHouseholds } from "@/households/pageHouseholds"; // fork-local (#80)
 import { pageOidc } from "@/oidc/pageOidc";
 import { pageLogs } from "@/logs/pageLogs";
 import { pageApplicationSettings } from "@/settings/application/pageApplicationSettings";
@@ -181,6 +182,7 @@ app.routes.superuserOnly("#/logs", pageLogs);
 app.routes.superuserOnly("#/audit", pageAudit);
 app.routes.superuserOnly("#/webhooks", pageWebhooks);
 app.routes.superuserOnly("#/orgs", pageOrgs);
+app.routes.superuserOnly("#/households", pageHouseholds); // fork-local (#80)
 app.routes.superuserOnly("#/oidc", pageOidc);
 app.routes.superuserOnly("#/settings", pageApplicationSettings);
 app.routes.superuserOnly("#/settings/mail", pageMailSettings);

@@ -1,6 +1,6 @@
 # Accessible login pages
 
-Claviger (#83, 83-3) makes its hosted pages usable with large text, high contrast, a keyboard and a screen reader: `/passkeys`, `/orgs/*` and the OpenID Connect pages (`/oidc/login`, the account chooser, consent, device code and approval, signed out, and the error pages). The superuser admin UI (`/_/`) is not covered.
+Claviger (#83, 83-3) makes its hosted pages usable with large text, high contrast, a keyboard and a screen reader: `/passkeys`, `/orgs/*`, `/recovery`, `/households/mine` and the OpenID Connect pages (`/oidc/login`, the account chooser, consent, device code and approval, signed out, and the error pages). The superuser admin UI (`/_/`) is not covered.
 
 The target is **WCAG 2.2 level AA**. Passkeys also meet the "accessible authentication" criterion (3.3.8), because they need no memorised or transcribed secret.
 
