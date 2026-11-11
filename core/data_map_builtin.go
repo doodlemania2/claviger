@@ -69,6 +69,11 @@ var builtinDataMap = []DataMapEntry{
 	{Collection: CollectionNameCredentialTypes, Treatment: DataMapTreatmentNone,
 		Note: "Credential type definitions (#81). Not about a person."},
 
+	// ---- staff-vouched recovery (#83) ----
+	{Collection: CollectionNameRecoveryCodes, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"user"},
+		PersonalFields: []string{"issuedBy", "confirmedBy", "note"}, AgeOutBasis: "expires",
+		Note: "Staff-vouched recovery codes (#83). Export: who vouched, how, when. Never the reference or the hash. Rows are deleted 30 days after they expire."},
+
 	// ---- OpenID Connect provider ----
 	{Collection: CollectionNameOAuthConsents, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"recordRef"},
 		Note: "Export: client, scopes, dates."},
