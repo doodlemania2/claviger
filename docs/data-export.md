@@ -54,7 +54,7 @@ The export covers the person's own rows only. Nothing is added for households ye
 
 ### Files
 
-Files of file fields are included, up to 100 MB for one file and 1 GB for all files. A file over the limit is listed in `manifest.json` under `files.skipped` and the request ends as `partial`. Set the limits with `CLAVIGER_EXPORT_MAX_FILE_MB` and `CLAVIGER_EXPORT_MAX_TOTAL_MB`.
+Files of file fields are included, up to 100 MB for one file and 1 GB for all files. A file over the limit is listed in `manifest.json` under `files.skipped` and the request ends as `partial`. Set the limits in the admin UI under **Settings > Data export** (`Settings.dataExport.maxFileMB` and `maxTotalMB`). See [Limits](#limits).
 
 ## Requesting an export
 
@@ -87,7 +87,7 @@ The response is `202` with the request:
 
 States: `queued`, `running`, `done`, `partial` (something was left out, see the manifest), `failed`, `cancelled`, `expired`.
 
-The download works with the session (`Authorization` header) or with a file token (`?token=`, from `pb.files.getToken()`), so a plain link works in a browser. The link works **once**: after the ZIP was sent in full, the file is deleted. A download that breaks half way does not use it up. A finished export expires after 7 days (`CLAVIGER_EXPORT_RETENTION_DAYS`); an hourly job deletes the file and marks the request `expired`.
+The download works with the session (`Authorization` header) or with a file token (`?token=`, from `pb.files.getToken()`), so a plain link works in a browser. The link works **once**: after the ZIP was sent in full, the file is deleted. A download that breaks half way does not use it up. A finished export expires after 7 days by default (`dataExport.retentionDays`, see [Limits](#limits)); an hourly job deletes the file and marks the request `expired`.
 
 For an export a superuser made for somebody else, the superuser downloads it and passes it on. The subject cannot fetch it through the API.
 
@@ -119,3 +119,21 @@ A webhook endpoint with the filter `*`, `_dataRequests:*` or `_dataRequests:gdpr
 ## For developers
 
 Adding a system collection: add its data map entry (see [data-map.md](data-map.md)) **and** a line to `builtinDataExport` in `core/data_export_fields.go` that names the columns that may leave the system. `TestDataExportBuiltinAllowlistIsComplete` fails until you do. `TestDataExportEveryBuiltinCollectionAppearsAndNoSecretsLeak` seeds a row in every built-in collection and scans the ZIP for secret columns that are named in the test itself, not read from the allowlist.
+
+## Limits
+
+The limits live in the app settings (`dataExport`, admin UI **Settings > Data export**, or `PATCH /api/settings`). A value of `0` means the default.
+
+| Setting | Default | Allowed | Meaning |
+|---|---|---|---|
+| `maxFileMB` | 100 | 0 - 1048576 | largest single file put in the ZIP |
+| `maxTotalMB` | 1024 | 0 - 10485760 | total size of all files in the ZIP |
+| `retentionDays` | 7 | 0 - 365 | how long a finished export can be downloaded |
+| `selfRequestsPerHour` | 3 | 0 - 1000 | exports one person can request for themselves per hour |
+| `adminRequestsPerHour` | 60 | 0 - 10000 | exports one superuser can request per hour |
+
+A changed rate limit takes effect at once (the counters start over). The other limits apply to the next job.
+
+### Deprecated environment variables
+
+`CLAVIGER_EXPORT_MAX_FILE_MB`, `CLAVIGER_EXPORT_MAX_TOTAL_MB` and `CLAVIGER_EXPORT_RETENTION_DAYS` still work so an upgrade does not change a running deployment. **Precedence: a valid (positive whole number) environment variable wins over the setting; otherwise the setting; otherwise the default.** The first time one is used, a WARN is logged (once per variable and process) that it is deprecated in favour of the setting. Unset the variable to manage the limit from the admin UI.

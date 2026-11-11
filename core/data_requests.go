@@ -7,8 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -85,14 +83,6 @@ var (
 
 	dataExportRunMu sync.Mutex
 )
-
-// DataExportRetentionDays returns how many days a finished export stays available.
-func DataExportRetentionDays(app App) int {
-	if v, err := strconv.Atoi(strings.TrimSpace(os.Getenv(DataExportRetentionDaysEnv))); err == nil && v > 0 {
-		return v
-	}
-	return 7
-}
 
 // RequestDataExport records an export request for the subject and starts the
 // job in the background. requester is the person who asked (the subject for

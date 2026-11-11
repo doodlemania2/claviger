@@ -135,6 +135,7 @@ type settings struct {
 	Captcha      CaptchaConfig      `form:"captcha" json:"captcha"`
 	SMS          SMSConfig          `form:"sms" json:"sms"` // fork-local (#83)
 	Audit        AuditConfig        `form:"audit" json:"audit"`
+	DataExport   DataExportConfig   `form:"dataExport" json:"dataExport"` // fork-local (#88)
 }
 
 // Settings defines the PocketBase app settings.
@@ -179,6 +180,7 @@ func newDefaultSettings() *Settings {
 				MaxRequests: 50,
 				Timeout:     3,
 			},
+			DataExport: defaultDataExportConfig(),
 			RateLimits: RateLimitsConfig{
 				Enabled: false, // @todo once tested enough enable by default for new installations
 				Rules: []RateLimitRule{
@@ -300,6 +302,7 @@ func (s *Settings) PostValidate(ctx context.Context, app App) error {
 		validation.Field(&s.TrustedProxy),
 		validation.Field(&s.Captcha),
 		validation.Field(&s.SMS),
+		validation.Field(&s.DataExport),
 		validation.Field(&s.Audit),
 	)
 }
