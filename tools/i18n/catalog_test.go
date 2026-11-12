@@ -147,7 +147,7 @@ func TestEnglishEmailsKeepTheirCharacters(t *testing.T) {
 // their prefix.
 func TestKeysInUseAreInTheCatalog(t *testing.T) {
 	root := filepath.Join("..", "..")
-	keyRe := regexp.MustCompile(`"((?:js|oidc|orgs|passkeys|email|a11y)\.[A-Za-z0-9_.]*)"`)
+	keyRe := regexp.MustCompile(`"((?:js|oidc|orgs|passkeys|email|a11y|sms\.recovery)\.[A-Za-z0-9_.]*)"`)
 	en := i18n.Default().Messages("en")
 
 	used := map[string]bool{}
