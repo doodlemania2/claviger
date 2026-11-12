@@ -126,11 +126,13 @@ The limits live in the app settings (`dataExport`, admin UI **Settings > Data ex
 
 | Setting | Default | Allowed | Meaning |
 |---|---|---|---|
-| `maxFileMB` | 100 | 0 - 1048576 | largest single file put in the ZIP |
-| `maxTotalMB` | 1024 | 0 - 10485760 | total size of all files in the ZIP |
-| `retentionDays` | 7 | 0 - 365 | how long a finished export can be downloaded |
+| `maxFileMB` | 100 | 0 - 1024 (1 GB) | largest single file put in the ZIP |
+| `maxTotalMB` | 1024 | 0 - 10240 (10 GB) | total size of all files in the ZIP |
+| `retentionDays` | 7 | 0 - 30 | how long a finished export can be downloaded |
 | `selfRequestsPerHour` | 3 | 0 - 1000 | exports one person can request for themselves per hour |
 | `adminRequestsPerHour` | 60 | 0 - 10000 | exports one superuser can request per hour |
+
+The upper limits of the size and retention settings (1 GB, 10 GB, 30 days) apply to the setting only; a deprecated environment variable below is not capped, so an upgrade keeps its value.
 
 A changed rate limit takes effect at once (the counters start over). The other limits apply to the next job.
 

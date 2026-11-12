@@ -19,10 +19,12 @@ func TestDataExportConfigValidate(t *testing.T) {
 		{"typical", core.DataExportConfig{MaxFileMB: 100, MaxTotalMB: 1024, RetentionDays: 7, SelfRequestsPerHour: 3, AdminRequestsPerHour: 60}, false},
 		{"negative file", core.DataExportConfig{MaxFileMB: -1}, true},
 		{"negative total", core.DataExportConfig{MaxTotalMB: -1}, true},
-		{"retention too long", core.DataExportConfig{RetentionDays: 366}, true},
+		{"at the upper limits", core.DataExportConfig{MaxFileMB: 1024, MaxTotalMB: 10240, RetentionDays: 30}, false},
+		{"retention too long", core.DataExportConfig{RetentionDays: 31}, true},
+		{"total too big", core.DataExportConfig{MaxTotalMB: 10241}, true},
 		{"self rate too high", core.DataExportConfig{SelfRequestsPerHour: 1001}, true},
 		{"admin rate too high", core.DataExportConfig{AdminRequestsPerHour: 10001}, true},
-		{"file too big", core.DataExportConfig{MaxFileMB: 1048577}, true},
+		{"file too big", core.DataExportConfig{MaxFileMB: 1025}, true},
 	}
 	for _, s := range scenarios {
 		t.Run(s.name, func(t *testing.T) {
