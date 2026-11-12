@@ -34,3 +34,17 @@
         background: var(--secondaryAltColor, rgba(127, 127, 127, 0.1));
     }
 }
+
+/* Fork-local (Claviger #81, 81-4): credentials page */
+.page-credentials {
+    .credentials-table,
+    .credential-types-table,
+    .credential-summary-table {
+        width: 100%;
+    }
+    .credential-rule {
+        display: block;
+        word-break: break-all;
+        white-space: pre-wrap;
+    }
+}
