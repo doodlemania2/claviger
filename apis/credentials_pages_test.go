@@ -64,7 +64,7 @@ func TestMyAccessStatus(t *testing.T) {
 		credCase("guests", "", "GET", url, "", 401),
 		// carol holds a valid safe_environment credential and has a strict_check type waiting in P1
 		{name: "a holder sees their own standing, with the coordinators by name", who: "carol", method: "GET", url: url, status: 200, factory: credFactory,
-			has: []string{`"key":"safe_environment"`, `"standing":"cleared"`, `"key":"strict_check"`, `"standing":"missing"`, `"coordinators":[`},
+			has:    []string{`"key":"safe_environment"`, `"standing":"cleared"`, `"key":"strict_check"`, `"standing":"missing"`, `"coordinators":[`},
 			hasNot: []string{`"email"`, `revokedReason`}},
 		// dave's strict_check credential is waiting for a second verifier
 		credCase("a pending credential is shown as waiting", "dave", "GET", url, "", 200, `"standing":"pending"`),
