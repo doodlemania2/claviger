@@ -7,19 +7,19 @@ const FIELDS = [
         key: "maxFileMB",
         label: "Largest single file (MB)",
         help: "A file of a file field above this size is left out of the ZIP and listed in the manifest. 0 = default (100).",
-        max: 1048576,
+        max: 1024,
     },
     {
         key: "maxTotalMB",
         label: "Total size of files (MB)",
         help: "Files beyond this total are left out of the ZIP and listed in the manifest. 0 = default (1024).",
-        max: 10485760,
+        max: 10240,
     },
     {
         key: "retentionDays",
         label: "Download available for (days)",
         help: "How long a finished export can be downloaded before it is deleted. 0 = default (7).",
-        max: 365,
+        max: 30,
     },
     {
         key: "selfRequestsPerHour",

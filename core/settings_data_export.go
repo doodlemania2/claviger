@@ -18,6 +18,14 @@ const (
 	DataExportDefaultAdminRequestsHour = 60
 )
 
+// Upper limits an admin can set for the personal data export (#88):
+// 1 GB per file, 10 GB in all, 30 days of retention.
+const (
+	DataExportMaxFileMBLimit     = 1024
+	DataExportMaxTotalMBLimit    = 10240
+	DataExportRetentionDaysLimit = 30
+)
+
 // DataExportConfig defines the limits of the personal data export (#88).
 // A field left at 0 means "use the default".
 //
@@ -56,9 +64,9 @@ func defaultDataExportConfig() DataExportConfig {
 // Validate makes DataExportConfig validatable by implementing [validation.Validatable] interface.
 func (c DataExportConfig) Validate() error {
 	return validation.ValidateStruct(&c,
-		validation.Field(&c.MaxFileMB, validation.Min(0), validation.Max(1048576)),
-		validation.Field(&c.MaxTotalMB, validation.Min(0), validation.Max(10485760)),
-		validation.Field(&c.RetentionDays, validation.Min(0), validation.Max(365)),
+		validation.Field(&c.MaxFileMB, validation.Min(0), validation.Max(DataExportMaxFileMBLimit)),
+		validation.Field(&c.MaxTotalMB, validation.Min(0), validation.Max(DataExportMaxTotalMBLimit)),
+		validation.Field(&c.RetentionDays, validation.Min(0), validation.Max(DataExportRetentionDaysLimit)),
 		validation.Field(&c.SelfRequestsPerHour, validation.Min(0), validation.Max(1000)),
 		validation.Field(&c.AdminRequestsPerHour, validation.Min(0), validation.Max(10000)),
 	)
