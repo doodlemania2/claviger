@@ -47,6 +47,10 @@ X-Claviger-Signature: v1=<hex>
 
 The signature is the hex HMAC-SHA256, keyed with the secret, of `"<timestamp>." + <raw request body>`. A receiver should recompute it over the raw bytes, compare in constant time, and reject timestamps that are too old. Any 2xx response counts as sent; anything else is an error. Redirects are not followed.
 
+## Recovery texts
+
+Staff-vouched recovery (`docs/recovery.md`) is the first feature to use the sender. It sends a link to the hosted recovery page, and the "a recovery code was issued" notice for a person without an email. The recipient is the home phone of the person's household; nothing else is stored. Each text is audited as `recovery_sms_sent` without the number or the text. Wording keys: `sms.recovery.link` and `sms.recovery.notice`, in every locale.
+
 ## Test send
 
 `POST /api/settings/test/sms` with `{"to": "+14155550123"}` (superuser only) sends a fixed text and returns 204. Each call is audited as `sms.test` with `meta.to` masked to the last two digits, the provider and the outcome. The full number and the text are not stored or logged.

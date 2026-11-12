@@ -1,16 +1,19 @@
 package apis_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/sms"
 	"github.com/doodlemania2/claviger/tools/types"
 )
 
@@ -538,17 +541,6 @@ func TestRecoveryDisplayChannelHasNoQR(t *testing.T) {
 	}
 }
 
-func TestRecoverySMSChannelSendsNothingYet(t *testing.T) {
-	t.Parallel()
-
-	env := newRecoveryEnv(t)
-
-	status, body := env.issue(env.fresh("carol"), "dave", "id_checked", map[string]any{"channel": "sms"})
-	if status != http.StatusCreated || body["smsSent"] != false || body["code"] == nil {
-		t.Fatalf("%d %v", status, body)
-	}
-}
-
 func TestRecoveryReportClosesTheCode(t *testing.T) {
 	t.Parallel()
 
@@ -669,5 +661,222 @@ func TestRecoveryCollectionRulesAreClosed(t *testing.T) {
 	// (hidden fields are visible to superusers, who can read the database anyway)
 	if status != http.StatusOK || !strings.Contains(toJSON(body), issued["id"].(string)) {
 		t.Fatalf("superuser list: %d %v", status, body)
+	}
+}
+
+// fakeSMS records what would be texted.
+type fakeSMS struct {
+	mu   sync.Mutex
+	sent []sms.Message
+}
+
+func (f *fakeSMS) Send(_ context.Context, m *sms.Message) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.sent = append(f.sent, *m)
+
+	return nil
+}
+
+func (f *fakeSMS) messages() []sms.Message {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]sms.Message(nil), f.sent...)
+}
+
+// withHousehold puts the person in an active household with the phone.
+func (env *recoveryEnv) withHousehold(who, phone string) {
+	env.t.Helper()
+
+	hCol, err := env.app.FindCollectionByNameOrId(core.CollectionNameHouseholds)
+	orgMust(env.t, err)
+
+	h := core.NewRecord(hCol)
+	h.Set("org", orgP1)
+	h.Set("name", who+" family")
+	h.Set("status", "active")
+	h.Set("homePhone", phone)
+	orgMust(env.t, env.app.Save(h))
+
+	mCol, err := env.app.FindCollectionByNameOrId(core.CollectionNameHouseholdMembers)
+	orgMust(env.t, err)
+
+	m := core.NewRecord(mCol)
+	m.Set("household", h.Id)
+	m.Set("user", orgUserID(who))
+	m.Set("name", who)
+	m.Set("role", "head")
+	m.Set("guardian", true)
+	m.Set("status", "active")
+	m.Set("birthDate", "1980-01-01")
+	orgMust(env.t, env.app.Save(m))
+}
+
+func (env *recoveryEnv) enableSMS() *fakeSMS {
+	f := &fakeSMS{}
+	env.app.Store().Set(core.SMSSenderStoreKey, sms.Sender(f))
+
+	return f
+}
+
+func (env *recoveryEnv) dropEmail(who string) {
+	env.t.Helper()
+
+	u, err := env.app.FindRecordById("users", orgUserID(who))
+	orgMust(env.t, err)
+	u.SetEmail("")
+	u.SetVerified(false)
+	orgMust(env.t, env.app.Save(u))
+}
+
+func TestRecoverySMSLinkSentToHouseholdPhone(t *testing.T) {
+	t.Parallel()
+
+	env := newRecoveryEnv(t)
+	env.withHousehold("dave", "+1 (415) 555-0123")
+	fake := env.enableSMS()
+
+	status, body := env.issue(env.fresh("carol"), "dave", "id_checked", map[string]any{"channel": "sms"})
+	if status != http.StatusCreated || body["smsSent"] != true || body["code"] == nil {
+		t.Fatalf("%d %v", status, body)
+	}
+
+	msgs := fake.messages()
+	if len(msgs) != 1 || msgs[0].To != "+14155550123" {
+		t.Fatalf("messages %v", msgs)
+	}
+
+	code := body["code"].(string)
+	if !strings.Contains(msgs[0].Body, "/recovery") || strings.Contains(msgs[0].Body, "#") ||
+		strings.Contains(msgs[0].Body, strings.ReplaceAll(code, " ", "")) || strings.Contains(msgs[0].Body, code[:5]) {
+		t.Fatalf("text %q", msgs[0].Body)
+	}
+
+	// dave has an email, so the email notice is the one notice
+	if env.app.TestMailer.TotalSend() != 1 || body["emailSent"] != true {
+		t.Fatalf("emails %d %v", env.app.TestMailer.TotalSend(), body)
+	}
+
+	// one audit entry per text, with neither the number nor a link
+	rows := env.auditRows(core.AuditActionRecoverySMS)
+	if len(rows) != 1 {
+		t.Fatalf("audit rows %d", len(rows))
+	}
+
+	dump, _ := json.Marshal(rows[0])
+	for _, bad := range []string{"4155550123", "555-0123", "http", "#report", "#code"} {
+		if strings.Contains(string(dump), bad) {
+			t.Fatalf("audit entry holds %q: %s", bad, dump)
+		}
+	}
+
+	raw, _ := json.Marshal(body)
+	if strings.Contains(string(raw), "4155550123") || strings.Contains(string(raw), "555") && strings.Contains(string(raw), "0123") {
+		t.Fatalf("the response holds the phone: %s", raw)
+	}
+}
+
+func TestRecoverySMSWithoutPhoneIsRefused(t *testing.T) {
+	t.Parallel()
+
+	env := newRecoveryEnv(t)
+	fake := env.enableSMS()
+
+	status, body := env.issue(env.fresh("carol"), "dave", "id_checked", map[string]any{"channel": "sms"})
+	if status != http.StatusBadRequest || !strings.Contains(strings.ToLower(body["message"].(string)), "phone number") {
+		t.Fatalf("%d %v", status, body)
+	}
+
+	// a phone that is not a usable number is the same as none
+	env.withHousehold("dave", "call the office")
+
+	if status, _ := env.issue(env.fresh("carol"), "dave", "id_checked", map[string]any{"channel": "sms"}); status != http.StatusBadRequest {
+		t.Fatalf("unusable phone: %d", status)
+	}
+
+	// nothing was sent, no code was made, and the other channels still work
+	if len(fake.messages()) != 0 {
+		t.Fatalf("sent %v", fake.messages())
+	}
+
+	if n, _ := env.app.CountRecords(core.CollectionNameRecoveryCodes); n != 0 {
+		t.Fatalf("%d codes", n)
+	}
+
+	if status, b := env.issue(env.fresh("carol"), "dave", "id_checked", nil); status != http.StatusCreated || b["code"] == nil {
+		t.Fatalf("display: %d %v", status, b)
+	}
+}
+
+func TestRecoverySMSNotConfigured(t *testing.T) {
+	t.Parallel()
+
+	env := newRecoveryEnv(t)
+	env.withHousehold("dave", "+14155550123")
+
+	status, body := env.issue(env.fresh("carol"), "dave", "id_checked", map[string]any{"channel": "sms"})
+	if status != http.StatusBadRequest || !strings.Contains(body["message"].(string), "not set up") {
+		t.Fatalf("%d %v", status, body)
+	}
+
+	status, list := env.do(http.MethodGet, "/api/orgs/"+orgP1+"/recovery", nil, env.plain("carol"))
+	if status != http.StatusOK || list["sms"] != false {
+		t.Fatalf("%d %v", status, list)
+	}
+}
+
+func TestRecoverySMSNoticeOnlyWithoutEmail(t *testing.T) {
+	t.Parallel()
+
+	env := newRecoveryEnv(t)
+	env.withHousehold("dave", "+14155550123")
+	env.withHousehold("frank", "+14155550999")
+	env.dropEmail("frank")
+	fake := env.enableSMS()
+
+	// dave has an email: the email notice only
+	if status, body := env.issue(env.fresh("carol"), "dave", "id_checked", nil); status != http.StatusCreated || body["emailSent"] != true {
+		t.Fatalf("%d %v", status, body)
+	}
+
+	if len(fake.messages()) != 0 {
+		t.Fatalf("a person with an email got a text: %v", fake.messages())
+	}
+
+	// frank has no email: the text notice, with the report link
+	status, body := env.issue(env.fresh("carol"), "frank", "id_checked", nil)
+	if status != http.StatusCreated || body["emailSent"] != false || body["smsSent"] != false {
+		t.Fatalf("%d %v", status, body)
+	}
+
+	msgs := fake.messages()
+	if len(msgs) != 1 || msgs[0].To != "+14155550999" {
+		t.Fatalf("messages %v", msgs)
+	}
+
+	m := regexp.MustCompile(`/recovery#report=([A-Za-z0-9_\-.]+)`).FindStringSubmatch(msgs[0].Body)
+	if m == nil {
+		t.Fatalf("no report link in %q", msgs[0].Body)
+	}
+
+	code := body["code"].(string)
+	if strings.Contains(msgs[0].Body, code[:5]) {
+		t.Fatalf("the notice holds the code: %q", msgs[0].Body)
+	}
+
+	if status, res := env.do(http.MethodPost, "/api/recovery/report", map[string]any{"token": m[1]}, ""); status != http.StatusNoContent {
+		t.Fatalf("report: %d %v", status, res)
+	}
+
+	rows := env.auditRows(core.AuditActionRecoverySMS)
+	if len(rows) != 1 {
+		t.Fatalf("audit rows %d", len(rows))
+	}
+
+	dump, _ := json.Marshal(rows[0])
+	if strings.Contains(string(dump), "4155550999") || strings.Contains(string(dump), m[1]) {
+		t.Fatalf("audit entry: %s", dump)
 	}
 }

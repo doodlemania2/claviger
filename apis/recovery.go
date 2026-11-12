@@ -164,45 +164,66 @@ func recoveryIssuedJSON(e *core.RequestEvent, org *core.Record, res *core.Recove
 	out["smsSent"] = false
 
 	if rec.GetString("channel") == core.RecoveryChannelSMS {
-		out["smsSent"] = sendRecoveryLinkSMS(e.App, org, res.Target)
+		out["smsSent"] = sendRecoveryLinkSMS(e, org, res)
 	}
 
 	return out
 }
 
-// notifyRecoveryTarget tells the person that staff issued a code. Email now;
-// an SMS notice is added in sendRecoveryNoticeSMS.
+// notifyRecoveryTarget tells the person that staff issued a code: by email
+// when they have one, otherwise by text to their household phone. It reports
+// whether an email went out.
 func notifyRecoveryTarget(e *core.RequestEvent, org *core.Record, res *core.RecoveryIssued) bool {
 	at := time.Now()
 
-	var sent bool
-
-	if token, err := core.NewRecoveryReportToken(res.Target, res.Record.Id); err != nil {
+	token, err := core.NewRecoveryReportToken(res.Target, res.Record.Id)
+	if err != nil {
 		e.App.Logger().Warn("Failed to sign a recovery report link", "error", err, "org", org.Id)
-	} else if res.Target.Email() != "" {
-		if err := mails.SendRecoveryNotice(e.App, org, res.Target, at, token); err != nil {
-			e.App.Logger().Warn("Failed to send a recovery notice", "error", err, "org", org.Id, "recovery", res.Record.Id)
-		} else {
-			sent = true
-		}
+
+		return false
 	}
 
-	_ = sendRecoveryNoticeSMS(e.App, org, res.Target, at)
+	if res.Target.Email() != "" {
+		if err := mails.SendRecoveryNotice(e.App, org, res.Target, at, token); err != nil {
+			e.App.Logger().Warn("Failed to send a recovery notice", "error", err, "org", org.Id, "recovery", res.Record.Id)
+
+			return false
+		}
+
+		return true
+	}
+
+	_ = sendRecoveryNoticeSMS(e, org, res, at, token)
+
+	return false
+}
+
+// sendRecoveryNoticeSMS is the text version of the notice ("staff issued a
+// recovery code at 10:14, tell us if that was not you") for a person with a
+// household phone and no email. With an email the email notice is enough.
+func sendRecoveryNoticeSMS(e *core.RequestEvent, org *core.Record, res *core.RecoveryIssued, at time.Time, reportToken string) bool {
+	if res.Target.Email() != "" {
+		return false
+	}
+
+	return sendRecoverySMS(e, org, res, "notice", mails.RecoveryNoticeSMS(e.App, org, res.Target, at, reportToken))
+}
+
+// sendRecoveryLinkSMS is the "sms" channel: a text with the link to the hosted
+// recovery page, sent to the person's household phone while they are with
+// staff. The link alone is not enough, the code is still read out.
+func sendRecoveryLinkSMS(e *core.RequestEvent, org *core.Record, res *core.RecoveryIssued) bool {
+	return sendRecoverySMS(e, org, res, "link", mails.RecoveryLinkSMS(e.App, org, res.Target))
+}
+
+func sendRecoverySMS(e *core.RequestEvent, org *core.Record, res *core.RecoveryIssued, kind, body string) bool {
+	sent, err := core.SendRecoverySMS(e.App, auditContext(e), org, res.Target, res.Record, kind, body)
+	if err != nil {
+		e.App.Logger().Warn("Failed to send a recovery text", "error", err, "org", org.Id, "recovery", res.Record.Id, "kind", kind)
+	}
 
 	return sent
 }
-
-// sendRecoveryNoticeSMS is the place for the SMS version of the notice ("staff
-// issued a recovery code at 10:14, tell us if that was not you") for a person
-// with a phone number and no email. There is no SMS sender yet (tools/sms is
-// built separately), so it sends nothing and reports false.
-func sendRecoveryNoticeSMS(_ core.App, _, _ *core.Record, _ time.Time) bool { return false }
-
-// sendRecoveryLinkSMS is the place for the "sms" channel: a text message with
-// the link to the hosted recovery page, sent to the person's own phone while
-// they are with staff. The link alone is not enough, the code is still read
-// out. It sends nothing yet and reports false.
-func sendRecoveryLinkSMS(_ core.App, _, _ *core.Record) bool { return false }
 
 func recoveryList(e *core.RequestEvent) error {
 	org, actor, err := recoveryStaffSession(e)
@@ -252,6 +273,7 @@ func recoveryList(e *core.RequestEvent) error {
 	return e.JSON(http.StatusOK, map[string]any{
 		"items":       items,
 		"lifetimeMin": int(core.RecoveryLifetime() / time.Minute),
+		"sms":         core.RecoverySMSConfigured(e.App),
 		"perHour":     core.RecoveryIssueLimit(),
 	})
 }

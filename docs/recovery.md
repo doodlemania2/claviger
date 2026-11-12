@@ -38,7 +38,17 @@ The same rule applies to a person whose email is the email of a superuser. The p
 
 If the person has an email address, they get a notice: "staff issued a recovery code at 10:14". The notice has a button, "This was not me". It stops the code at once and writes an audit entry. The notice never contains the code.
 
-Text message notices are not built yet. The code `sendRecoveryNoticeSMS` in `apis/recovery.go` is the place to add them. The `sms` channel works like the display channel for now: it shows the code and sends nothing.
+A person with a phone number and no email gets the same notice as a text message: "staff issued a recovery code at 10:14. Not you? <report link>". It uses the same report token as the email. A person with an email gets only the email. The text never contains the code.
+
+## Text messages
+
+The `sms` channel texts the person a link to the hosted recovery page (`/recovery`). The link carries no secret. The code is still shown to staff and read out; it is never in a text. There is no QR in a text (the QR is on the staff page only).
+
+The number is never typed by staff and nothing new is stored. It is the home phone of the person's active household in the same org (an encrypted field, see `docs/households.md`). It must be an international number; spaces, dashes and brackets are ignored, and a number without a country code (`+...`) is not used, because guessing a country would text a stranger. The number is never returned by any route, and the staff page shows no hint of it.
+
+Issuing with `channel: sms` is refused with a 400, before any code exists, when text messages are not set up (`docs/sms.md`) or the person has no usable household phone. Staff can issue again with another channel. `GET /api/orgs/{id}/recovery` returns `sms: true` when a sender is configured; the staff page hides the option otherwise. The issue response has `smsSent` (the link text) and `emailSent`.
+
+The texts are written in the person's language. Each text sent writes one audit entry, `recovery_sms_sent`, with `meta.kind` (`link` or `notice`), `meta.orgId`, `meta.user` and the channel. It never holds the number, the link or the report token. The number of texts is bounded by the issue limit (5 codes per staff member per hour), since each code sends at most one link text and one notice.
 
 ## Staff checklist
 
@@ -100,6 +110,7 @@ Every step writes an entry with the staff member as the actor, `meta.orgId`, `me
 | `recovery_redeem_failed` | A guess that matched a live code's reference, or a right code that could not be used. `meta.reason` says why. |
 | `recovery_code_locked` | The third wrong guess. |
 | `recovery_reported` | The person pressed "This was not me". |
+| `recovery_sms_sent` | A text was sent. `meta.kind` is `link` or `notice`. |
 
 A guess that matches no code is written to the application log (the reason and the IP address only), not to the audit log. That keeps a guessing attack from filling the audit log.
 
