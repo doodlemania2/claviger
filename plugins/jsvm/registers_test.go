@@ -48,12 +48,39 @@ func TestRegistersHoldForJSHooks(t *testing.T) {
 
 	final, draft := mk("Final"), mk("Draft")
 
-	su, err := app.FindAuthRecordByEmail(core.CollectionNameSuperusers, "test@example.com")
-	if err != nil {
+	// Only a registrar of the org can finalize (superusers never sign).
+	users, _ := app.FindCollectionByNameOrId("users")
+	reg := core.NewRecord(users)
+	reg.SetEmail("registrar@js.test")
+	reg.SetPassword("password123")
+	reg.Set("username", "js_registrar")
+
+	if err := app.Save(reg); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := core.FinalizeRegisterEntry(app, context.Background(), su, "baptisms", final.Id); err != nil {
+	roles, _ := app.FindCollectionByNameOrId(core.CollectionNameOrgRoles)
+	tag := core.NewRecord(roles)
+	tag.Set("org", org.Id)
+	tag.Set("name", core.RegistrarTag)
+
+	if err := app.Save(tag); err != nil {
+		t.Fatal(err)
+	}
+
+	members, _ := app.FindCollectionByNameOrId(core.CollectionNameOrgMembers)
+	m := core.NewRecord(members)
+	m.Set("org", org.Id)
+	m.Set("user", reg.Id)
+	m.Set("role", "member")
+	m.Set("status", "active")
+	m.Set("tags", []string{tag.Id})
+
+	if err := app.Save(m); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := core.FinalizeRegisterEntry(app, context.Background(), reg, "baptisms", final.Id); err != nil {
 		t.Fatal(err)
 	}
 

@@ -46,7 +46,38 @@ func TestRegistersVerifyCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	su, _ := app.FindAuthRecordByEmail(core.CollectionNameSuperusers, "test@example.com")
+	// Only a registrar of the org can finalize (superusers never sign).
+	users, _ := app.FindCollectionByNameOrId("users")
+	reg := core.NewRecord(users)
+	reg.SetEmail("registrar@cli.test")
+	reg.SetPassword("password123")
+	reg.Set("username", "cli_registrar")
+
+	if err := app.Save(reg); err != nil {
+		t.Fatal(err)
+	}
+
+	roles, _ := app.FindCollectionByNameOrId(core.CollectionNameOrgRoles)
+	tag := core.NewRecord(roles)
+	tag.Set("org", org.Id)
+	tag.Set("name", core.RegistrarTag)
+
+	if err := app.Save(tag); err != nil {
+		t.Fatal(err)
+	}
+
+	members, _ := app.FindCollectionByNameOrId(core.CollectionNameOrgMembers)
+	m := core.NewRecord(members)
+	m.Set("org", org.Id)
+	m.Set("user", reg.Id)
+	m.Set("role", "member")
+	m.Set("status", "active")
+	m.Set("tags", []string{tag.Id})
+
+	if err := app.Save(m); err != nil {
+		t.Fatal(err)
+	}
+
 	col, _ := app.FindCollectionByNameOrId("baptisms")
 
 	var ids []string
@@ -61,7 +92,7 @@ func TestRegistersVerifyCommand(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if _, err := core.FinalizeRegisterEntry(app, context.Background(), su, "baptisms", r.Id); err != nil {
+		if _, err := core.FinalizeRegisterEntry(app, context.Background(), reg, "baptisms", r.Id); err != nil {
 			t.Fatal(err)
 		}
 
