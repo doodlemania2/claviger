@@ -81,7 +81,7 @@ func RecoveryPhone(app App, org, user *Record) string {
 			continue
 		}
 
-		if p := NormalizePhone(h.GetString("homePhone")); p != "" {
+		if p := NormalizePhoneRegion(h.GetString("homePhone"), app.Settings().SMS.DefaultRegion); p != "" {
 			return p
 		}
 	}

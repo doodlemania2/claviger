@@ -249,6 +249,17 @@ export function pageSmsSettings() {
                                 () => (c.provider === "webhook" ? webhookFields(c) : null),
                             );
                         },
+                        t.div(
+                            { className: "col-lg-4" },
+                            textField("sms_defaultRegion", "Default region (optional)", () => c.defaultRegion || "", (v) => (c.defaultRegion = v.trim().toUpperCase()), {
+                                placeholder: "US",
+                                maxlength: 2,
+                            }),
+                            t.div(
+                                { className: "field-help" },
+                                "ISO country code used for household phone numbers without a + prefix, for example US or GB. Leave blank to text only numbers that start with +.",
+                            ),
+                        ),
                         t.div({ className: "col-lg-12" }, t.hr()),
                         t.div(
                             { className: "col-lg-12" },

@@ -24,6 +24,11 @@ type SMSConfig struct {
 	// Provider is one of twilio, webhook.
 	Provider string `form:"provider" json:"provider"`
 
+	// DefaultRegion is an ISO 3166 alpha-2 code (for example "US") used to
+	// read household phone numbers that have no "+" prefix. Empty keeps the
+	// strict behavior: such numbers get no text message.
+	DefaultRegion string `form:"defaultRegion" json:"defaultRegion"`
+
 	Twilio  SMSTwilioConfig  `form:"twilio" json:"twilio"`
 	Webhook SMSWebhookConfig `form:"webhook" json:"webhook"`
 }
@@ -65,6 +70,12 @@ func (c SMSConfig) Validate() error {
 			validation.When(c.Enabled, validation.Required),
 			validation.In(SMSProviderTwilio, SMSProviderWebhook),
 		),
+		validation.Field(&c.DefaultRegion, validation.By(func(v any) error {
+			if s, _ := v.(string); s != "" && !IsPhoneRegion(s) {
+				return errors.New("must be a supported ISO 3166 country code, for example US")
+			}
+			return nil
+		})),
 		validation.Field(&c.Twilio, validation.When(c.Enabled && c.Provider == SMSProviderTwilio, validation.By(func(any) error {
 			return c.Twilio.validateRequired()
 		}))),
