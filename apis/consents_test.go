@@ -2,6 +2,7 @@ package apis_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/doodlemania2/claviger/core"
@@ -183,5 +184,99 @@ func TestConsentRoutesStaff(t *testing.T) {
 			before: func(t testing.TB, app *tests.TestApp) { orgMust(t, grantFor(app, "erin", "photos", hhKidA)) },
 		},
 		consentCase("admin history is superuser only", "bob", "GET", "/api/consents/history?subject="+hhKidA, "", 403),
+	})
+}
+
+// Org-scoped purposes: owners and admins manage the purposes of their own org.
+// carol is a registrar of P1 (staff, but not an admin) and the admin of P2.
+func TestConsentRoutesOrgPurposes(t *testing.T) {
+	hhKEK(t)
+
+	base := "/api/orgs/" + orgP1 + "/consent-purposes"
+	seed := func(org string) func(t testing.TB, app *tests.TestApp) {
+		return func(t testing.TB, app *tests.TestApp) {
+			_, err := core.CreateConsentPurpose(app, context.Background(),
+				map[string]any{"key": "own-" + org, "name": "Own", "text": "Own text.", "org": org})
+			orgMust(t, err)
+		}
+	}
+	withBefore := func(c orgCase, f func(t testing.TB, app *tests.TestApp)) orgCase {
+		c.before = f
+		return c
+	}
+	newBody := `{"key":"trips","name":"Trips","text":"Trip photos."}`
+
+	runOrgCases(t, []orgCase{
+		consentCase("an admin creates one, pinned to the org", "bob", "POST", base, newBody, 200,
+			`"key":"trips"`, `"org":"`+orgP1+`"`, `"version":1`),
+		consentCase("an owner creates one", "alice", "POST", base, newBody, 200),
+		consentCase("a plain member is refused", "erin", "POST", base, newBody, 403),
+		consentCase("a registrar is not an admin", "carol", "POST", base, newBody, 403),
+		consentCase("a stranger gets a 404", "dave", "POST", "/api/orgs/"+orgP2+"/consent-purposes", newBody, 404),
+		consentCase("an admin of another org gets a 404", "bob", "POST", "/api/orgs/"+orgP2+"/consent-purposes", newBody, 404),
+		consentCase("a global purpose is not possible: other org in the body", "bob", "POST", base,
+			`{"key":"trips","name":"Trips","text":"x","org":"`+orgP2+`"}`, 403),
+		consentCase("an empty org in the body still means this org", "bob", "POST", base,
+			`{"key":"trips","name":"Trips","text":"x","org":""}`, 200, `"org":"`+orgP1+`"`),
+		consentCase("a clashing key (a global purpose) is a clear error", "bob", "POST", base,
+			`{"key":"newsletter","name":"x","text":"x"}`, 400, "already exists", "unique across all organizations"),
+		consentCase("guests", "", "POST", base, newBody, 401),
+		consentCase("list: the org's purposes and the global ones", "bob", "GET", base, "", 200,
+			`"key":"newsletter"`, `"key":"photos"`),
+		consentCase("list: a member is refused", "erin", "GET", base, "", 403),
+		withBefore(consentCase("list: not another org's purposes", "bob", "GET", base, "", 200, `"key":"own-`+orgP1+`"`),
+			seed(orgP1)),
+		{
+			name: "list hides another org's purposes", who: "bob", url: base, status: 200, factory: consentFactory,
+			hasNot: []string{"own-" + orgP2}, before: seed(orgP2),
+		},
+		withBefore(consentCase("update raises the version on a text change", "bob", "PATCH", base+"/own-"+orgP1,
+			`{"text":"Changed."}`, 200, `"version":2`, `"org":"`+orgP1+`"`), seed(orgP1)),
+		withBefore(consentCase("update the name keeps the version", "bob", "PATCH", base+"/own-"+orgP1,
+			`{"name":"Renamed"}`, 200, `"version":1`), seed(orgP1)),
+		withBefore(consentCase("archive", "bob", "PATCH", base+"/own-"+orgP1, `{"status":"archived"}`, 200, `"status":"archived"`),
+			seed(orgP1)),
+		withBefore(consentCase("cannot move to another org", "bob", "PATCH", base+"/own-"+orgP1,
+			`{"org":"`+orgP2+`"}`, 403), seed(orgP1)),
+		withBefore(consentCase("cannot make it global", "bob", "PATCH", base+"/own-"+orgP1, `{"org":""}`, 200, `"org":"`+orgP1+`"`),
+			seed(orgP1)),
+		withBefore(consentCase("a member cannot update", "erin", "PATCH", base+"/own-"+orgP1, `{"name":"x"}`, 403), seed(orgP1)),
+		consentCase("a global purpose is refused (update)", "bob", "PATCH", base+"/newsletter", `{"name":"x"}`, 403),
+		consentCase("a global purpose is refused (delete)", "bob", "DELETE", base+"/newsletter", "", 403),
+		withBefore(consentCase("another org's purpose is not found (update)", "bob", "PATCH", base+"/own-"+orgP2, `{"name":"x"}`, 404),
+			seed(orgP2)),
+		withBefore(consentCase("another org's purpose is not found (delete)", "bob", "DELETE", base+"/own-"+orgP2, "", 404),
+			seed(orgP2)),
+		withBefore(consentCase("the org's admin of P2 cannot reach P1's purpose", "carol", "PATCH",
+			"/api/orgs/"+orgP2+"/consent-purposes/own-"+orgP1, `{"name":"x"}`, 404), seed(orgP1)),
+		withBefore(consentCase("delete an unused purpose", "bob", "DELETE", base+"/own-"+orgP1, "", 204), seed(orgP1)),
+		{
+			name: "delete a purpose with consents is a 409", who: "bob", method: "DELETE", url: base + "/own-" + orgP1,
+			status: 409, factory: consentFactory,
+			before: func(t testing.TB, app *tests.TestApp) {
+				seed(orgP1)(t, app)
+				orgMust(t, grantFor(app, "erin", "own-"+orgP1, hhKidA))
+			},
+		},
+		{
+			name: "a write is audited with the org", who: "bob", method: "POST", url: base, body: newBody, status: 200, factory: consentFactory,
+			after: func(t testing.TB, app *tests.TestApp) {
+				entries, err := app.FindRecordsByFilter(core.CollectionNameAuditLog,
+					"targetCollection={:c}", "", 0, 0, map[string]any{"c": core.CollectionNameConsentPurposes})
+				orgMust(t, err)
+
+				found := false
+
+				for _, e := range entries {
+					if e.GetString("meta") != "" && strings.Contains(e.GetString("meta"), orgP1) {
+						found = true
+					}
+				}
+
+				if !found {
+					t.Fatalf("no purpose audit entry names the org (%d entries)", len(entries))
+				}
+			},
+		},
 	})
 }
