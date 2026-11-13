@@ -289,8 +289,8 @@ func StartOrgTransfer(app App, ctx context.Context, actor *OrgActor, org *Record
 	self := !actor.Superuser && !actor.System && actor.Record.Id == user.Id
 	guardian := !self && !actor.Superuser && !actor.System && isGuardianOf(app, minorHouseholdRow(app, org.Id, user.Id), actor.Record.Id)
 
-	if !actor.CanManage() && !self && !guardian {
-		return nil, orgErr(403, "Only owners and admins, the person or a guardian can start a transfer.")
+	if !orgTransferStarterStaff(app, org, actor) && !self && !guardian {
+		return nil, orgErr(403, "Only owners, admins and registrars, the person or a guardian can start a transfer.")
 	}
 
 	// a minor with a login does not start or decide alone
@@ -378,6 +378,22 @@ func StartOrgTransfer(app App, ctx context.Context, actor *OrgActor, org *Record
 	return t, nil
 }
 
+// orgTransferStarterStaff reports whether the actor may start a transfer out of
+// the org on someone's behalf: an owner or admin (or a superuser), or an active
+// member tagged registrar. It uses the household staff rule, so the tag lookup
+// is the same one households use. A viewer with the tag does not count.
+func orgTransferStarterStaff(app App, org *Record, actor *OrgActor) bool {
+	if actor.CanManage() {
+		return true
+	}
+
+	if actor.Record == nil || actor.Superuser || actor.System {
+		return false
+	}
+
+	return NewHouseholdActor(app, org, nil, actor.Record).Staff
+}
+
 // startMemberTransfer opens a pending transfer of a household member without a
 // login. Who may start: an owner or admin of the source org (or a superuser),
 // or an adult guardian of the member's household. The member must be an active
@@ -408,8 +424,8 @@ func startMemberTransfer(app App, ctx context.Context, actor *OrgActor, org *Rec
 
 	guardian := !actor.Superuser && !actor.System && isGuardianOf(app, member, actor.Record.Id)
 
-	if !actor.CanManage() && !guardian {
-		return nil, orgErr(403, "Only owners and admins or a guardian of the household can start a transfer.")
+	if !orgTransferStarterStaff(app, org, actor) && !guardian {
+		return nil, orgErr(403, "Only owners, admins and registrars or a guardian of the household can start a transfer.")
 	}
 
 	if err := requireLiveOrg(org, actor); err != nil {
