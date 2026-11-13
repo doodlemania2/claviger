@@ -98,6 +98,9 @@ var builtinDataMap = []DataMapEntry{
 		PersonalFields: []string{"subject", "givenBy", "actor", "evidenceRef"}, AgeOutBasis: "created",
 		RetainReason: "Evidence that consent was given or withdrawn, with the text shown. Append-only; kept for the limitation period and pseudonymized on erasure (PseudonymizeConsents).",
 		Note:         "Append-only consent history (88-2). Export: every grant and withdrawal with the text version and the text shown."},
+	// ---- permanent registers (#87) ----
+	{Collection: CollectionNamePermanentCollections, Treatment: DataMapTreatmentNone,
+		Note: "The list of permanent registers (#87). Configuration, not about a person."},
 
 	// ---- OpenID Connect provider ----
 	{Collection: CollectionNameOAuthConsents, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"recordRef"},

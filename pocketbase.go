@@ -179,6 +179,7 @@ func (pb *PocketBase) Start() error {
 	pb.RootCmd.AddCommand(cmd.NewBackupsCommand(pb))    // fork-local (#78)
 	pb.RootCmd.AddCommand(cmd.NewOrgsCommand(pb))       // fork-local (#84)
 	pb.RootCmd.AddCommand(cmd.NewHouseholdsCommand(pb)) // fork-local (#80)
+	pb.RootCmd.AddCommand(cmd.NewRegistersCommand(pb))  // fork-local (#87)
 
 	// fork-local (#106, M5)
 	pb.RootCmd.AddCommand(cmd.NewMigrateDBCommand(pb))
