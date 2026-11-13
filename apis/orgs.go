@@ -54,6 +54,7 @@ func bindOrgsApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 	bindOrgTagsApi(sub)              // fork-local (#79b)
 	bindSCIMTokensApi(sub)           // fork-local (#79c)
 	bindCredentialsApi(sub)          // fork-local (#81)
+	bindConsentsApi(rg, sub)         // fork-local (#88, 88-2)
 }
 
 func orgHTTP(e *core.RequestEvent, err error) error {
