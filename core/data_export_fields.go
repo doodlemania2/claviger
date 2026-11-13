@@ -80,7 +80,7 @@ var builtinDataExport = map[string]dataExportSpec{
 
 	// #84: where the person was moved from and to, and who started and decided it
 	CollectionNameOrgTransfers: {Fields: []string{
-		"id", "fromOrg", "toOrg", "state", "sourceOutcome", "startedBy", "expiresAt", "decidedAt", "decidedBy",
+		"id", "fromOrg", "toOrg", "member", "state", "sourceOutcome", "startedBy", "expiresAt", "decidedAt", "decidedBy",
 		"created", "updated",
 	}},
 	// #88 88-2: the whole evidence trail of the person, including the text

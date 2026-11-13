@@ -226,13 +226,24 @@ func TestOrgTransferDeclineAndCancelRoutes(t *testing.T) {
 				es, err := app.FindAllRecords(core.CollectionNameAuditLog, dbx.HashExp{"action": core.AuditActionOrgTransferDecline})
 				orgMust(t, err)
 
-				if len(es) != 1 {
+				// the decline is in the audit log of both orgs
+				if len(es) != 2 {
 					t.Fatalf("audit entries: %d", len(es))
 				}
 
-				m := orgAuditMeta(t, es[0])
-				if m["side"] != "target" || m["decidedBy"] != orgUserID("ivan") || m["fromOrg"] != orgP1 || m["toOrg"] != orgP2 {
-					t.Fatalf("meta %v", m)
+				orgs := map[string]bool{}
+
+				for _, e := range es {
+					m := orgAuditMeta(t, e)
+					if m["side"] != "target" || m["decidedBy"] != orgUserID("ivan") || m["fromOrg"] != orgP1 || m["toOrg"] != orgP2 {
+						t.Fatalf("meta %v", m)
+					}
+
+					orgs[m["orgId"].(string)] = true
+				}
+
+				if !orgs[orgP1] || !orgs[orgP2] {
+					t.Fatalf("expected an entry for each org, got %v", orgs)
 				}
 			}},
 		{name: "a target admin cannot accept", who: "carol", method: http.MethodPost, url: "/api/orgs/" + orgP2 + "/transfers/" + trBob + "/accept",
