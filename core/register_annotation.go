@@ -21,7 +21,7 @@ type RegisterAnnotationInput struct {
 }
 
 // AddRegisterAnnotation adds an annotation to a final entry. Only a registrar
-// of the entry's org (or a superuser) may annotate.
+// of the entry's org may annotate; a superuser may not.
 func AddRegisterAnnotation(app App, ctx context.Context, auth *Record, collection, id string, in RegisterAnnotationInput) (*Record, error) {
 	var out *Record
 
@@ -29,6 +29,10 @@ func AddRegisterAnnotation(app App, ctx context.Context, auth *Record, collectio
 		cfg, entry, _, st, err := registerEntry(txApp, collection, id, auth)
 		if err != nil {
 			return err
+		}
+
+		if st.superuser {
+			return orgErr(403, errSuperuserSigns)
 		}
 
 		if !st.registrar {

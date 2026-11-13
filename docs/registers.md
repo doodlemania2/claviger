@@ -55,10 +55,10 @@ POST   /api/registers/{collection}/{id}/finalize    take the next step
 DELETE /api/registers/{collection}/{id}/finalize    withdraw a pending request
 ```
 
-Finalizing is irreversible. It needs a **registrar** (a member of the entry's org with the `registrar` tag) and a **fresh passkey assertion** (the same step-up as other sensitive routes). Superusers count as registrars, and the audit log names them. API keys are refused.
+Finalizing is irreversible. It needs a **registrar** (a member of the entry's org with the `registrar` tag) and a **fresh passkey assertion** (the same step-up as other sensitive routes). Only registrars sign: an owner or admin without the tag cannot, and a **superuser can never be a signer** (the routes answer 403 with a clear message). Superusers keep their administrative abilities, such as creating registers through `POST /api/registers` and editing `_permanentCollections`. API keys are refused.
 
 - **One signer** (default): the registrar finalizes alone. `finalizedAt` and `finalizedBy` are set.
-- **Two signers:** a registrar requests. The entry is **pending**: it is not final and stays editable. A second, **different** person (a registrar, or an owner or admin of the org) confirms and the entry becomes final, with `finalizedBy` (first) and `secondSigner`. If the entry was edited after the request, the confirmation is refused and the request must be made again, so the second person signs what they saw. The requester, an owner or admin can withdraw a request.
+- **Two signers:** a registrar requests. The entry is **pending**: it is not final and stays editable. A second, **different** registrar of the same org confirms (owners and admins without the tag cannot, and neither can a superuser) and the entry becomes final, with `finalizedBy` (first) and `secondSigner`. If the entry was edited after the request, the confirmation is refused and the request must be made again, so the second person signs what they saw. The requester, an owner or admin can withdraw a request.
 
 The response carries `state` (`draft`, `pending`, `final`). Edits to drafts and pending entries are free.
 
@@ -71,7 +71,7 @@ POST /api/registers/{collection}/{id}/annotations   {"kind", "text", "reason", "
 GET  /api/registers/{collection}/{id}               the entry with its annotations, oldest first
 ```
 
-An annotation has `entry`, `kind` (`correction`, `later_event`, `legal_note`, `retraction`, `data_subject_note`), `text`, `author`, `reason` (required), `supersedes` and `created`. Annotating needs a registrar and a fresh passkey. It is allowed only on a **final** entry.
+An annotation has `entry`, `kind` (`correction`, `later_event`, `legal_note`, `retraction`, `data_subject_note`), `text`, `author`, `reason` (required), `supersedes` and `created`. Annotating needs a registrar (never a superuser) and a fresh passkey. It is allowed only on a **final** entry.
 
 Annotations can never be changed or deleted, by anyone, including superusers (a model hook, as for the audit log). A mistaken annotation is not removed: a `retraction` points to it with `supersedes`. A retraction cannot itself be superseded. The records API cannot create annotations (the create rule is null); org staff can read them.
 
@@ -115,7 +115,7 @@ GET /api/registers/{collection}/{id}/certificate
 
 Returns an HTML page for a final entry: the entry fields, the marginal notes (a retracted one is struck through), the register number and chain hash, the issue date and the issuer. It has print CSS; save it as PDF from the browser. There is no PDF engine in Claviger. The page has no script and no inline style, and its policy allows only its own stylesheet.
 
-It needs a bearer token, so a client fetches it and shows or prints the result (the admin UI of 87-5 will do that); a plain link in the address bar does not carry the token. Registrars, owners, admins and superusers of the entry's org can issue it. Every issue writes a `register_certificate` audit entry. A diocese's seal and wording are not built; whether a certificate is valid is the church's call.
+It needs a bearer token, so a client fetches it and shows or prints the result (the admin UI of 87-5 will do that); a plain link in the address bar does not carry the token. Registrars, owners and admins of the entry's org (and superusers, who only read) can issue it. Every issue writes a `register_certificate` audit entry. A diocese's seal and wording are not built; whether a certificate is valid is the church's call.
 
 ## Data map and export
 
