@@ -88,6 +88,16 @@ window.app.store = store({
             label: "Households",
         },
         {
+            href: "#/credentials",
+            icon: "ri-shield-user-line",
+            label: "Credentials",
+        },
+        {
+            href: "#/consents",
+            icon: "ri-file-shield-2-line",
+            label: "Consents",
+        },
+        {
             href: "#/oidc",
             icon: "ri-id-card-line",
             label: "OpenID Connect",

@@ -12,6 +12,7 @@ Admin UI: Settings > SMS. Or through the settings API (`PATCH /api/settings`), b
 |---|---|
 | `enabled` | Master switch. Off means `core.NewSMSSender` returns `core.ErrSMSNotConfigured`. |
 | `provider` | `twilio` or `webhook`. Required when enabled. |
+| `defaultRegion` | Optional ISO 3166 alpha-2 code such as `US`. Used to read a household phone that has no `+` prefix (see Recovery texts). Empty means such numbers get no text. An unknown code is rejected on save. |
 | `twilio.accountSid` | `AC...`. Required for Twilio (it is part of the request path). |
 | `twilio.authToken` | Auth token. Write-only. |
 | `twilio.apiKeySid`, `twilio.apiKeySecret` | Optional API key, used instead of the auth token. Write-only secret. |
@@ -46,6 +47,16 @@ X-Claviger-Signature: v1=<hex>
 ```
 
 The signature is the hex HMAC-SHA256, keyed with the secret, of `"<timestamp>." + <raw request body>`. A receiver should recompute it over the raw bytes, compare in constant time, and reject timestamps that are too old. Any 2xx response counts as sent; anything else is an error. Redirects are not followed.
+
+## Recovery texts
+
+Staff-vouched recovery (`docs/recovery.md`) is the first feature to use the sender. It sends a link to the hosted recovery page, and the "a recovery code was issued" notice for a person without an email. The recipient is the home phone of the person's household; nothing else is stored. A number without a `+` is used only when `defaultRegion` is set (see below). Each text is audited as `recovery_sms_sent` without the number or the text. Wording keys: `sms.recovery.link` and `sms.recovery.notice`, in every locale.
+
+### Default region
+
+With `sms.defaultRegion` set, a household phone without a `+` is read as a national number of that country: spaces, dashes, dots and brackets are removed, a leading national trunk `0` is dropped where that is the convention, and the country code is added. The result must be a valid E.164 number (8 to 15 digits) or the person counts as having no phone; nothing is guessed. This is a small built-in table, not a numbering-plan library, and it does not check that a number is assigned.
+
+Supported regions: the `+1` group (US, CA and the other NANP regions: AG, AI, AS, BB, BM, BS, DM, DO, GD, GU, JM, KN, KY, LC, MP, MS, PR, SX, TC, TT, VC, VG, VI; 10 digits, or 11 with a leading 1; area and exchange codes cannot start with 0 or 1), GB, IE, DE, FR, ES, IT, PT, NL, BE, MX, BR, PH, KR, VN, CN, AU and NZ. A number that starts with `00` is refused, and a number that already has a `+` ignores the region.
 
 ## Test send
 

@@ -18,6 +18,7 @@ import (
 //	GET    /api/orgs/rule-templates                  ready-made API rules for org-owned collections (superusers)
 //	GET    /api/orgs/config                          effective depth limits and kinds in use (superusers, #84)
 //	GET    /api/orgs/ancestor-rule                   oversight rule text for a field (superusers, #84)
+//	GET    /api/orgs/transfers                       my transfers, and those of people I guard (#84)
 //	GET    /api/orgs/{id}/status                     counts only: levels, descendants by kind, members (owner/admin, #84)
 //	GET    /api/orgs/{id}                            one org (id or slug)
 //	PATCH  /api/orgs/{id}                            name, slug, parent (superuser), archived
@@ -41,6 +42,7 @@ func bindOrgsApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 	sub.GET("/rule-templates", orgRuleTemplates).Bind(RequireSuperuserAuth())
 	sub.GET("/config", orgsConfig).Bind(RequireSuperuserAuth())
 	sub.GET("/ancestor-rule", orgAncestorRule).Bind(RequireSuperuserAuth())
+	sub.GET("/transfers", orgTransfersMine)
 	sub.GET("/{id}", orgsView)
 	sub.GET("/{id}/status", orgStatus)
 	sub.PATCH("/{id}", orgsUpdate)
@@ -54,6 +56,8 @@ func bindOrgsApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 	bindOrgTagsApi(sub)              // fork-local (#79b)
 	bindSCIMTokensApi(sub)           // fork-local (#79c)
 	bindCredentialsApi(sub)          // fork-local (#81)
+	bindOrgTransfersApi(sub)         // fork-local (#84)
+	bindConsentsApi(rg, sub)         // fork-local (#88, 88-2)
 }
 
 func orgHTTP(e *core.RequestEvent, err error) error {

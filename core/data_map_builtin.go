@@ -81,6 +81,27 @@ var builtinDataMap = []DataMapEntry{
 		PersonalFields: []string{"issuedBy", "confirmedBy", "note"}, AgeOutBasis: "expires",
 		Note: "Staff-vouched recovery codes (#83). Export: who vouched, how, when. Never the reference or the hash. Rows are deleted 30 days after they expire."},
 
+	// ---- member transfers between orgs (#84) ----
+	{Collection: CollectionNameOrgTransfers, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"person"},
+		PersonalFields: []string{"startedBy", "decidedBy"},
+		Note:           "Consent records of a move between orgs (#84). Export: both orgs, state, who started and decided. Pending rows expire after the transfer lifetime."},
+	// ---- consent (#88, 88-2) ----
+	{Collection: CollectionNameConsentPurposes, Treatment: DataMapTreatmentNone,
+		Note: "What a person can consent to (key, text, version, lawful basis). Not about a person."},
+	{Collection: CollectionNameConsents, Treatment: DataMapTreatmentRetain,
+		SubjectPaths:   []string{"subject", "subject~" + CollectionNameHouseholdMembers + ".user"},
+		PersonalFields: []string{"subject", "givenBy", "evidenceRef"}, AgeOutBasis: "grantedAt",
+		RetainReason: "Evidence that consent was given or withdrawn, kept for the limitation period. On erasure the ids are pseudonymized (PseudonymizeConsents), not deleted.",
+		Note:         "Consent state per person and purpose (88-2). Export: all columns, including consents given for the person by a guardian."},
+	{Collection: CollectionNameConsentEvents, Treatment: DataMapTreatmentRetain,
+		SubjectPaths:   []string{"subject", "subject~" + CollectionNameHouseholdMembers + ".user"},
+		PersonalFields: []string{"subject", "givenBy", "actor", "evidenceRef"}, AgeOutBasis: "created",
+		RetainReason: "Evidence that consent was given or withdrawn, with the text shown. Append-only; kept for the limitation period and pseudonymized on erasure (PseudonymizeConsents).",
+		Note:         "Append-only consent history (88-2). Export: every grant and withdrawal with the text version and the text shown."},
+	// ---- permanent registers (#87) ----
+	{Collection: CollectionNamePermanentCollections, Treatment: DataMapTreatmentNone,
+		Note: "The list of permanent registers (#87). Configuration, not about a person."},
+
 	// ---- OpenID Connect provider ----
 	{Collection: CollectionNameOAuthConsents, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"recordRef"},
 		Note: "Export: client, scopes, dates."},
@@ -117,4 +138,16 @@ var builtinDataMap = []DataMapEntry{
 	// The auxiliary database table _logs (request logs, IP and user id) is
 	// not a collection. It is covered by the log retention setting
 	// (logs.maxDays), not by a row here.
+}
+
+// BuiltinDataMapEntry returns the built-in entry of a collection, for the
+// migrations that register their collections with RegisterDataMapEntry.
+func BuiltinDataMapEntry(collection string) DataMapEntry {
+	for _, e := range builtinDataMap {
+		if e.Collection == collection {
+			return e
+		}
+	}
+
+	return DataMapEntry{Collection: collection, Treatment: DataMapTreatmentNone}
 }

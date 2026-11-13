@@ -501,6 +501,15 @@ func dataExportSubjectFilter(app App, col *Collection, paths []string, subject *
 			continue
 		}
 
+		// fork-local (#88, 88-2): "<field>~<collection>.<userField>" matches a
+		// text field that holds the id of a row of <collection> whose
+		// <userField> is the subject (a consent filed under the person's
+		// own household member row)
+		if in, ok := dataExportIdInExp(app, col, p, subject); ok {
+			exps = append(exps, in)
+			continue
+		}
+
 		// fork-local (#80): "<collection>_via_<field>.<userField>" reaches the
 		// rows through a back relation, as in the API rules: the rows that
 		// some row of <collection> points to through <field>, where that row's
@@ -690,5 +699,37 @@ func dataExportViaExp(app App, col *Collection, path string, subject *Record) (d
 	return dbx.NewExp(
 		"[[id]] IN (SELECT [["+field+"]] FROM {{"+src.Name+"}} WHERE [["+userField+"]]={:__via_subject})",
 		dbx.Params{"__via_subject": subject.Id},
+	), true
+}
+
+// dataExportIdInExp builds the filter of a "<field>~<collection>.<userField>"
+// subject path (see dataExportSubjectFilter). It reports false for anything
+// that is not one.
+func dataExportIdInExp(app App, col *Collection, path string, subject *Record) (dbx.Expression, bool) {
+	field, rest, ok := strings.Cut(path, "~")
+	if !ok || field == "" {
+		return nil, false
+	}
+
+	from, userField, ok := strings.Cut(rest, ".")
+	if !ok || from == "" || userField == "" {
+		return nil, false
+	}
+
+	f, _ := col.Fields.GetByName(field).(*TextField)
+
+	src, err := app.FindCachedCollectionByNameOrId(from)
+	if err != nil || f == nil {
+		return nil, false
+	}
+
+	u, _ := src.Fields.GetByName(userField).(*RelationField)
+	if u == nil || u.CollectionId != subject.Collection().Id || u.IsMultiple() {
+		return nil, false
+	}
+
+	return dbx.NewExp(
+		"[["+field+"]] IN (SELECT [[id]] FROM {{"+src.Name+"}} WHERE [["+userField+"]]={:__in_subject})",
+		dbx.Params{"__in_subject": subject.Id},
 	), true
 }

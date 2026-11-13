@@ -94,3 +94,26 @@ func recoveryTime(t time.Time, lang string) string {
 
 	return t.Format("2006-01-02 15:04 MST")
 }
+
+// RecoveryLinkSMS is the text that points a person at the hosted recovery page
+// (#83). It carries no secret: the code is read out by staff.
+func RecoveryLinkSMS(app core.App, org, target *core.Record) string {
+	lang := recipientLanguage(app, target)
+
+	return core.I18n(app).T(lang, "sms.recovery.link", i18n.Args{
+		"org": org.GetString("name"),
+		"url": strings.TrimRight(app.Settings().Meta.AppURL, "/") + "/recovery",
+	})
+}
+
+// RecoveryNoticeSMS is the text version of the recovery notice, for a person
+// with a phone and no email. reportToken is the same token the email carries.
+func RecoveryNoticeSMS(app core.App, org, target *core.Record, at time.Time, reportToken string) string {
+	lang := recipientLanguage(app, target)
+
+	return core.I18n(app).T(lang, "sms.recovery.notice", i18n.Args{
+		"org":  org.GetString("name"),
+		"time": at.UTC().Format("15:04 MST"),
+		"url":  RecoveryReportURL(app, reportToken),
+	})
+}

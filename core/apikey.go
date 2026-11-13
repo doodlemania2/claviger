@@ -90,9 +90,13 @@ var APIKeyForbiddenCollections = []string{
 	CollectionNameSCIMGroups,    // #79c: provisioning state
 	CollectionNameCredentials,   // #81: safeguarding attestations about people; no machine access
 	CollectionNameRecoveryCodes, // #83: hashes of live recovery codes
+	CollectionNameOrgTransfers,  // #84: consent records; no machine access
 
 	CollectionNameHouseholds,       // #80: families and children; no machine access
 	CollectionNameHouseholdMembers, // #80
+	CollectionNameConsentPurposes,  // #88: consent evidence; no machine access
+	CollectionNameConsents,
+	CollectionNameConsentEvents,
 }
 
 // APIKeyInfo describes the key that authenticated a request.

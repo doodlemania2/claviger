@@ -46,6 +46,7 @@ All routes need a signed-in user. API keys are refused.
 | `POST /api/orgs/{id}/credentials/{cred}/verify` | a second coordinator | confirm a pending credential |
 | `POST /api/orgs/{id}/credentials/{cred}/revoke` | coordinators | `{reason?}`. Takes effect at once |
 | `GET /api/orgs/{id}/access-status` | coordinators | see [Who is cleared](#who-is-cleared) |
+| `GET /api/me/access-status` | the signed-in person | their own standing, see [My credentials](#my-credentials-for-volunteers) |
 
 `user` is a user id or an email. `expires` is required unless the type has `validMonths`, and must be in the future. A date without a time (`2027-01-31`) means the **end of that day** in UTC.
 
@@ -138,6 +139,36 @@ Query: `type` (one key), `standing` (limit the items, not the counts), `days` (t
 ```
 
 The best credential of a person wins. Only coordinators (including ancestors') can call it: this is for coordinators, never a public list. A lapse that removes access must not turn into public shaming.
+
+## The admin UI
+
+Superusers find **Credentials** in the admin menu (`#/credentials`). Pick an organization and the page shows:
+
+- **Who is cleared**: the counts per credential type (cleared, expiring, pending, lapsed, revoked, missing) for the active members, from the access-status route.
+- **Credentials**: filter by state (`valid`, `expiring`, `pending`, `lapsed`, `revoked`) and by type. *Expiring* is a valid credential that ends within 60 days. Each row can be verified (when pending), renewed or revoked with a reason. The reason is shown to coordinators only.
+- **Record credential**: choose a holder from the org's active members and a type, and optionally the dates and the issuer. The server keeps the rules: nobody records, renews or verifies their own credential, and a type with a second verifier needs a coordinator who is neither the recorder nor the holder. A refusal is shown in words.
+- **Credential types**: add, edit, retire or delete the org's own types. Inherited types are read-only. The *Rule snippet* button shows the exact rules that gate a collection (with an `org` relation) on that type, issued by the record's org or any org above it. They come from the same Go helpers as `GET /api/orgs/rule-templates`, so they can be pasted into the collection's API rules.
+
+Org owners and coordinators use the routes above (or their own tools); the page is for superusers.
+
+## My credentials, for volunteers
+
+`GET /credentials/mine` is a hosted page, in the same style as `/households/mine`: a server-rendered shell with no inline script or style, the languages of the other hosted pages, accessible mode, and a sign-in. After signing in, the person sees, for each organization they belong to and each active credential type that applies there, whether it is current, due for renewal, waiting for confirmation, ready to renew, not active, or not recorded yet, with the expiry date. It also says why a list or page may look empty, and names the org's safeguarding coordinators (display names only) to talk to. It is read-only.
+
+The wording is deliberate: a lapse reads as "ready to renew", never as a failure. The reason of a revocation is not shown to the holder.
+
+The page reads `GET /api/me/access-status`, which answers only about the caller and refuses API keys and superusers:
+
+```json
+{"asOf": "…", "expiringDays": 60, "orgs": [{
+  "org": "…", "name": "Parish One",
+  "types": [{"key": "safe_environment", "name": "Safe environment", "standing": "lapsed",
+             "expires": "…", "daysLeft": -9, "issuedByOrg": "Diocese"}],
+  "coordinators": [{"name": "Carol Coordinator"}]
+}]}
+```
+
+Credentials issued by the org or any ancestor count, the same as in the rule gate.
 
 ## Legal and safeguarding
 
