@@ -105,7 +105,7 @@ claviger registers verify
 
 recomputes every chain and prints the breaks: an entry changed, removed from the middle, inserted or renumbered outside the application. It exits with an error when it finds a break. It prints the head (number and hash) of each chain. **Keep the head somewhere else** if you also want to notice entries removed from the end. A chain does not say who wrote an entry.
 
-To check a backup, restore it into a scratch data directory and run `claviger registers verify --dir <that directory>`. The backup verification of the server (#78) works on database rows and has no extension point for this check; `core.VerifyRegisters(app)` is the function to call from your own tooling. A break after a restore from an older backup is expected to show up only if entries were finalized after that backup was made and then the tail was lost; the restore step is to verify, compare with the head you kept, and re-enter the missing entries.
+To check a backup, restore it into a scratch data directory and run `claviger registers verify --dir <that directory>`. The backup verification of the server (#78) works on database rows and has no extension point for this check; `core.VerifyRegisters(app)` is the function to call from your own tooling. After restoring an older backup, run the command and compare the head with the one you kept: entries finalized after the backup was made are missing from the end, and re-entering them is a decision for the registrar.
 
 ## Certificate
 
@@ -115,7 +115,7 @@ GET /api/registers/{collection}/{id}/certificate
 
 Returns an HTML page for a final entry: the entry fields, the marginal notes (a retracted one is struck through), the register number and chain hash, the issue date and the issuer. It has print CSS; save it as PDF from the browser. There is no PDF engine in Claviger. The page has no script and no inline style, and its policy allows only its own stylesheet.
 
-It needs a bearer token, so it is fetched by a client (the admin UI opens it in a new window) and not by a plain link. Registrars, owners, admins and superusers of the entry's org can issue it. Every issue writes a `register_certificate` audit entry. A diocese's seal and wording are not built; whether a certificate is valid is the church's call.
+It needs a bearer token, so a client fetches it and shows or prints the result (the admin UI of 87-5 will do that); a plain link in the address bar does not carry the token. Registrars, owners, admins and superusers of the entry's org can issue it. Every issue writes a `register_certificate` audit entry. A diocese's seal and wording are not built; whether a certificate is valid is the church's call.
 
 ## Data map and export
 
