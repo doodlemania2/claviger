@@ -24,6 +24,7 @@ import (
 //	POST   /api/orgs/{id}/credentials/{cred}/verify        a second coordinator
 //	POST   /api/orgs/{id}/credentials/{cred}/revoke        coordinators: {reason?}
 //	GET    /api/orgs/{id}/access-status                    coordinators: ?type=&standing=&days=&limit=
+//	GET    /api/me/access-status                           the signed-in person's own standing, per org and type
 //
 // A coordinator is an owner or admin of the org, or a member tagged
 // "safeguarding". Coordinators of an ancestor org can read (not write). API
@@ -497,5 +498,35 @@ func credentialsAccessStatus(e *core.RequestEvent) error {
 
 	return e.JSON(http.StatusOK, map[string]any{
 		"org": org.Id, "asOf": time.Now().UTC(), "expiringDays": days, "types": res,
+	})
+}
+
+// ---- my access status ----------------------------------------------------
+
+// bindMyAccessStatusApi registers GET /api/me/access-status for the hosted
+// "my credentials" page. It answers only about the caller, so it needs no
+// coordinator standing. API keys are refused like the rest.
+func bindMyAccessStatusApi(rg *router.RouterGroup[*core.RequestEvent]) {
+	rg.GET("/me/access-status", myAccessStatus).Bind(RequireAuth())
+}
+
+func myAccessStatus(e *core.RequestEvent) error {
+	if APIKeyFromRequest(e) != nil {
+		return apiKeyForbidden(e)
+	}
+
+	if !core.CredentialsAvailable(e.App) || e.Auth == nil || e.Auth.IsSuperuser() {
+		return e.NotFoundError("Credentials are not available.", nil)
+	}
+
+	now := time.Now()
+
+	orgs, err := core.MyCredentialStatus(e.App, e.Auth.Id, now, 0)
+	if err != nil {
+		return e.InternalServerError("", err)
+	}
+
+	return e.JSON(http.StatusOK, map[string]any{
+		"asOf": now.UTC(), "expiringDays": core.DefaultCredentialExpiringDays, "orgs": orgs,
 	})
 }

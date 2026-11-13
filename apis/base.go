@@ -58,6 +58,7 @@ func NewRouter(app core.App) (*router.Router[*core.RequestEvent], error) {
 	bindOrgsApi(app, apiGroup)       // fork-local (#79a)
 	bindDataMapApi(app, apiGroup)    // fork-local (#88)
 	bindHouseholdsApi(apiGroup)      // fork-local (#80)
+	bindMyAccessStatusApi(apiGroup)  // fork-local (#81)
 	bindDataExportApi(app, apiGroup) // fork-local (#88, 88-1)
 	bindSCIMApi(app, pbRouter)       // fork-local (#79c)
 
@@ -66,10 +67,11 @@ func NewRouter(app core.App) (*router.Router[*core.RequestEvent], error) {
 
 	// Inline end-user passkey self-service page
 	bindPasskeysPage(app)
-	bindOrgsPages(app)       // fork-local (#79b)
-	bindRecoveryPages(app)   // fork-local (#83)
-	bindHouseholdsPages(app) // fork-local (#80)
-	bindHostedAssets(app)    // fork-local (#83): accessible mode and /passkeys files
+	bindOrgsPages(app)        // fork-local (#79b)
+	bindRecoveryPages(app)    // fork-local (#83)
+	bindHouseholdsPages(app)  // fork-local (#80)
+	bindCredentialsPages(app) // fork-local (#81)
+	bindHostedAssets(app)     // fork-local (#83): accessible mode and /passkeys files
 
 	return pbRouter, nil
 }
