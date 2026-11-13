@@ -5,6 +5,7 @@ import { pageWebhooks } from "@/webhooks/pageWebhooks";
 import { pageOrgs } from "@/orgs/pageOrgs";
 import { pageHouseholds } from "@/households/pageHouseholds"; // fork-local (#80)
 import { pageCredentials } from "@/credentials/pageCredentials"; // fork-local (#81)
+import { pageConsents } from "@/consents/pageConsents"; // fork-local (#88, 88-2)
 import { pageOidc } from "@/oidc/pageOidc";
 import { pageLogs } from "@/logs/pageLogs";
 import { pageApplicationSettings } from "@/settings/application/pageApplicationSettings";
@@ -185,6 +186,7 @@ app.routes.superuserOnly("#/webhooks", pageWebhooks);
 app.routes.superuserOnly("#/orgs", pageOrgs);
 app.routes.superuserOnly("#/households", pageHouseholds); // fork-local (#80)
 app.routes.superuserOnly("#/credentials", pageCredentials); // fork-local (#81)
+app.routes.superuserOnly("#/consents", pageConsents); // fork-local (#88, 88-2)
 app.routes.superuserOnly("#/oidc", pageOidc);
 app.routes.superuserOnly("#/settings", pageApplicationSettings);
 app.routes.superuserOnly("#/settings/mail", pageMailSettings);

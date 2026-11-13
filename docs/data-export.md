@@ -35,6 +35,7 @@ Built-in collections use a fixed allowlist (`core/data_export_fields.go`). A col
 | `_oauthRequests`, `_oauthSso`, `_oauthDeviceCodes` | client, state, expiry | code, binding and session hashes, request data |
 | `_auditLog` | entries where the person is the actor or the record. Entries about somebody else's record keep action, time, target and IP, but not the before and after values | |
 | `_webhookDeliveries` | event type, status, attempts, and the payload only when it describes a record about the person | error text, attempt log |
+| `_consents`, `_consentEvents` | every consent state and every grant or withdrawal, with the text version and the text shown. Includes consents filed under the person's own household member row. Not the consents given for a child (a child has no login) | |
 | `_dataRequests` | the person's requests, state and dates | the export file |
 | collections with treatment `none` (`_orgs`, `_scimTokens`, `_fieldKeys`, `_signingKeys`, ...) | nothing | everything |
 

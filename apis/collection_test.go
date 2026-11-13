@@ -47,7 +47,7 @@ func TestCollectionsList(t *testing.T) {
 			ExpectedContent: []string{
 				`"page":1`,
 				`"perPage":30`,
-				`"totalItems":48`,
+				`"totalItems":50`,
 				`"items":[{`,
 				`"name":"` + core.CollectionNameSuperusers + `"`,
 				`"name":"` + core.CollectionNameAuthOrigins + `"`,
@@ -79,20 +79,20 @@ func TestCollectionsList(t *testing.T) {
 		{
 			Name:   "authorized as superuser + paging and sorting",
 			Method: http.MethodGet,
-			URL:    "/api/collections?page=9&perPage=2&sort=-created",
+			URL:    "/api/collections?page=10&perPage=2&sort=-created",
 			Headers: map[string]string{
 				"Authorization": "eyJhbGciOiJIUzI1NiJ9.eyJpZCI6InN5d2JoZWNuaDQ2cmhtMCIsInR5cGUiOiJhdXRoIiwiY29sbGVjdGlvbklkIjoicGJjXzMxNDI2MzU4MjMiLCJleHAiOjI1MjQ2MDQ0NjEsInJlZnJlc2hhYmxlIjp0cnVlfQ.UXgO3j-0BumcugrFjbd7j0M4MQvbrLggLlcu_YNGjoY",
 			},
 			ExpectedStatus: 200,
 			ExpectedContent: []string{
-				`"page":9`,
+				`"page":10`,
 				`"perPage":2`,
-				`"totalItems":48`,
+				`"totalItems":50`,
 				`"items":[{`,
-				// newest first (_orgTransfers #84, _recoveryCodes #83, _householdMembers and _households #80, _dataRequests #88 88-1, the two credential collections #81, _dataMap #88,
+				// newest first (the three consent collections #88 88-2, _recoveryCodes #83, _householdMembers and _households #80, _dataRequests #88 88-1, the two credential collections #81, _dataMap #88,
 				// _orgClosure #84 and _oauthDeviceCodes come first), then _scimGroups and _scimTokens (#79c),
 				// _invitations (#79b) and the three org collections (#79a, same migration, order not
-				// asserted); page 9 holds _fieldKeys
+				// asserted); page 10 holds _fieldKeys
 				`"name":"` + core.CollectionNameFieldKeys + `"`,
 			},
 			ExpectedEvents: map[string]int{
