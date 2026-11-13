@@ -1531,6 +1531,7 @@ func (app *BaseApp) registerBaseHooks() {
 	app.registerAuthOriginHooks()
 	app.registerNotifyWatcherHooks()
 	app.registerMultiReplicaHooks() // fork-local (#106 M7)
+	app.registerPermanentHooks()    // fork-local (#87)
 	app.registerWebAuthnCredentialHooks()
 	app.registerTOTPHooks()
 	app.registerAuditHooks()

@@ -81,6 +81,10 @@ var builtinDataMap = []DataMapEntry{
 		PersonalFields: []string{"issuedBy", "confirmedBy", "note"}, AgeOutBasis: "expires",
 		Note: "Staff-vouched recovery codes (#83). Export: who vouched, how, when. Never the reference or the hash. Rows are deleted 30 days after they expire."},
 
+	// ---- permanent registers (#87) ----
+	{Collection: CollectionNamePermanentCollections, Treatment: DataMapTreatmentNone,
+		Note: "The list of permanent registers (#87). Configuration, not about a person."},
+
 	// ---- OpenID Connect provider ----
 	{Collection: CollectionNameOAuthConsents, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"recordRef"},
 		Note: "Export: client, scopes, dates."},

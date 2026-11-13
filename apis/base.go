@@ -58,6 +58,7 @@ func NewRouter(app core.App) (*router.Router[*core.RequestEvent], error) {
 	bindOrgsApi(app, apiGroup)       // fork-local (#79a)
 	bindDataMapApi(app, apiGroup)    // fork-local (#88)
 	bindHouseholdsApi(apiGroup)      // fork-local (#80)
+	bindRegistersApi(apiGroup)       // fork-local (#87)
 	bindDataExportApi(app, apiGroup) // fork-local (#88, 88-1)
 	bindSCIMApi(app, pbRouter)       // fork-local (#79c)
 
