@@ -192,6 +192,47 @@ Superusers manage the same things on the Organizations page of the admin UI (mem
 
 A daily job (05:13) marks pending invitations past their expiry as `expired` and deletes accepted, revoked and expired invitations that have not changed for 90 days. Every create, resend, revoke and accept is an audit entry (`_invitations` create or update with `meta.orgId`, the actor being the admin, or the invitee for accept and register); `tokenHash` is redacted. Webhooks fire from the collection events (`_invitations:create`, `_invitations:update`).
 
+## Transfers
+
+A transfer moves one person from a source org to a target org, with the person's consent. It is for a family that changes congregation, or a volunteer who moves to another parish.
+
+1. An owner or admin of the source org, a superuser, or the person starts it. They choose what happens to the old membership when it is done: `suspend` (the default, history stays visible to the source admins) or `remove`.
+2. The person gets an email naming both orgs and the expiry date. Nothing changes yet.
+3. The person accepts **while signed in**. An owner, admin or superuser can never accept for them. The transfer can also be declined or cancelled.
+4. On accept, one transaction creates the membership in the target org (role `member`, active), suspends or removes the source membership, closes the transfer and writes one `org_transfer_accept` audit entry. If any step fails, nothing changes.
+
+Records the person wrote stay in the source org. The accept answer, and the `stays` route, give the source admins a count per collection (from the data map; collections with a single `org` relation and a direct relation to the user). Rows are never listed.
+
+### Routes
+
+| Route | Who | Notes |
+|---|---|---|
+| `POST /api/orgs/{id}/transfers` | owner/admin of `{id}`, the person | `{user, to, outcome?}`; `to` is an org id or slug |
+| `GET /api/orgs/{id}/transfers` | members of `{id}` | `?state=`. Staff see every transfer into or out of the org; a member sees their own. Staff of the target org do not see who is coming |
+| `GET /api/orgs/transfers` | any signed-in user | my transfers, and those of people I am a guardian of |
+| `POST /api/orgs/{id}/transfers/{tid}/accept` | the person | `{id}` is the source or target org. Returns the transfer, the new membership and `stays` |
+| `POST /api/orgs/{id}/transfers/{tid}/decline` | the person | |
+| `POST /api/orgs/{id}/transfers/{tid}/cancel` | the starter, owner/admin of the source, the person | |
+| `GET /api/orgs/{id}/transfers/{tid}/stays` | owner/admin of the source | counts of records that stay |
+
+API keys can read but never change a transfer. The slug `transfers` is reserved.
+
+### Guards
+
+- The target must be another org that exists and is not archived.
+- The person must be an active member of the source and not yet a member of the target.
+- One pending transfer per person and source org.
+- An admin cannot move a member who ranks above them, and the last active owner cannot be moved.
+- Pending transfers expire after 14 days. Change the default with `CLAVIGER_ORG_TRANSFER_DAYS` (1 to 90), or per org with `"transferDays"` in the org settings. A daily job closes the expired ones, and a late accept is refused with 409.
+
+### Minors
+
+A minor household member has no login (see `docs/households.md`), so a minor without a login has no membership to transfer. If a person with a login is flagged as a minor (data imported before the rule), a guardian of their household accepts, declines and cancels for them, receives the email, and sees the transfer in `GET /api/orgs/transfers`. The minor cannot start or decide alone.
+
+### Data and audit
+
+The hidden `_orgTransfers` collection has null rules and is on the API key forbidden list. It is in the data map (erased with the person) and the export allowlist. Audit actions: `org_transfer_start`, `org_transfer_accept`, `org_transfer_decline`, `org_transfer_cancel`, `org_transfer_expire`, each with `meta.orgId` (the source), `fromOrg`, `toOrg`, `user` and `outcome`. The membership changes also write their usual `_orgMembers` entries.
+
 ## Audit, webhooks, OIDC
 
 - **Audit.** Every change of `_orgs`, `_orgMembers` and `_orgRoles` is an audit entry with the actor and `meta.orgId`. Any collection with an `org` (or `orgs`) field gets `meta.orgId` (`meta.orgIds`) on its entries too. A role change records `role` in `changedFields` with before and after.

@@ -78,6 +78,12 @@ var builtinDataExport = map[string]dataExportSpec{
 		"reportedAt", "attempts", "created", "updated",
 	}},
 
+	// #84: where the person was moved from and to, and who started and decided it
+	CollectionNameOrgTransfers: {Fields: []string{
+		"id", "fromOrg", "toOrg", "state", "sourceOutcome", "startedBy", "expiresAt", "decidedAt", "decidedBy",
+		"created", "updated",
+	}},
+
 	CollectionNameOrgMembers: {Fields: []string{
 		"id", "org", "role", "status", "tags", "source", "externalId", "created", "updated",
 	}},
