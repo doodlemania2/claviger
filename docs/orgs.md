@@ -196,7 +196,7 @@ A daily job (05:13) marks pending invitations past their expiry as `expired` and
 
 A transfer moves one person from a source org to a target org, with the person's consent. It is for a family that changes congregation, or a volunteer who moves to another parish.
 
-1. An owner or admin of the source org, a superuser, or the person starts it. They choose what happens to the old membership when it is done: `suspend` (the default, history stays visible to the source admins) or `remove`.
+1. An owner or admin of the source org, an active member tagged `registrar` there (a viewer with the tag does not count), a superuser, or the person starts it. A registrar ranks as a member, so they cannot move someone ranked above them. They choose what happens to the old membership when it is done: `suspend` (the default, history stays visible to the source admins) or `remove`.
 2. The person gets an email naming both orgs and the expiry date. Nothing changes yet.
 3. The person accepts **while signed in**. An owner, admin or superuser can never accept for them. The transfer can also be declined or cancelled.
    An owner or admin of the **receiving** org can decline a pending incoming transfer (a veto). They cannot accept it, and the person still has to accept. They see that a transfer is incoming, but not who the person is until it is accepted. A decline by the target side sends no email.
@@ -208,11 +208,11 @@ Records the person wrote stay in the source org. The accept answer, and the `sta
 
 | Route | Who | Notes |
 |---|---|---|
-| `POST /api/orgs/{id}/transfers` | owner/admin of `{id}`, the person, a guardian | `{user, to, outcome?}` or, for a household member without a login, `{member, to, outcome?}` (not both); `to` is an org id or slug |
+| `POST /api/orgs/{id}/transfers` | owner/admin/registrar of `{id}`, the person, a guardian | `{user, to, outcome?}` or, for a household member without a login, `{member, to, outcome?}` (not both); `to` is an org id or slug |
 | `GET /api/orgs/{id}/transfers` | members of `{id}` | `?state=`. Staff see every transfer into or out of the org; a member sees their own. Staff of the target org do not see who is coming |
 | `GET /api/orgs/transfers` | any signed-in user | my transfers, and those of people I am a guardian of |
 | `POST /api/orgs/{id}/transfers/{tid}/accept` | the person; a guardian for a child | `{id}` is the source or target org. Returns the transfer, the new membership and `stays`. For a child, an optional body `{household}` names the receiving household, and the answer has `member` instead of a membership |
-| `POST /api/orgs/{id}/transfers/{tid}/decline` | the person, or owner/admin of the target org | The target side is a veto only; a superuser cannot. A decline by the target is written to the audit log of both orgs |
+| `POST /api/orgs/{id}/transfers/{tid}/decline` | the person, or owner/admin of the target org | The target side is a veto only and stays with owners and admins (a registrar of the target cannot, since the veto is a decision about the org's membership, not record keeping); a superuser cannot. A decline by the target is written to the audit log of both orgs |
 | `POST /api/orgs/{id}/transfers/{tid}/cancel` | the starter, owner/admin of the source, the person | |
 | `GET /api/orgs/{id}/transfers/{tid}/stays` | owner/admin of the source | counts of records that stay |
 
@@ -228,7 +228,7 @@ API keys can read but never change a transfer. The slug `transfers` is reserved.
 
 ### Minors
 
-A minor household member has no login (see `docs/households.md`) and so no org membership. A transfer can still be about them: start it with `{member, to}` (the id of the household member row; the household must belong to the source org). An owner or admin of the source org, or an adult guardian of the member's household, can start it. The notice goes to the guardians of that household (the starter is left out). Only a guardian of that household can accept, decline or cancel for the child. An owner, admin, registrar or superuser cannot accept.
+A minor household member has no login (see `docs/households.md`) and so no org membership. A transfer can still be about them: start it with `{member, to}` (the id of the household member row; the household must belong to the source org). An owner, admin or registrar of the source org, or an adult guardian of the member's household, can start it. The notice goes to the guardians of that household (the starter is left out). Only a guardian of that household can accept, decline or cancel for the child. An owner, admin, registrar or superuser cannot accept or decline for the child.
 
 On accept, the guardian must also be an active adult guardian of a household in the **receiving** org. If they guard exactly one there, the child moves into it. If they guard several, they name one with `{"household": "<id>"}` (400 otherwise); with none, the accept is refused with 409. The child becomes a new household member row there (name, role, birth date, allergies and medical notes are copied; the photo is not, and the guardian flag is never set). The old row is marked `left` for `suspend`, or deleted for `remove`. Records about the child stay in the source org, as for an adult; no `stays` count is given because the child has no user rows. With `remove`, the deleted member row takes the transfer row with it, and the `org_transfer_accept` audit entry (with `member`, `household` and `newMember`) is what remains.
 

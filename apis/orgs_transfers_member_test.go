@@ -161,8 +161,16 @@ func TestOrgTransferMemberStartRoute(t *testing.T) {
 			status: 200, has: []string{`"member":"` + hhKidA + `"`, `"personName":"Kid A"`, `"state":"pending"`}, after: started("erin")}),
 		kidCase(orgCase{name: "the owner starts for the child", who: "alice", method: http.MethodPost, url: url, body: trKidBody,
 			status: 200, after: started("alice")}),
-		kidCase(orgCase{name: "a registrar is not staff for transfers", who: "carol", method: http.MethodPost, url: url, body: trKidBody,
-			status: 403, after: none}),
+		kidCase(orgCase{name: "a registrar starts for the child", who: "carol", method: http.MethodPost, url: url, body: trKidBody,
+			status: 200, after: started("carol")}),
+		kidCase(orgCase{name: "a registrar starts a transfer of a person with a login", who: "carol", method: http.MethodPost, url: url,
+			body: `{"user":"` + orgUserID("dave") + `","to":"` + orgP2 + `"}`, status: 200, has: []string{`"state":"pending"`}}),
+		kidCase(orgCase{name: "a registrar cannot move an admin", who: "carol", method: http.MethodPost, url: url,
+			body: `{"user":"` + orgUserID("bob") + `","to":"` + orgP2 + `"}`, status: 403, after: none}),
+		kidCase(orgCase{name: "a registrar of a different org cannot", who: "gina", method: http.MethodPost, url: url, body: trKidBody,
+			status: 404, before: registrarOfP2, after: none}),
+		kidCase(orgCase{name: "a registrar tag on a viewer does not count", who: "dave", method: http.MethodPost, url: "/api/orgs/" + orgP1 + "/transfers",
+			body: trKidBody, status: 403, before: tagViewerRegistrar, after: none}),
 		kidCase(orgCase{name: "a guardian of another household cannot", who: "dave", method: http.MethodPost, url: url, body: trKidBody,
 			status: 403, after: none}),
 		kidCase(orgCase{name: "an adult who is not a guardian cannot", who: "frank", method: http.MethodPost, url: url, body: trKidBody,
@@ -352,4 +360,44 @@ func TestOrgTransferMemberDeclineCancelAndList(t *testing.T) {
 		kidCase(orgCase{name: "stays of a child are empty", who: "alice", url: url("stays"), status: 200,
 			before: withKidTransfer, has: []string{`"stays":[]`}}),
 	})
+}
+
+// tagViewerRegistrar gives dave (a viewer of P1, guardian of H2 only) the registrar tag.
+func tagViewerRegistrar(t testing.TB, app *tests.TestApp) {
+	t.Helper()
+
+	m, err := core.FindOrgMember(app, orgP1, orgUserID("dave"))
+	orgMust(t, err)
+
+	tag, err := app.FindRecordById(core.CollectionNameOrgRoles, "tagregistrarp1a")
+	orgMust(t, err)
+
+	m.Set("tags", []string{tag.Id})
+	orgMust(t, app.Save(m))
+}
+
+// registrarOfP2 makes gina (admin of the diocese, no role in P1) a P2 member
+// tagged registrar there.
+func registrarOfP2(t testing.TB, app *tests.TestApp) {
+	t.Helper()
+
+	roles, err := app.FindCollectionByNameOrId(core.CollectionNameOrgRoles)
+	orgMust(t, err)
+
+	tag := core.NewRecord(roles)
+	tag.Id = "tagregistrarp2a"
+	tag.Set("org", orgP2)
+	tag.Set("name", core.HouseholdRegistrarTag)
+	orgMust(t, app.Save(tag))
+
+	members, err := app.FindCollectionByNameOrId(core.CollectionNameOrgMembers)
+	orgMust(t, err)
+
+	m := core.NewRecord(members)
+	m.Set("org", orgP2)
+	m.Set("user", orgUserID("gina"))
+	m.Set("role", "member")
+	m.Set("status", "active")
+	m.Set("tags", []string{tag.Id})
+	orgMust(t, app.Save(m))
 }
