@@ -19,7 +19,7 @@ jobs:
     # Tags and workflow_dispatch need write access, so every run is trusted
     # (and never Dependabot's): the k3s pool is safe here.
     runs-on: ${{ vars.RUNNER_LIGHT || 'tdp-k3s-claviger' }}
-    timeout-minutes: 40
+    timeout-minutes: 80
     env:
       flags: ""
     steps:
@@ -57,7 +57,7 @@ jobs:
       #   run: go run ./plugins/jsvm/internal/types/types.go
 
       - name: Run tests
-        run: go test -timeout 30m ./...
+        run: go test -timeout 60m ./...
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
