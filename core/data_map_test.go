@@ -93,6 +93,11 @@ func TestDataMapEntriesAreWellFormed(t *testing.T) {
 			if strings.Contains(f, "_via_") {
 				continue
 			}
+			// "<field>~<collection>.<user field>": the text field holds the id
+			// of a row of the collection that belongs to the user (#88, 88-2)
+			if field, _, ok := strings.Cut(f, "~"); ok {
+				f = field
+			}
 			if col.Fields.GetByName(f) == nil {
 				t.Errorf("%s: unknown field %q", name, f)
 			}

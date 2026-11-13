@@ -78,6 +78,17 @@ var builtinDataExport = map[string]dataExportSpec{
 		"reportedAt", "attempts", "created", "updated",
 	}},
 
+	// #88 88-2: the whole evidence trail of the person, including the text
+	// they were shown; no secrets. Purposes are not about a person (none).
+	CollectionNameConsents: {Fields: []string{
+		"id", "subject", "subjectType", "purpose", "policyVersion", "grantedAt", "withdrawnAt",
+		"givenBy", "method", "evidenceRef", "org", "created", "updated",
+	}},
+	CollectionNameConsentEvents: {Fields: []string{
+		"id", "subject", "subjectType", "purpose", "action", "policyVersion", "text", "givenBy",
+		"actor", "method", "evidenceRef", "org", "pseudonymizedAt", "created",
+	}},
+
 	CollectionNameOrgMembers: {Fields: []string{
 		"id", "org", "role", "status", "tags", "source", "externalId", "created", "updated",
 	}},

@@ -93,6 +93,9 @@ var APIKeyForbiddenCollections = []string{
 
 	CollectionNameHouseholds,       // #80: families and children; no machine access
 	CollectionNameHouseholdMembers, // #80
+	CollectionNameConsentPurposes,  // #88: consent evidence; no machine access
+	CollectionNameConsents,
+	CollectionNameConsentEvents,
 }
 
 // APIKeyInfo describes the key that authenticated a request.
