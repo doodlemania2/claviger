@@ -113,8 +113,14 @@ type OrgTransferInput struct {
 	User string
 	// To is the id or slug of the target org.
 	To string
-	// Outcome is "suspend" (default) or "remove".
+	// Outcome is "suspend" (default) or "remove". For a member without a
+	// login, suspend marks the source row "left" and remove deletes it.
 	Outcome string
+	// Member is the id of a household member without a login (a minor), in a
+	// household of the source org. Use it instead of User: a guardian of the
+	// member's household accepts, and the member moves into a household of
+	// the target org that the guardian belongs to.
+	Member string
 }
 
 // ---- who decides -----------------------------------------------------------
@@ -164,6 +170,12 @@ func OrgTransferDecider(app App, t *Record, auth *Record) bool {
 		return false
 	}
 
+	if mid := t.GetString("member"); mid != "" {
+		m, err := app.FindRecordById(CollectionNameHouseholdMembers, mid)
+
+		return err == nil && isGuardianOf(app, m, auth.Id)
+	}
+
 	person := t.GetString("person")
 
 	if minor := minorHouseholdRow(app, t.GetString("fromOrg"), person); minor != nil {
@@ -209,6 +221,39 @@ func GuardedUserIds(app App, userId string) []string {
 	return out
 }
 
+// GuardedMemberIds lists the household members without a login whose transfers
+// the user may decide as an adult guardian of their household.
+func GuardedMemberIds(app App, userId string) []string {
+	if !HouseholdsAvailable(app) {
+		return nil
+	}
+
+	mine, err := app.FindRecordsByFilter(CollectionNameHouseholdMembers,
+		"user={:g} && guardian=true && isMinor=false && status={:s}", "", 0, 0,
+		dbx.Params{"g": userId, "s": HouseholdMemberActive})
+	if err != nil || len(mine) == 0 {
+		return nil
+	}
+
+	hs := make([]any, 0, len(mine))
+	for _, m := range mine {
+		hs = append(hs, m.GetString("household"))
+	}
+
+	rows, err := app.FindAllRecords(CollectionNameHouseholdMembers,
+		dbx.In("household", hs...), dbx.HashExp{"user": "", "status": HouseholdMemberActive})
+	if err != nil {
+		return nil
+	}
+
+	out := make([]string, 0, len(rows))
+	for _, m := range rows {
+		out = append(out, m.Id)
+	}
+
+	return out
+}
+
 // ---- start -------------------------------------------------------------------
 
 // StartOrgTransfer opens a pending transfer of a member of org to another org.
@@ -226,6 +271,14 @@ func StartOrgTransfer(app App, ctx context.Context, actor *OrgActor, org *Record
 
 	if actor.Record == nil {
 		return nil, orgErr(401, "Authentication required.")
+	}
+
+	if in.Member != "" {
+		if in.User != "" {
+			return nil, orgErr(400, "Give a user or a household member, not both.")
+		}
+
+		return startMemberTransfer(app, ctx, actor, org, in)
 	}
 
 	user, err := FindOrgUser(app, in.User)
@@ -325,6 +378,113 @@ func StartOrgTransfer(app App, ctx context.Context, actor *OrgActor, org *Record
 	return t, nil
 }
 
+// startMemberTransfer opens a pending transfer of a household member without a
+// login. Who may start: an owner or admin of the source org (or a superuser),
+// or an adult guardian of the member's household. The member must be an active
+// member of a household of the source org. A guardian of that household
+// accepts or declines in their place.
+func startMemberTransfer(app App, ctx context.Context, actor *OrgActor, org *Record, in OrgTransferInput) (*Record, error) {
+	if !HouseholdsAvailable(app) {
+		return nil, orgErr(404, "Households are not available.")
+	}
+
+	member, err := app.FindRecordById(CollectionNameHouseholdMembers, strings.TrimSpace(in.Member))
+	if err != nil {
+		return nil, orgErr(404, "The household member was not found.")
+	}
+
+	h, err := app.FindRecordById(CollectionNameHouseholds, member.GetString("household"))
+	if err != nil || h.GetString("org") != org.Id {
+		return nil, orgErr(404, "The household member was not found.")
+	}
+
+	if member.GetString("user") != "" {
+		return nil, orgErr(400, "This person has a login: transfer them as a user.")
+	}
+
+	if member.GetString("status") != HouseholdMemberActive {
+		return nil, orgErr(404, "The person is not an active member of the household.")
+	}
+
+	guardian := !actor.Superuser && !actor.System && isGuardianOf(app, member, actor.Record.Id)
+
+	if !actor.CanManage() && !guardian {
+		return nil, orgErr(403, "Only owners and admins or a guardian of the household can start a transfer.")
+	}
+
+	if err := requireLiveOrg(org, actor); err != nil {
+		return nil, err
+	}
+
+	target, outcome, err := transferTarget(app, org, in)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = ExpireOrgTransfers(app, ctx, time.Now())
+
+	if n, _ := app.CountRecords(CollectionNameOrgTransfers,
+		dbx.HashExp{"member": member.Id, "fromOrg": org.Id, "state": OrgTransferPending}); n > 0 {
+		return nil, orgErr(409, "A transfer of this person out of the organization is already pending.")
+	}
+
+	col, err := app.FindCachedCollectionByNameOrId(CollectionNameOrgTransfers)
+	if err != nil {
+		return nil, err
+	}
+
+	t := NewRecord(col)
+	t.Set("member", member.Id)
+	t.Set("fromOrg", org.Id)
+	t.Set("toOrg", target.Id)
+	t.Set("state", OrgTransferPending)
+	t.Set("sourceOutcome", outcome)
+	t.Set("startedBy", actor.Record.Id)
+	t.Set("expiresAt", types.NowDateTime().Add(OrgTransferLifetime(org)))
+
+	err = app.RunInTransaction(func(txApp App) error {
+		if err := txApp.SaveWithContext(ctx, t); err != nil {
+			return wrapOrgSaveErr(err)
+		}
+
+		return writeOrgTransferAudit(txApp, ctx, AuditActionOrgTransferStart, t, org.Id, nil)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	notifyOrgTransfer(app, t, org, target, member, actor.Record)
+
+	return t, nil
+}
+
+// transferTarget validates the outcome and the target org of a new transfer.
+func transferTarget(app App, org *Record, in OrgTransferInput) (*Record, string, error) {
+	outcome := in.Outcome
+	if outcome == "" {
+		outcome = OrgTransferSuspend
+	}
+
+	if !slices.Contains(OrgTransferOutcomes, outcome) {
+		return nil, "", orgErr(400, "The outcome must be suspend or remove.")
+	}
+
+	target, err := FindOrg(app, strings.TrimSpace(in.To))
+	if err != nil {
+		return nil, "", orgErr(404, "The target organization was not found.")
+	}
+
+	if target.Id == org.Id {
+		return nil, "", orgErr(400, "The target must be another organization.")
+	}
+
+	if target.GetBool("archived") {
+		return nil, "", orgErr(409, "The target organization is archived.")
+	}
+
+	return target, outcome, nil
+}
+
 func notifyOrgTransfer(app App, t *Record, from, to, person, starter *Record) {
 	if OrgTransferNotifier == nil || starter.Id == person.Id {
 		return
@@ -332,7 +492,14 @@ func notifyOrgTransfer(app App, t *Record, from, to, person, starter *Record) {
 
 	recipients := []*Record{person}
 
-	if minor := minorHouseholdRow(app, from.Id, person.Id); minor != nil {
+	// a household member without a login is told through the guardians, and
+	// so is a minor with one
+	minor := minorHouseholdRow(app, from.Id, person.Id)
+	if t.GetString("member") != "" {
+		minor = person
+	}
+
+	if minor != nil {
 		recipients = recipients[:0]
 
 		gs, err := app.FindRecordsByFilter(CollectionNameHouseholdMembers,
@@ -340,11 +507,15 @@ func notifyOrgTransfer(app App, t *Record, from, to, person, starter *Record) {
 			dbx.Params{"h": minor.GetString("household"), "s": HouseholdMemberActive})
 		if err == nil {
 			for _, g := range gs {
-				if u, err := app.FindRecordById(OrgUserCollectionName(), g.GetString("user")); err == nil {
+				if u, err := app.FindRecordById(OrgUserCollectionName(), g.GetString("user")); err == nil && (t.GetString("member") == "" || u.Id != starter.Id) {
 					recipients = append(recipients, u)
 				}
 			}
 		}
+	}
+
+	if len(recipients) == 0 {
+		return
 	}
 
 	name := starter.GetString("name")
@@ -401,7 +572,18 @@ func closeOrgTransfer(app App, ctx context.Context, t *Record, state, action, de
 			return wrapOrgSaveErr(err)
 		}
 
-		return writeOrgTransferAudit(txApp, ctx, action, fresh, fresh.GetString("fromOrg"), meta)
+		if err := writeOrgTransferAudit(txApp, ctx, action, fresh, fresh.GetString("fromOrg"), meta); err != nil {
+			return err
+		}
+
+		// a decline by the receiving org is also in the audit log of that org,
+		// without the person (the target never learns who was on the way)
+		if action == AuditActionOrgTransferDecline && meta["side"] == OrgTransferSideTarget {
+			return writeOrgTransferAudit(txApp, ctx, action, fresh, fresh.GetString("toOrg"),
+				map[string]any{"side": meta["side"], "decidedBy": meta["decidedBy"], "user": nil, "member": nil})
+		}
+
+		return nil
 	})
 }
 
@@ -487,8 +669,145 @@ type OrgTransferResult struct {
 	Transfer *Record
 	// Membership is the new membership in the target org.
 	Membership *Record
+	// Member is the new household member row in the target org (a transfer of
+	// a member without a login); Membership is nil then.
+	Member *Record
 	// Stays counts the records of the person that stay in the source org.
 	Stays []OrgTransferStay
+}
+
+// targetHousehold picks the household of the target org that receives the
+// member: one where auth is an active adult guardian.
+func targetHousehold(app App, toOrg, authId, wanted string) (*Record, error) {
+	rows, err := app.FindRecordsByFilter(CollectionNameHouseholdMembers,
+		"user={:g} && guardian=true && isMinor=false && status={:s} && household.org={:o} && household.status={:hs}", "", 0, 0,
+		dbx.Params{"g": authId, "s": HouseholdMemberActive, "o": toOrg, "hs": HouseholdStatusActive})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(rows) == 0 {
+		return nil, orgErr(409, "You must be a guardian of a household in the receiving organization to accept for a child.")
+	}
+
+	var pick string
+
+	switch {
+	case wanted != "":
+		for _, r := range rows {
+			if r.GetString("household") == wanted {
+				pick = wanted
+			}
+		}
+
+		if pick == "" {
+			return nil, orgErr(400, "That is not a household of the receiving organization that you guard.")
+		}
+	case len(rows) == 1:
+		pick = rows[0].GetString("household")
+	default:
+		return nil, orgErr(400, "Choose the household that receives the child (household).")
+	}
+
+	return app.FindRecordById(CollectionNameHouseholds, pick)
+}
+
+func acceptMemberTransfer(app App, ctx context.Context, auth, t *Record, householdId string) (*OrgTransferResult, error) {
+	members, err := app.FindCachedCollectionByNameOrId(CollectionNameHouseholdMembers)
+	if err != nil {
+		return nil, err
+	}
+
+	res := &OrgTransferResult{Stays: []OrgTransferStay{}}
+
+	err = app.RunInTransaction(func(txApp App) error {
+		fresh, err := txApp.FindRecordById(CollectionNameOrgTransfers, t.Id)
+		if err != nil || fresh.GetString("state") != OrgTransferPending {
+			return orgErr(409, "The transfer is no longer pending.")
+		}
+
+		from, err := txApp.FindRecordById(CollectionNameOrgs, fresh.GetString("fromOrg"))
+		if err != nil || from.GetBool("archived") {
+			return orgErr(409, "The source organization is not available.")
+		}
+
+		to, err := txApp.FindRecordById(CollectionNameOrgs, fresh.GetString("toOrg"))
+		if err != nil || to.GetBool("archived") {
+			return orgErr(409, "The target organization is not available.")
+		}
+
+		src, err := txApp.FindRecordById(CollectionNameHouseholdMembers, fresh.GetString("member"))
+		if err != nil || src.GetString("status") != HouseholdMemberActive || src.GetString("user") != "" {
+			return orgErr(409, "The person is no longer an active member of the source household.")
+		}
+
+		h, err := targetHousehold(txApp, to.Id, auth.Id, householdId)
+		if err != nil {
+			return err
+		}
+
+		dst := NewRecord(members)
+		dst.Set("household", h.Id)
+		dst.Set("name", src.GetString("name"))
+		dst.Set("role", src.GetString("role"))
+		dst.Set("isMinor", src.GetBool("isMinor"))
+		dst.Set("status", HouseholdMemberActive)
+		dst.Set("source", HouseholdSourceManual)
+
+		for _, k := range householdSensitiveMemberFields {
+			if v := src.Get(k); v != nil && v != "" {
+				dst.Set(k, v)
+			}
+		}
+
+		if err := saveOrgRecord(txApp, ctx, dst); err != nil {
+			return err
+		}
+
+		outcome := fresh.GetString("sourceOutcome")
+
+		if outcome != OrgTransferRemove {
+			src.Set("status", HouseholdMemberLeft)
+
+			if err := saveOrgRecord(txApp, ctx, src); err != nil {
+				return err
+			}
+		}
+
+		fresh.Set("state", OrgTransferAccepted)
+		fresh.Set("decidedAt", types.NowDateTime())
+		fresh.Set("decidedBy", auth.Id)
+
+		if err := txApp.SaveWithContext(ctx, fresh); err != nil {
+			return wrapOrgSaveErr(err)
+		}
+
+		res.Transfer = fresh
+		res.Member = dst
+
+		if err := writeOrgTransferAudit(txApp, ctx, AuditActionOrgTransferAccept, fresh, from.Id, map[string]any{
+			"fromOrg":   from.Id,
+			"toOrg":     to.Id,
+			"outcome":   outcome,
+			"household": h.Id,
+			"newMember": dst.Id,
+		}); err != nil {
+			return err
+		}
+
+		// Deleting the row also deletes the transfer (it goes with the member),
+		// so it comes last: the audit entry above is what stays.
+		if outcome == OrgTransferRemove {
+			return deleteOrgRecord(txApp, ctx, src)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }
 
 // AcceptOrgTransfer completes the transfer. Only the person (or the guardian
@@ -496,6 +815,16 @@ type OrgTransferResult struct {
 // One transaction creates the target membership, suspends or removes the
 // source membership, closes the transfer and writes the audit entry.
 func AcceptOrgTransfer(app App, ctx context.Context, auth *Record, t *Record) (*OrgTransferResult, error) {
+	return AcceptOrgTransferInto(app, ctx, auth, t, "")
+}
+
+// AcceptOrgTransferInto is AcceptOrgTransfer for a transfer of a household
+// member without a login. The accepting guardian names the household of the
+// target org the member moves into (empty when they belong to exactly one
+// there). The member becomes a new row in that household, and the source row is
+// marked "left" or deleted, as the transfer's outcome says. Records about the
+// member stay in the source org.
+func AcceptOrgTransferInto(app App, ctx context.Context, auth *Record, t *Record, householdId string) (*OrgTransferResult, error) {
 	t, err := loadPendingTransfer(app, ctx, t)
 	if err != nil {
 		return nil, err
@@ -503,6 +832,10 @@ func AcceptOrgTransfer(app App, ctx context.Context, auth *Record, t *Record) (*
 
 	if !OrgTransferDecider(app, t, auth) {
 		return nil, orgErr(403, "Only the person can accept their transfer. An admin cannot accept it for them.")
+	}
+
+	if t.GetString("member") != "" {
+		return acceptMemberTransfer(app, ctx, auth, t, householdId)
 	}
 
 	members, err := app.FindCachedCollectionByNameOrId(CollectionNameOrgMembers)
@@ -638,6 +971,10 @@ var orgTransferStayExcluded = []string{CollectionNameOrgMembers, CollectionNameO
 // themselves are never returned. Collections whose link to the org is another
 // field, or is reached through a relation, are not counted.
 func OrgTransferStays(app App, orgId, userId string) ([]OrgTransferStay, error) {
+	if userId == "" {
+		return []OrgTransferStay{}, nil // a member without a login has no user rows
+	}
+
 	rows, err := loadDataMapRows(app)
 	if err != nil {
 		return nil, err
@@ -704,7 +1041,17 @@ func writeOrgTransferAudit(app App, ctx context.Context, action string, t *Recor
 		"outcome": t.GetString("sourceOutcome"),
 	}
 
+	if m := t.GetString("member"); m != "" {
+		meta["member"] = m
+	}
+
 	for k, v := range extra {
+		if v == nil {
+			delete(meta, k)
+
+			continue
+		}
+
 		meta[k] = v
 	}
 
