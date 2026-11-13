@@ -81,6 +81,11 @@ var builtinDataMap = []DataMapEntry{
 		PersonalFields: []string{"issuedBy", "confirmedBy", "note"}, AgeOutBasis: "expires",
 		Note: "Staff-vouched recovery codes (#83). Export: who vouched, how, when. Never the reference or the hash. Rows are deleted 30 days after they expire."},
 
+	// ---- member transfers between orgs (#84) ----
+	{Collection: CollectionNameOrgTransfers, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"person"},
+		PersonalFields: []string{"startedBy", "decidedBy"},
+		Note:           "Consent records of a move between orgs (#84). Export: both orgs, state, who started and decided. Pending rows expire after the transfer lifetime."},
+
 	// ---- OpenID Connect provider ----
 	{Collection: CollectionNameOAuthConsents, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"recordRef"},
 		Note: "Export: client, scopes, dates."},

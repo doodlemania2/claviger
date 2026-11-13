@@ -1542,6 +1542,7 @@ func (app *BaseApp) registerBaseHooks() {
 	app.registerDataMapHooks()         // fork-local (#88)
 	app.registerCredentialHooks()      // fork-local (#81)
 	app.registerHouseholdHooks()       // fork-local (#80)
+	app.registerOrgTransferHooks()     // fork-local (#84)
 	app.registerDataRequestHooks()     // fork-local (#88, 88-1)
 }
 

@@ -133,7 +133,7 @@ func OrgUserCollection(app App) (*Collection, error) {
 
 // OrgReservedSlugs are the literal path segments under /api/orgs; an org with
 // one of them as its slug could not be reached by slug.
-var OrgReservedSlugs = []string{"config", "ancestor-rule", "rule-templates"}
+var OrgReservedSlugs = []string{"config", "ancestor-rule", "rule-templates", "transfers"}
 
 // FindOrg loads an organization by id or slug.
 func FindOrg(app App, idOrSlug string) (*Record, error) {
