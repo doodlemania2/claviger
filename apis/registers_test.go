@@ -182,7 +182,6 @@ func TestRegisterApiFinalizeNeedsStepUpAndLocksTheEntry(t *testing.T) {
 	}
 }
 
-
 func TestRegisterApiTwoSigners(t *testing.T) {
 	t.Parallel()
 
@@ -396,5 +395,44 @@ func TestRegisterApiRefusesAPIKeys(t *testing.T) {
 	status, _ := env.do(http.MethodGet, "/api/registers/baptisms/"+id, nil, "clv_nonexistent")
 	if status != http.StatusUnauthorized && status != http.StatusForbidden {
 		t.Fatalf("a bogus key: %d", status)
+	}
+}
+
+func TestRegisterApiCreateFromTemplate(t *testing.T) {
+	t.Parallel()
+
+	env := newCeremonyEnv(t)
+	seedOrgs(t, env.app)
+
+	body := map[string]any{"template": "sacramental", "name": "marriages", "signers": 2}
+
+	if status, _ := env.do(http.MethodPost, "/api/registers", body, ""); status != http.StatusUnauthorized {
+		t.Fatalf("anonymous: %d", status)
+	}
+
+	user, _ := env.app.FindRecordById("users", orgUserID("alice"))
+	tok, _ := user.NewAuthToken()
+
+	if status, _ := env.do(http.MethodPost, "/api/registers", body, tok); status != http.StatusForbidden {
+		t.Fatalf("a user: %d", status)
+	}
+
+	status, out := env.do(http.MethodPost, "/api/registers", body, auditSuperuserToken)
+	if status != http.StatusCreated || out["annotationCollection"] != "marriages_annotations" || out["chain"] != true || out["signers"] != float64(2) {
+		t.Fatalf("create: %d %v", status, out)
+	}
+
+	if status, _ := env.do(http.MethodPost, "/api/registers", body, auditSuperuserToken); status != http.StatusConflict {
+		t.Fatalf("duplicate: %d", status)
+	}
+
+	for _, b := range []map[string]any{
+		{"template": "nope", "name": "x"},
+		{"template": "sacramental", "name": "bad name"},
+		{"template": "sacramental", "name": "ok", "signers": 5},
+	} {
+		if status, _ := env.do(http.MethodPost, "/api/registers", b, auditSuperuserToken); status != http.StatusBadRequest {
+			t.Errorf("%v: %d", b, status)
+		}
 	}
 }

@@ -16,6 +16,7 @@ import (
 // Fork-local (Claviger #87): permanent registers. See docs/registers.md and
 // core/register*.go for the rules.
 //
+//	POST   /api/registers                                 {template: "sacramental", name, signers?, retainReason?}; superuser; creates a register from the template
 //	GET    /api/registers/{collection}/{id}               the entry with its annotations, oldest first (registrar, owner, admin)
 //	POST   /api/registers/{collection}/{id}/finalize      finalize, or take the next step when the register has two signers; registrar; fresh passkey
 //	DELETE /api/registers/{collection}/{id}/finalize      withdraw a pending finalization
@@ -26,11 +27,50 @@ import (
 // annotating are acts of a named person.
 func bindRegistersApi(rg *router.RouterGroup[*core.RequestEvent]) {
 	g := rg.Group("/registers").Bind(RequireAuth())
+	g.POST("", registerCreate).Bind(RequireSuperuserAuth())
 	g.GET("/{collection}/{id}", registerView)
 	g.POST("/{collection}/{id}/finalize", registerFinalize).Bind(RequireFreshPasskey(webauthnStepUpMaxAge))
 	g.DELETE("/{collection}/{id}/finalize", registerWithdraw)
 	g.POST("/{collection}/{id}/annotations", registerAnnotate).Bind(RequireFreshPasskey(webauthnStepUpMaxAge))
 	g.GET("/{collection}/{id}/certificate", registerCertificate)
+}
+
+type registerCreateBody struct {
+	Template     string `json:"template" form:"template"`
+	Name         string `json:"name" form:"name"`
+	Signers      int    `json:"signers" form:"signers"`
+	RetainReason string `json:"retainReason" form:"retainReason"`
+}
+
+// registerCreate makes a register from a template. An existing collection is
+// registered by creating a _permanentCollections row instead.
+func registerCreate(e *core.RequestEvent) error {
+	var body registerCreateBody
+	if err := e.BindBody(&body); err != nil {
+		return e.BadRequestError("Failed to read the request data.", err)
+	}
+
+	if body.Template != "sacramental" {
+		return e.BadRequestError("Unknown template. Use \"sacramental\", or add a _permanentCollections row for an existing collection.", nil)
+	}
+
+	if body.Signers != 0 && body.Signers != 1 && body.Signers != 2 {
+		return e.BadRequestError("Signers must be 1 or 2.", nil)
+	}
+
+	if core.PermanentConfigFor(e.App, body.Name) != nil {
+		return e.Error(http.StatusConflict, "That register already exists.", nil)
+	}
+
+	cfg, err := core.CreateSacramentalRegister(e.App, core.SacramentalRegisterOpts{Name: body.Name, Signers: body.Signers, RetainReason: body.RetainReason})
+	if err != nil {
+		return e.BadRequestError("Failed to create the register.", err)
+	}
+
+	return e.JSON(http.StatusCreated, map[string]any{
+		"collection": cfg.Collection, "annotationCollection": cfg.AnnotationCollection,
+		"chain": cfg.Chain, "signers": cfg.Signers, "finalizeField": cfg.FinalizeField,
+	})
 }
 
 func registerGate(e *core.RequestEvent) error {

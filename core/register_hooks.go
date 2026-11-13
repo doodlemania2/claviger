@@ -26,6 +26,13 @@ func (app *BaseApp) registerPermanentHooks() {
 	app.OnModelUpdate().Bind(guard)
 	app.OnModelDelete().Bind(guard)
 
+	// again right before the write: a handler that runs after the first check
+	// (a Go or JS hook with a later priority) can still change the record
+	exec := &hook.Handler[*ModelEvent]{Id: "__clvRegisterGuardExecute__", Func: registerModelGuard, Priority: -guardPriority}
+	app.OnModelCreateExecute().Bind(exec)
+	app.OnModelUpdateExecute().Bind(exec)
+	app.OnModelDeleteExecute().Bind(exec)
+
 	app.OnCollectionUpdate().Bind(&hook.Handler[*CollectionEvent]{
 		Id: "__clvRegisterCollectionGuard__", Func: registerCollectionUpdateGuard, Priority: guardPriority,
 	})
