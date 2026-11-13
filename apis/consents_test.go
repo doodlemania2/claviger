@@ -187,8 +187,32 @@ func TestConsentRoutesStaff(t *testing.T) {
 	})
 }
 
-// Org-scoped purposes: owners and admins manage the purposes of their own org.
-// carol is a registrar of P1 (staff, but not an admin) and the admin of P2.
+// Org-scoped purposes: owners, admins and registrars manage the purposes of
+// their own org. carol is a registrar of P1 (staff, but not an admin) and the
+// admin of P2.
+// tagRegistrar gives the user's membership of the org the registrar tag of
+// that org (a tag row is created when the org has none).
+func tagRegistrar(org, who string) func(t testing.TB, app *tests.TestApp) {
+	return func(t testing.TB, app *tests.TestApp) {
+		tag, err := app.FindFirstRecordByFilter(core.CollectionNameOrgRoles, "org={:o} && name={:n}",
+			map[string]any{"o": org, "n": core.RegistrarTag})
+		if err != nil {
+			roles, err := app.FindCollectionByNameOrId(core.CollectionNameOrgRoles)
+			orgMust(t, err)
+
+			tag = core.NewRecord(roles)
+			tag.Set("org", org)
+			tag.Set("name", core.RegistrarTag)
+			orgMust(t, app.Save(tag))
+		}
+
+		m, err := core.FindOrgMember(app, org, orgUserID(who))
+		orgMust(t, err)
+		m.Set("tags", append(m.GetStringSlice("tags"), tag.Id))
+		orgMust(t, app.Save(m))
+	}
+}
+
 func TestConsentRoutesOrgPurposes(t *testing.T) {
 	hhKEK(t)
 
@@ -211,7 +235,37 @@ func TestConsentRoutesOrgPurposes(t *testing.T) {
 			`"key":"trips"`, `"org":"`+orgP1+`"`, `"version":1`),
 		consentCase("an owner creates one", "alice", "POST", base, newBody, 200),
 		consentCase("a plain member is refused", "erin", "POST", base, newBody, 403),
-		consentCase("a registrar is not an admin", "carol", "POST", base, newBody, 403),
+		consentCase("a registrar creates one, pinned to the org", "carol", "POST", base, newBody, 200,
+			`"key":"trips"`, `"org":"`+orgP1+`"`),
+		consentCase("a viewer is refused", "frank", "POST", base, newBody, 403),
+		withBefore(consentCase("a registrar of another org is refused", "erin", "POST", base, newBody, 403), tagRegistrar(orgP2, "erin")),
+		withBefore(consentCase("a registrar of another org cannot list", "erin", "GET", base, "", 403), tagRegistrar(orgP2, "erin")),
+		withBefore(consentCase("a registrar of another org cannot update", "erin", "PATCH", base+"/own-"+orgP1, `{"name":"x"}`, 403),
+			func(t testing.TB, app *tests.TestApp) {
+				seed(orgP1)(t, app)
+				tagRegistrar(orgP2, "erin")(t, app)
+			}),
+		withBefore(consentCase("a registrar of another org cannot delete", "erin", "DELETE", base+"/own-"+orgP1, "", 403),
+			func(t testing.TB, app *tests.TestApp) {
+				seed(orgP1)(t, app)
+				tagRegistrar(orgP2, "erin")(t, app)
+			}),
+		withBefore(consentCase("a registrar still works in their own org", "erin", "POST", "/api/orgs/"+orgP2+"/consent-purposes", newBody, 200,
+			`"org":"`+orgP2+`"`), tagRegistrar(orgP2, "erin")),
+		withBefore(consentCase("a registrar cannot reach another org's purposes", "carol", "PATCH",
+			base+"/own-"+orgP2, `{"name":"x"}`, 404), seed(orgP2)),
+		consentCase("a registrar cannot make a global purpose", "carol", "POST", base,
+			`{"key":"trips","name":"Trips","text":"x","org":""}`, 200, `"org":"`+orgP1+`"`),
+		consentCase("a registrar cannot name another org", "carol", "POST", base,
+			`{"key":"trips","name":"Trips","text":"x","org":"`+orgP2+`"}`, 403),
+		consentCase("a registrar lists the org's and the global purposes", "carol", "GET", base, "", 200,
+			`"key":"newsletter"`),
+		withBefore(consentCase("a registrar updates", "carol", "PATCH", base+"/own-"+orgP1, `{"text":"Changed."}`, 200, `"version":2`),
+			seed(orgP1)),
+		withBefore(consentCase("a registrar retires", "carol", "PATCH", base+"/own-"+orgP1, `{"status":"archived"}`, 200, `"status":"archived"`),
+			seed(orgP1)),
+		withBefore(consentCase("a registrar deletes an unused purpose", "carol", "DELETE", base+"/own-"+orgP1, "", 204), seed(orgP1)),
+		consentCase("a registrar cannot change a global purpose", "carol", "PATCH", base+"/newsletter", `{"name":"x"}`, 403),
 		consentCase("a stranger gets a 404", "dave", "POST", "/api/orgs/"+orgP2+"/consent-purposes", newBody, 404),
 		consentCase("an admin of another org gets a 404", "bob", "POST", "/api/orgs/"+orgP2+"/consent-purposes", newBody, 404),
 		consentCase("a global purpose is not possible: other org in the body", "bob", "POST", base,
