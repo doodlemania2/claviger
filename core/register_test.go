@@ -43,7 +43,7 @@ func newRegWorld(t testing.TB, signers int) *regWorld {
 	must(t, app.Save(w.org))
 
 	users, _ := app.FindCollectionByNameOrId("users")
-	for _, n := range []string{"reg1", "reg2", "adm", "mem", "out"} {
+	for _, n := range []string{"reg1", "reg2", "adm", "own", "mem", "out"} {
 		u := core.NewRecord(users)
 		u.SetEmail(n + "@register.test")
 		u.SetPassword("password123")
@@ -71,6 +71,7 @@ func newRegWorld(t testing.TB, signers int) *regWorld {
 	add("reg1", "member", tag.Id)
 	add("reg2", "member", tag.Id)
 	add("adm", "admin")
+	add("own", "owner")
 	add("mem", "member")
 
 	w.cfg, err = core.CreateSacramentalRegister(app, core.SacramentalRegisterOpts{Name: "baptisms", Signers: signers})
@@ -99,6 +100,24 @@ func (w *regWorld) draft(t testing.TB, surname string) *core.Record {
 	must(t, w.app.Save(r))
 
 	return r
+}
+
+func (w *regWorld) superuser(t testing.TB) *core.Record {
+	t.Helper()
+
+	if su, err := w.app.FindAuthRecordByEmail(core.CollectionNameSuperusers, "root@register.test"); err == nil {
+		return su
+	}
+
+	col, err := w.app.FindCollectionByNameOrId(core.CollectionNameSuperusers)
+	must(t, err)
+
+	su := core.NewRecord(col)
+	su.SetEmail("root@register.test")
+	su.SetPassword("password123")
+	must(t, w.app.Save(su))
+
+	return su
 }
 
 func (w *regWorld) finalize(t testing.TB, who string, e *core.Record) *core.RegisterFinalizeResult {
@@ -224,12 +243,16 @@ func TestRegisterFinalizeOneSigner(t *testing.T) {
 	w := newRegWorld(t, 1)
 	d := w.draft(t, "Smith")
 
-	cases := map[string]int{"mem": 403, "adm": 403, "out": 404}
+	cases := map[string]int{"mem": 403, "adm": 403, "own": 403, "out": 404}
 	for who, want := range cases {
 		_, err := core.FinalizeRegisterEntry(w.app, w.ctx, w.user[who], "baptisms", d.Id)
 		if statusOf(err) != want {
 			t.Errorf("%s: want %d, got %v", who, want, err)
 		}
+	}
+
+	if _, err := core.FinalizeRegisterEntry(w.app, w.ctx, w.superuser(t), "baptisms", d.Id); statusOf(err) != 403 {
+		t.Fatalf("superuser starting a finalize: %v", err)
 	}
 
 	if w.fresh(t, d).GetDateTime("finalizedAt").IsZero() == false {
@@ -449,16 +472,32 @@ func TestRegisterTwoSigners(t *testing.T) {
 		t.Fatal("withdraw should clear the request")
 	}
 
-	// request again; an org admin (no tag) confirms
+	// request again; an org owner or admin without the tag cannot confirm
 	w.finalize(t, "reg1", d)
 
-	res = w.finalize(t, "adm", d)
+	for _, who := range []string{"adm", "own"} {
+		if _, err := core.FinalizeRegisterEntry(w.app, w.ctx, w.user[who], "baptisms", d.Id); statusOf(err) != 403 {
+			t.Fatalf("%s confirming without the tag: %v", who, err)
+		}
+	}
+
+	if w.fresh(t, d).GetString("pendingBy") == "" {
+		t.Fatal("a refused confirmation changed the entry")
+	}
+
+	// a superuser can never be the confirmer
+	if _, err := core.FinalizeRegisterEntry(w.app, w.ctx, w.superuser(t), "baptisms", d.Id); statusOf(err) != 403 {
+		t.Fatalf("superuser confirming: %v", err)
+	}
+
+	// a second registrar can
+	res = w.finalize(t, "reg2", d)
 	if !res.Final {
 		t.Fatalf("second step should finalize: %+v", res)
 	}
 
 	got = w.fresh(t, d)
-	if got.GetString("finalizedBy") != w.user["reg1"].Id || got.GetString("secondSigner") != w.user["adm"].Id || got.GetString("pendingBy") != "" {
+	if got.GetString("finalizedBy") != w.user["reg1"].Id || got.GetString("secondSigner") != w.user["reg2"].Id || got.GetString("pendingBy") != "" {
 		t.Fatalf("signers: %q %q pending %q", got.GetString("finalizedBy"), got.GetString("secondSigner"), got.GetString("pendingBy"))
 	}
 
@@ -496,7 +535,11 @@ func TestRegisterAnnotations(t *testing.T) {
 
 	w.finalize(t, "reg1", d)
 
-	for who, want := range map[string]int{"mem": 403, "adm": 403, "out": 404} {
+	if _, err := core.AddRegisterAnnotation(w.app, w.ctx, w.superuser(t), "baptisms", d.Id, in); statusOf(err) != 403 {
+		t.Errorf("superuser annotating: %v", err)
+	}
+
+	for who, want := range map[string]int{"mem": 403, "adm": 403, "own": 403, "out": 404} {
 		if _, err := core.AddRegisterAnnotation(w.app, w.ctx, w.user[who], "baptisms", d.Id, in); statusOf(err) != want {
 			t.Errorf("%s: want %d, got %v", who, want, err)
 		}
@@ -651,8 +694,8 @@ func TestRegisterAuditEntries(t *testing.T) {
 	_, err := core.FinalizeRegisterEntry(w.app, ctx, w.user["reg1"], "baptisms", d.Id)
 	must(t, err)
 
-	ctx2 := core.WithAuditContext(context.Background(), core.NewAuditActorFromRecord(w.user["adm"]), "1.2.3.4")
-	_, err = core.FinalizeRegisterEntry(w.app, ctx2, w.user["adm"], "baptisms", d.Id)
+	ctx2 := core.WithAuditContext(context.Background(), core.NewAuditActorFromRecord(w.user["reg2"]), "1.2.3.4")
+	_, err = core.FinalizeRegisterEntry(w.app, ctx2, w.user["reg2"], "baptisms", d.Id)
 	must(t, err)
 
 	_, err = core.AddRegisterAnnotation(w.app, ctx, w.user["reg1"], "baptisms", d.Id,
@@ -661,7 +704,7 @@ func TestRegisterAuditEntries(t *testing.T) {
 
 	for action, actor := range map[string]string{
 		core.AuditActionRegisterFinalizeRequest: w.user["reg1"].Id,
-		core.AuditActionRegisterFinalize:        w.user["adm"].Id,
+		core.AuditActionRegisterFinalize:        w.user["reg2"].Id,
 		core.AuditActionRegisterAnnotate:        w.user["reg1"].Id,
 	} {
 		rows, err := w.app.FindAllRecords(core.CollectionNameAuditLog, dbx.HashExp{"action": action})

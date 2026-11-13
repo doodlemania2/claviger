@@ -2,6 +2,7 @@ package apis_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -144,6 +145,10 @@ func TestRegisterApiFinalizeNeedsStepUpAndLocksTheEntry(t *testing.T) {
 		t.Fatalf("anonymous: %d", status)
 	}
 
+	if status, body := env.finalize(auditSuperuserToken, id); status != http.StatusForbidden || !strings.Contains(fmt.Sprint(body), "Superusers cannot sign") {
+		t.Fatalf("superuser requesting: %d %v", status, body)
+	}
+
 	for who, want := range map[string]int{"dave": 403, "bob": 403, "erin": 404} {
 		if status, body := env.finalize(env.fresh(who), id); status != want {
 			t.Errorf("%s: want %d, got %d %v", who, want, status, body)
@@ -197,6 +202,15 @@ func TestRegisterApiTwoSigners(t *testing.T) {
 		t.Fatalf("the same person confirming: %d", status)
 	}
 
+	// a superuser is refused at the request, and an org owner without the tag at the confirmation
+	if status, body := env.finalize(auditSuperuserToken, id); status != http.StatusForbidden || !strings.Contains(fmt.Sprint(body), "Superusers cannot sign") {
+		t.Fatalf("superuser confirming: %d %v", status, body)
+	}
+
+	if status, _ := env.finalize(env.fresh("alice"), id); status != http.StatusForbidden {
+		t.Fatalf("owner without the tag confirming: %d", status)
+	}
+
 	// still editable
 	if status, body := env.do(http.MethodPatch, "/api/collections/baptisms/records/"+id, map[string]any{"officiant": "Fr. B"}, env.plain("carol")); status != http.StatusOK {
 		t.Fatalf("editing a pending entry: %d %v", status, body)
@@ -243,6 +257,10 @@ func TestRegisterApiAnnotationsAndView(t *testing.T) {
 
 	if status, _ := env.do(http.MethodPost, url+"/annotations", note, env.plain("carol")); status != http.StatusForbidden {
 		t.Fatalf("annotating without step-up: %d", status)
+	}
+
+	if status, body := env.do(http.MethodPost, url+"/annotations", note, auditSuperuserToken); status != http.StatusForbidden || !strings.Contains(fmt.Sprint(body), "Superusers cannot sign or annotate") {
+		t.Fatalf("superuser annotating: %d %v", status, body)
 	}
 
 	for who, want := range map[string]int{"dave": 403, "bob": 403, "erin": 404} {

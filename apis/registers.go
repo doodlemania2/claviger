@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/hook"
 	"github.com/doodlemania2/claviger/tools/router"
 )
 
@@ -18,9 +19,9 @@ import (
 //
 //	POST   /api/registers                                 {template: "sacramental", name, signers?, retainReason?}; superuser; creates a register from the template
 //	GET    /api/registers/{collection}/{id}               the entry with its annotations, oldest first (registrar, owner, admin)
-//	POST   /api/registers/{collection}/{id}/finalize      finalize, or take the next step when the register has two signers; registrar; fresh passkey
+//	POST   /api/registers/{collection}/{id}/finalize      finalize, or take the next step when the register has two signers; registrar (never a superuser); fresh passkey
 //	DELETE /api/registers/{collection}/{id}/finalize      withdraw a pending finalization
-//	POST   /api/registers/{collection}/{id}/annotations   {kind, text, reason, supersedes?}; registrar; fresh passkey
+//	POST   /api/registers/{collection}/{id}/annotations   {kind, text, reason, supersedes?}; registrar (never a superuser); fresh passkey
 //	GET    /api/registers/{collection}/{id}/certificate   HTML page with print CSS; registrar, owner, admin
 //
 // The routes need a signed-in person. API keys are refused: finalizing and
@@ -29,10 +30,25 @@ func bindRegistersApi(rg *router.RouterGroup[*core.RequestEvent]) {
 	g := rg.Group("/registers").Bind(RequireAuth())
 	g.POST("", registerCreate).Bind(RequireSuperuserAuth())
 	g.GET("/{collection}/{id}", registerView)
-	g.POST("/{collection}/{id}/finalize", registerFinalize).Bind(RequireFreshPasskey(webauthnStepUpMaxAge))
+	g.POST("/{collection}/{id}/finalize", registerFinalize).Bind(refuseSuperuserSigning(), RequireFreshPasskey(webauthnStepUpMaxAge))
 	g.DELETE("/{collection}/{id}/finalize", registerWithdraw)
-	g.POST("/{collection}/{id}/annotations", registerAnnotate).Bind(RequireFreshPasskey(webauthnStepUpMaxAge))
+	g.POST("/{collection}/{id}/annotations", registerAnnotate).Bind(refuseSuperuserSigning(), RequireFreshPasskey(webauthnStepUpMaxAge))
 	g.GET("/{collection}/{id}/certificate", registerCertificate)
+}
+
+// refuseSuperuserSigning answers a superuser with a clear 403 before the
+// passkey step-up: only registrars sign and annotate, a superuser never does.
+func refuseSuperuserSigning() *hook.Handler[*core.RequestEvent] {
+	return &hook.Handler[*core.RequestEvent]{
+		Id: "claviger_register_refuse_superuser",
+		Func: func(e *core.RequestEvent) error {
+			if e.HasSuperuserAuth() {
+				return e.ForbiddenError("Superusers cannot sign or annotate registers. Ask a registrar of the org.", nil)
+			}
+
+			return e.Next()
+		},
+	}
 }
 
 type registerCreateBody struct {

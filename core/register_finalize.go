@@ -15,12 +15,16 @@ import (
 //   - One signer (default): a member tagged "registrar" finalizes alone.
 //   - Two signers: a registrar requests the finalization (the entry becomes
 //     "pending finalize", is not final and stays editable). A second, different
-//     person (a registrar, or an owner or admin of the org) confirms. If the
+//     person who is also a registrar confirms. If the
 //     entry changed after the request, the confirmation is refused and the
 //     request has to be made again, so the second person signs what they saw.
 //
-// Every step writes an audit entry with meta.orgId. A superuser counts as a
-// registrar for both steps (the audit entry names them).
+// Every step writes an audit entry with meta.orgId. Only people with the
+// registrar tag sign: owners and admins without the tag cannot, and a superuser
+// can never be either signer (nor annotate); superusers keep their other
+// abilities, such as setting registers up.
+
+const errSuperuserSigns = "Superusers cannot sign or annotate registers. Ask a registrar of the org."
 
 // RegisterFinalizeResult is the outcome of FinalizeRegisterEntry.
 type RegisterFinalizeResult struct {
@@ -33,15 +37,16 @@ type RegisterFinalizeResult struct {
 
 type registerStanding struct {
 	actor     *OrgActor
-	registrar bool
-	confirmer bool
+	registrar bool // tagged "registrar": may start, confirm and annotate
+	superuser bool
+	staff     bool // may read through the register routes
 }
 
 func registerStandingOf(app App, org *Record, auth *Record) registerStanding {
 	st := registerStanding{actor: NewOrgActor(app, org, auth)}
 
 	if st.actor.Superuser {
-		st.registrar, st.confirmer = true, true
+		st.superuser, st.staff = true, true
 
 		return st
 	}
@@ -54,7 +59,7 @@ func registerStandingOf(app App, org *Record, auth *Record) registerStanding {
 		st.registrar = true
 	}
 
-	st.confirmer = st.registrar || st.actor.Role == OrgRoleOwner || st.actor.Role == OrgRoleAdmin
+	st.staff = st.registrar || st.actor.Role == OrgRoleOwner || st.actor.Role == OrgRoleAdmin
 
 	return st
 }
@@ -95,7 +100,7 @@ func RegisterStaff(app App, collection, id string, auth *Record) (*PermanentConf
 		return nil, nil, nil, err
 	}
 
-	if !st.confirmer {
+	if !st.staff {
 		return nil, nil, nil, orgErr(403, "Only registrars, owners and admins can do this.")
 	}
 
@@ -118,12 +123,16 @@ func FinalizeRegisterEntry(app App, ctx context.Context, auth *Record, collectio
 			return orgErr(409, "This entry is already final.")
 		}
 
+		if st.superuser {
+			return orgErr(403, errSuperuserSigns)
+		}
+
 		pendingBy := entry.GetString("pendingBy")
 
 		switch {
 		case cfg.Signers == 2 && pendingBy != "":
-			if !st.confirmer {
-				return orgErr(403, "Only registrars, owners and admins can do this.")
+			if !st.registrar {
+				return orgErr(403, "Only registrars can confirm a finalization.")
 			}
 
 			if pendingBy == auth.Id {
