@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/doodlemania2/claviger/core"
 	"github.com/doodlemania2/claviger/tests"
 	"github.com/doodlemania2/claviger/tools/types"
@@ -212,6 +213,34 @@ func TestOrgTransferDeclineAndCancelRoutes(t *testing.T) {
 	runOrgCases(t, []orgCase{
 		{name: "the person declines", who: "bob", method: http.MethodPost, url: url(trBob, "decline"), status: 200,
 			before: withTransfers, has: []string{`"state":"declined"`}, after: state(core.OrgTransferDeclined)},
+		{name: "a target admin declines", who: "ivan", method: http.MethodPost, url: "/api/orgs/" + orgP2 + "/transfers/" + trBob + "/decline",
+			status: 200, before: withTransfers, has: []string{`"state":"declined"`},
+			after: func(t testing.TB, app *tests.TestApp) {
+				state(core.OrgTransferDeclined)(t, app)
+
+				r, _ := app.FindRecordById(core.CollectionNameOrgTransfers, trBob)
+				if r.GetString("decidedBy") != orgUserID("ivan") {
+					t.Fatalf("decidedBy %q", r.GetString("decidedBy"))
+				}
+
+				es, err := app.FindAllRecords(core.CollectionNameAuditLog, dbx.HashExp{"action": core.AuditActionOrgTransferDecline})
+				orgMust(t, err)
+
+				if len(es) != 1 {
+					t.Fatalf("audit entries: %d", len(es))
+				}
+
+				m := orgAuditMeta(t, es[0])
+				if m["side"] != "target" || m["decidedBy"] != orgUserID("ivan") || m["fromOrg"] != orgP1 || m["toOrg"] != orgP2 {
+					t.Fatalf("meta %v", m)
+				}
+			}},
+		{name: "a target admin cannot accept", who: "carol", method: http.MethodPost, url: "/api/orgs/" + orgP2 + "/transfers/" + trBob + "/accept",
+			status: 403, before: withTransfers, after: state(core.OrgTransferPending)},
+		{name: "a non-admin of the target cannot decline", who: "erin", method: http.MethodPost, url: "/api/orgs/" + orgP2 + "/transfers/" + trBob + "/decline",
+			status: 403, before: withTransfers, after: state(core.OrgTransferPending)},
+		{name: "a superuser cannot decline", who: "super", method: http.MethodPost, url: url(trBob, "decline"),
+			status: 403, before: withTransfers, after: state(core.OrgTransferPending)},
 		{name: "an admin cannot decline for the person", who: "alice", method: http.MethodPost, url: url(trBob, "decline"), status: 403,
 			before: withTransfers, after: state(core.OrgTransferPending)},
 		{name: "an admin of the source cancels", who: "alice", method: http.MethodPost, url: url(trBob, "cancel"), status: 200,
