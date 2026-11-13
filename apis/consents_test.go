@@ -213,6 +213,24 @@ func tagRegistrar(org, who string) func(t testing.TB, app *tests.TestApp) {
 	}
 }
 
+// foreignTag attaches P2's registrar tag to the user's membership of P1,
+// written without hooks (the API and the model hook refuse it): a tag of
+// another org must grant nothing.
+func foreignTag(who string) func(t testing.TB, app *tests.TestApp) {
+	return func(t testing.TB, app *tests.TestApp) {
+		tagRegistrar(orgP2, "ivan")(t, app) // makes P2's tag row
+
+		tag, err := app.FindFirstRecordByFilter(core.CollectionNameOrgRoles, "org={:o} && name={:n}",
+			map[string]any{"o": orgP2, "n": core.RegistrarTag})
+		orgMust(t, err)
+
+		m, err := core.FindOrgMember(app, orgP1, orgUserID(who))
+		orgMust(t, err)
+		m.Set("tags", []string{tag.Id})
+		orgMust(t, app.UnsafeWithoutHooks().Save(m))
+	}
+}
+
 func TestConsentRoutesOrgPurposes(t *testing.T) {
 	hhKEK(t)
 
@@ -237,6 +255,9 @@ func TestConsentRoutesOrgPurposes(t *testing.T) {
 		consentCase("a plain member is refused", "erin", "POST", base, newBody, 403),
 		consentCase("a registrar creates one, pinned to the org", "carol", "POST", base, newBody, 200,
 			`"key":"trips"`, `"org":"`+orgP1+`"`),
+		withBefore(consentCase("a role tag row of another org on the membership grants nothing", "erin", "POST", base, newBody, 403),
+			foreignTag("erin")),
+		withBefore(consentCase("a role tag row of another org cannot list either", "erin", "GET", base, "", 403), foreignTag("erin")),
 		consentCase("a viewer is refused", "frank", "POST", base, newBody, 403),
 		withBefore(consentCase("a registrar of another org is refused", "erin", "POST", base, newBody, 403), tagRegistrar(orgP2, "erin")),
 		withBefore(consentCase("a registrar of another org cannot list", "erin", "GET", base, "", 403), tagRegistrar(orgP2, "erin")),
