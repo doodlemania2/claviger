@@ -188,7 +188,10 @@ func countOtherActiveOwners(app App, orgId, exceptMemberId string) int {
 	return len(recs)
 }
 
-// OrgTagNames returns the tag names of a membership.
+// OrgTagNames returns the tag names of a membership (or of an invitation: any
+// record with an org and a tags relation). A tag only counts when its
+// _orgRoles row belongs to the same org as the record: a row of another org
+// grants nothing, whatever wrote the relation.
 func OrgTagNames(app App, member *Record) []string {
 	ids := member.GetStringSlice("tags")
 	if len(ids) == 0 {
@@ -200,8 +203,14 @@ func OrgTagNames(app App, member *Record) []string {
 		return []string{}
 	}
 
+	org := member.GetString("org")
 	names := make([]string, 0, len(recs))
+
 	for _, r := range recs {
+		if r.GetString("org") != org {
+			continue
+		}
+
 		names = append(names, r.GetString("name"))
 	}
 

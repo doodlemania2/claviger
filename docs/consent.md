@@ -55,16 +55,16 @@ API keys are refused on all of them.
 | `GET /api/orgs/{id}/consents?member=ID` or `?user=ID` | org staff | The person's consents and history (rows of this org and of no org) |
 | `GET /api/consent-purposes?org=ID` | members of the org | Active purposes offered to the org. A superuser without `org` gets all |
 | `POST /api/consent-purposes`, `PATCH /api/consent-purposes/{id}`, `DELETE /api/consent-purposes/{id}` | superuser | `id` can be the key. These are the only routes that write global purposes (no `org`) |
-| `GET /api/orgs/{id}/consent-purposes` | org owners and admins | The org's purposes (also archived ones) and the global ones |
-| `POST /api/orgs/{id}/consent-purposes` | org owners and admins | Same body as above. `org` is always `{id}`; a different `org` in the body is a 403 |
-| `PATCH /api/orgs/{id}/consent-purposes/{pid}`, `DELETE ...` | org owners and admins | `pid` can be the key. Only purposes of this org |
+| `GET /api/orgs/{id}/consent-purposes` | org owners, admins and registrars | The org's purposes (also archived ones) and the global ones |
+| `POST /api/orgs/{id}/consent-purposes` | org owners, admins and registrars | Same body as above. `org` is always `{id}`; a different `org` in the body is a 403 |
+| `PATCH /api/orgs/{id}/consent-purposes/{pid}`, `DELETE ...` | org owners, admins and registrars | `pid` can be the key. Only purposes of this org |
 | `GET /api/consents/history?subject=ID` | superuser | Consents and history of one member id or user id |
 
 Granting what is already granted on the current version changes nothing and writes no event. A grant after a withdrawal clears `withdrawnAt` and records a new event.
 
 ### Purposes managed by an org
 
-Owners and admins of an org (not registrars or other members) can create, edit, archive and delete the purposes that belong to their org, through the org routes above. Superusers can use them too.
+Owners and admins of an org, and the members tagged `registrar` (the same staff that records consents, see above), can create, edit, archive and delete the purposes that belong to their org, through the org routes above. Plain members and viewers are refused (403), and so is a registrar of another org (404 when they are not a member of this org, 403 when they are a member without the tag: a tag only counts in its own org). Superusers can use the routes too.
 
 - The purpose always gets `org` set to the org of the route. An org admin can never create a global purpose, move a purpose to another org (`org` cannot change after creation), or touch another org's purposes (404). A global purpose is refused with 403.
 - The same rules as for superusers apply: a changed text raises the version, and a purpose with consent records cannot be deleted (409), archive it instead.
@@ -102,9 +102,14 @@ The person's own consents and history are in their data export (`docs/data-expor
 
 The admin UI has a **Consents** page (`#/consents`) to create and edit purposes and to look up the history of one person by member id or user id.
 
+### Hosted page for org staff
+
+`GET /orgs/consents/{slug}` is a hosted page, in the same style as the other hosted org pages (strict Content-Security-Policy, strings from the message catalog, accessible mode, a sign-in of its own). Owners, admins and registrars use it to see the purposes of their org and the global ones, to add a purpose, to edit one (a changed text raises the version, and the page says so), to retire it and offer it again, and to delete one that has no consent records. Global purposes are listed for reference and have no buttons. It uses only the org routes above, so every rule of the server applies: a purpose is always filed under the org, a marketing purpose is never open to minors and gets a minimum age of 18 when none is set, and a purpose with consent records answers 409, which the page explains and points to "Retire". A member who is not staff sees a "No access" message. The org page links to it for owners, admins and registrars.
+
+The page is a shell and carries no purpose text; everything is loaded through the API after sign-in.
+
 ## Not built yet
 
 - A hosted page where people manage their own consents (the routes exist).
-- A page in the org admin UI for managing purposes (only the routes exist).
 - Webhook events for consent changes (the audit entries are delivered like other entries).
 - Automatic expiry of old events (retention, 88-3).

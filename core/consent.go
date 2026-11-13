@@ -388,18 +388,27 @@ func UpdateConsentPurpose(app App, ctx context.Context, rec *Record, in map[stri
 }
 
 // orgConsentPurposeAccess checks that the actor may manage consent purposes
-// of the org: its owners and admins (and superusers).
+// of the org: its owners and admins, the members tagged "registrar" (the same
+// staff that records consents and manages households), and superusers.
 func orgConsentPurposeAccess(app App, org, auth *Record) error {
-	actor := NewOrgActor(app, org, auth)
+	actor := NewHouseholdActor(app, org, nil, auth)
 	if !actor.IsMember() {
 		return orgErr(404, "Organization not found.")
 	}
 
-	if !actor.CanManage() {
-		return orgErr(403, "Only the owners and admins of the organization can manage its consent purposes.")
+	if !actor.Staff {
+		return orgErr(403, consentPurposeStaffMsg)
 	}
 
 	return nil
+}
+
+const consentPurposeStaffMsg = "Only the owners, admins and registrars of the organization can manage its consent purposes."
+
+// CheckOrgConsentPurposeAccess is the access check of the org's purpose
+// routes: 404 for a non-member, 403 for a member who is not staff.
+func CheckOrgConsentPurposeAccess(app App, org, auth *Record) error {
+	return orgConsentPurposeAccess(app, org, auth)
 }
 
 // FindOrgConsentPurpose loads a purpose (key or id) that belongs to the org.
@@ -444,8 +453,8 @@ func orgConsentPurposeInput(org *Record, in map[string]any) (map[string]any, err
 	return out, nil
 }
 
-// CreateOrgConsentPurpose creates a purpose scoped to the org. Owners and
-// admins only; the org is always the route's org.
+// CreateOrgConsentPurpose creates a purpose scoped to the org. Owners, admins
+// and registrars only; the org is always the route's org.
 func CreateOrgConsentPurpose(app App, ctx context.Context, org, auth *Record, in map[string]any) (*Record, error) {
 	if err := orgConsentPurposeAccess(app, org, auth); err != nil {
 		return nil, err

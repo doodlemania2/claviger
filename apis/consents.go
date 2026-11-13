@@ -16,10 +16,10 @@ import (
 //	POST   /api/consent-purposes                      superuser: {key, name, text, lawfulBasis?, minAge?, requiresGuardian?, marketing?, org?}
 //	PATCH  /api/consent-purposes/{id}                 superuser: a changed text raises the version
 //	DELETE /api/consent-purposes/{id}                 superuser: a purpose with consent records is archived instead (409)
-//	GET    /api/orgs/{id}/consent-purposes            org owners and admins: the purposes of the org and the global ones
-//	POST   /api/orgs/{id}/consent-purposes            org owners and admins: as above, the org is always {id}
-//	PATCH  /api/orgs/{id}/consent-purposes/{pid}      org owners and admins: own org's purposes only
-//	DELETE /api/orgs/{id}/consent-purposes/{pid}      org owners and admins: own org's purposes only (409 with consents)
+//	GET    /api/orgs/{id}/consent-purposes            org owners, admins, registrars: the purposes of the org and the global ones
+//	POST   /api/orgs/{id}/consent-purposes            org owners, admins, registrars: as above, the org is always {id}
+//	PATCH  /api/orgs/{id}/consent-purposes/{pid}      org owners, admins, registrars: own org's purposes only
+//	DELETE /api/orgs/{id}/consent-purposes/{pid}      org owners, admins, registrars: own org's purposes only (409 with consents)
 //	GET    /api/consents/history                      superuser: ?subject=ID (a member id or a user id)
 //	GET    /api/orgs/{id}/consents                    org staff: ?member=ID | ?user=ID: the person's consents and history
 //	POST   /api/orgs/{id}/consents                    org staff: {purpose, member|user, action, method?, evidenceRef, givenBy?}
@@ -351,13 +351,8 @@ func consentOrgPurposesList(e *core.RequestEvent) error {
 		return err
 	}
 
-	actor := core.NewOrgActor(e.App, org, e.Auth)
-	if !actor.IsMember() {
-		return e.NotFoundError("Organization not found.", nil)
-	}
-
-	if !actor.CanManage() {
-		return e.ForbiddenError("Only the owners and admins of the organization can manage its consent purposes.", nil)
+	if err := core.CheckOrgConsentPurposeAccess(e.App, org, e.Auth); err != nil {
+		return orgHTTP(e, err)
 	}
 
 	rows, err := e.App.FindRecordsByFilter(core.CollectionNameConsentPurposes,
