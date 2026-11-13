@@ -16,6 +16,10 @@ import (
 //	POST   /api/consent-purposes                      superuser: {key, name, text, lawfulBasis?, minAge?, requiresGuardian?, marketing?, org?}
 //	PATCH  /api/consent-purposes/{id}                 superuser: a changed text raises the version
 //	DELETE /api/consent-purposes/{id}                 superuser: a purpose with consent records is archived instead (409)
+//	GET    /api/orgs/{id}/consent-purposes            org owners and admins: the purposes of the org and the global ones
+//	POST   /api/orgs/{id}/consent-purposes            org owners and admins: as above, the org is always {id}
+//	PATCH  /api/orgs/{id}/consent-purposes/{pid}      org owners and admins: own org's purposes only
+//	DELETE /api/orgs/{id}/consent-purposes/{pid}      org owners and admins: own org's purposes only (409 with consents)
 //	GET    /api/consents/history                      superuser: ?subject=ID (a member id or a user id)
 //	GET    /api/orgs/{id}/consents                    org staff: ?member=ID | ?user=ID: the person's consents and history
 //	POST   /api/orgs/{id}/consents                    org staff: {purpose, member|user, action, method?, evidenceRef, givenBy?}
@@ -36,6 +40,11 @@ func bindConsentsApi(rg *router.RouterGroup[*core.RequestEvent], orgs *router.Ro
 	p.DELETE("/{id}", consentPurposesDelete).Bind(RequireSuperuserAuth())
 
 	rg.GET("/consents/history", consentsAdminHistory).Bind(RequireSuperuserAuth())
+
+	orgs.GET("/{id}/consent-purposes", consentOrgPurposesList)
+	orgs.POST("/{id}/consent-purposes", consentOrgPurposesCreate)
+	orgs.PATCH("/{id}/consent-purposes/{pid}", consentOrgPurposesUpdate)
+	orgs.DELETE("/{id}/consent-purposes/{pid}", consentOrgPurposesDelete)
 
 	orgs.GET("/{id}/consents", consentsOrgView)
 	orgs.POST("/{id}/consents", consentsOrgRecord)
@@ -312,6 +321,111 @@ func consentPurposesDelete(e *core.RequestEvent) error {
 	p, err := core.FindConsentPurpose(e.App, e.Request.PathValue("id"))
 	if err != nil {
 		return e.NotFoundError("Consent purpose not found.", nil)
+	}
+
+	if err := core.DeleteConsentPurpose(e.App, auditContext(e), p); err != nil {
+		return orgHTTP(e, err)
+	}
+
+	return e.NoContent(http.StatusNoContent)
+}
+
+// ---- purposes of an org ---------------------------------------------------------------
+
+func consentOrgFind(e *core.RequestEvent) (*core.Record, error) {
+	if err := consentGate(e); err != nil {
+		return nil, err
+	}
+
+	org, err := core.FindOrg(e.App, e.Request.PathValue("id"))
+	if err != nil {
+		return nil, e.NotFoundError("Organization not found.", nil)
+	}
+
+	return org, nil
+}
+
+func consentOrgPurposesList(e *core.RequestEvent) error {
+	org, err := consentOrgFind(e)
+	if err != nil {
+		return err
+	}
+
+	actor := core.NewOrgActor(e.App, org, e.Auth)
+	if !actor.IsMember() {
+		return e.NotFoundError("Organization not found.", nil)
+	}
+
+	if !actor.CanManage() {
+		return e.ForbiddenError("Only the owners and admins of the organization can manage its consent purposes.", nil)
+	}
+
+	rows, err := e.App.FindRecordsByFilter(core.CollectionNameConsentPurposes,
+		"org='' || org={:o}", "name", 0, 0, map[string]any{"o": org.Id})
+	if err != nil {
+		return e.InternalServerError("", err)
+	}
+
+	items := make([]map[string]any, 0, len(rows))
+	for _, p := range rows {
+		items = append(items, consentPurposeJSON(p))
+	}
+
+	return e.JSON(http.StatusOK, map[string]any{"items": items})
+}
+
+func consentOrgPurposesCreate(e *core.RequestEvent) error {
+	org, err := consentOrgFind(e)
+	if err != nil {
+		return err
+	}
+
+	var body map[string]any
+	if err := e.BindBody(&body); err != nil {
+		return e.BadRequestError("Failed to read the request data.", err)
+	}
+
+	p, err := core.CreateOrgConsentPurpose(e.App, auditContext(e), org, e.Auth, body)
+	if err != nil {
+		return orgHTTP(e, err)
+	}
+
+	return e.JSON(http.StatusOK, consentPurposeJSON(p))
+}
+
+func consentOrgPurposesUpdate(e *core.RequestEvent) error {
+	org, err := consentOrgFind(e)
+	if err != nil {
+		return err
+	}
+
+	p, err := core.FindOrgConsentPurpose(e.App, org, e.Auth, e.Request.PathValue("pid"))
+	if err != nil {
+		return orgHTTP(e, err)
+	}
+
+	var body map[string]any
+	if err := e.BindBody(&body); err != nil {
+		return e.BadRequestError("Failed to read the request data.", err)
+	}
+
+	p, err = core.UpdateOrgConsentPurpose(e.App, auditContext(e), org, e.Auth, p, body)
+	if err != nil {
+		return orgHTTP(e, err)
+	}
+
+	return e.JSON(http.StatusOK, consentPurposeJSON(p))
+}
+
+func consentOrgPurposesDelete(e *core.RequestEvent) error {
+	org, err := consentOrgFind(e)
+	if err != nil {
+		return err
+	}
+
+	p, err := core.FindOrgConsentPurpose(e.App, org, e.Auth, e.Request.PathValue("pid"))
+	if err != nil {
+		return orgHTTP(e, err)
 	}
 
 	if err := core.DeleteConsentPurpose(e.App, auditContext(e), p); err != nil {

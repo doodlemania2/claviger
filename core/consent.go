@@ -358,6 +358,13 @@ func CreateConsentPurpose(app App, ctx context.Context, in map[string]any) (*Rec
 		return nil, err
 	}
 
+	// keys are unique across all orgs, because consents store the key
+	if key := rec.GetString("key"); key != "" {
+		if _, err := app.FindFirstRecordByData(CollectionNameConsentPurposes, "key", key); err == nil {
+			return nil, orgErr(400, "A consent purpose with the key \""+key+"\" already exists. Keys are unique across all organizations; choose another.")
+		}
+	}
+
 	if err := saveOrgRecord(app, ctx, rec); err != nil {
 		return nil, err
 	}
@@ -378,6 +385,96 @@ func UpdateConsentPurpose(app App, ctx context.Context, rec *Record, in map[stri
 	}
 
 	return rec, nil
+}
+
+// orgConsentPurposeAccess checks that the actor may manage consent purposes
+// of the org: its owners and admins (and superusers).
+func orgConsentPurposeAccess(app App, org, auth *Record) error {
+	actor := NewOrgActor(app, org, auth)
+	if !actor.IsMember() {
+		return orgErr(404, "Organization not found.")
+	}
+
+	if !actor.CanManage() {
+		return orgErr(403, "Only the owners and admins of the organization can manage its consent purposes.")
+	}
+
+	return nil
+}
+
+// FindOrgConsentPurpose loads a purpose (key or id) that belongs to the org.
+// A global purpose is refused (403: superusers only); another org's purpose
+// is reported as not found.
+func FindOrgConsentPurpose(app App, org, auth *Record, ref string) (*Record, error) {
+	if err := orgConsentPurposeAccess(app, org, auth); err != nil {
+		return nil, err
+	}
+
+	p, err := FindConsentPurpose(app, ref)
+	if err != nil {
+		return nil, err
+	}
+
+	switch p.GetString("org") {
+	case org.Id:
+		return p, nil
+	case "":
+		return nil, orgErr(403, "Global consent purposes can only be changed by a superuser.")
+	}
+
+	return nil, orgErr(404, "Consent purpose not found.")
+}
+
+// orgConsentPurposeInput pins the org of the input to the org of the route.
+func orgConsentPurposeInput(org *Record, in map[string]any) (map[string]any, error) {
+	out := make(map[string]any, len(in)+1)
+	for k, v := range in {
+		out[k] = v
+	}
+
+	if v, ok := out["org"]; ok {
+		s, _ := v.(string)
+		if s = strings.TrimSpace(s); s != "" && s != org.Id {
+			return nil, orgErr(403, "A purpose can only be created or kept in your own organization.")
+		}
+	}
+
+	out["org"] = org.Id
+
+	return out, nil
+}
+
+// CreateOrgConsentPurpose creates a purpose scoped to the org. Owners and
+// admins only; the org is always the route's org.
+func CreateOrgConsentPurpose(app App, ctx context.Context, org, auth *Record, in map[string]any) (*Record, error) {
+	if err := orgConsentPurposeAccess(app, org, auth); err != nil {
+		return nil, err
+	}
+
+	pinned, err := orgConsentPurposeInput(org, in)
+	if err != nil {
+		return nil, err
+	}
+
+	return CreateConsentPurpose(app, ctx, pinned)
+}
+
+// UpdateOrgConsentPurpose changes a purpose of the org. The org cannot change.
+func UpdateOrgConsentPurpose(app App, ctx context.Context, org, auth, rec *Record, in map[string]any) (*Record, error) {
+	if rec.GetString("org") != org.Id {
+		return nil, orgErr(403, "Global consent purposes can only be changed by a superuser.")
+	}
+
+	if err := orgConsentPurposeAccess(app, org, auth); err != nil {
+		return nil, err
+	}
+
+	pinned, err := orgConsentPurposeInput(org, in)
+	if err != nil {
+		return nil, err
+	}
+
+	return UpdateConsentPurpose(app, ctx, rec, pinned)
 }
 
 // DeleteConsentPurpose deletes a purpose that nobody has consented to. A used

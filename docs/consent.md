@@ -54,10 +54,22 @@ API keys are refused on all of them.
 | `POST /api/orgs/{id}/consents` | org staff | `{purpose, member or user, action: grant or withdraw, method: paper or staff, evidenceRef, givenBy}`. A grant needs `evidenceRef` |
 | `GET /api/orgs/{id}/consents?member=ID` or `?user=ID` | org staff | The person's consents and history (rows of this org and of no org) |
 | `GET /api/consent-purposes?org=ID` | members of the org | Active purposes offered to the org. A superuser without `org` gets all |
-| `POST /api/consent-purposes`, `PATCH /api/consent-purposes/{id}`, `DELETE /api/consent-purposes/{id}` | superuser | `id` can be the key |
+| `POST /api/consent-purposes`, `PATCH /api/consent-purposes/{id}`, `DELETE /api/consent-purposes/{id}` | superuser | `id` can be the key. These are the only routes that write global purposes (no `org`) |
+| `GET /api/orgs/{id}/consent-purposes` | org owners and admins | The org's purposes (also archived ones) and the global ones |
+| `POST /api/orgs/{id}/consent-purposes` | org owners and admins | Same body as above. `org` is always `{id}`; a different `org` in the body is a 403 |
+| `PATCH /api/orgs/{id}/consent-purposes/{pid}`, `DELETE ...` | org owners and admins | `pid` can be the key. Only purposes of this org |
 | `GET /api/consents/history?subject=ID` | superuser | Consents and history of one member id or user id |
 
 Granting what is already granted on the current version changes nothing and writes no event. A grant after a withdrawal clears `withdrawnAt` and records a new event.
+
+### Purposes managed by an org
+
+Owners and admins of an org (not registrars or other members) can create, edit, archive and delete the purposes that belong to their org, through the org routes above. Superusers can use them too.
+
+- The purpose always gets `org` set to the org of the route. An org admin can never create a global purpose, move a purpose to another org (`org` cannot change after creation), or touch another org's purposes (404). A global purpose is refused with 403.
+- The same rules as for superusers apply: a changed text raises the version, and a purpose with consent records cannot be deleted (409), archive it instead.
+- Keys are unique across all orgs, because consents store the key. Creating a purpose whose key is taken (by any org, or a global one) fails with a 400 that says so. Pick a key such as `<org>-trips`.
+- Each write makes an audit entry with `meta.orgId`.
 
 ## Gating a rule on consent
 
@@ -93,6 +105,6 @@ The admin UI has a **Consents** page (`#/consents`) to create and edit purposes 
 ## Not built yet
 
 - A hosted page where people manage their own consents (the routes exist).
-- Purposes managed by org admins (only superusers write purposes).
+- A page in the org admin UI for managing purposes (only the routes exist).
 - Webhook events for consent changes (the audit entries are delivered like other entries).
 - Automatic expiry of old events (retention, 88-3).
