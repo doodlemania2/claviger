@@ -336,6 +336,12 @@ func IssueRecovery(app App, ctx context.Context, actor *OrgActor, org *Record, i
 		return nil, err
 	}
 
+	if in.Channel == RecoveryChannelSMS {
+		if err := requireRecoverySMS(app, org, target); err != nil {
+			return nil, err
+		}
+	}
+
 	// per staff member rate limit, counted in the table (it survives restarts)
 	since := types.NowDateTime().Add(-time.Hour).String()
 

@@ -98,6 +98,7 @@ function showResult(body, name) {
   if (!body.pending) {
     extra.textContent = t("js.recovery.validUntil", { time: when(body.expires) }) + " " +
       (body.emailSent ? t("js.recovery.emailSent") : t("js.recovery.emailNotSent"));
+    if (body.channel === "sms") extra.textContent += " " + (body.smsSent ? t("js.recovery.smsSent") : t("js.recovery.smsNotSent"));
   }
   resultBox.hidden = false;
   resultBox.scrollIntoView({ block: "nearest" });
@@ -130,6 +131,9 @@ async function loadOpen() {
     return say(t("js.recovery.notStaff"));
   }
   if (!r.ok) return;
+  // no sender set up: do not offer the text message channel
+  const smsOpt = root.querySelector('#issueForm option[value="sms"]');
+  if (smsOpt) smsOpt.hidden = smsOpt.disabled = !r.body.sms;
   if (!r.body.items.length) {
     body.append(el("tr", {}, el("td", { colspan: 4, class: "muted" }, t("js.recovery.none"))));
     return;
