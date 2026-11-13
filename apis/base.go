@@ -72,6 +72,7 @@ func NewRouter(app core.App) (*router.Router[*core.RequestEvent], error) {
 	bindRecoveryPages(app)    // fork-local (#83)
 	bindHouseholdsPages(app)  // fork-local (#80)
 	bindCredentialsPages(app) // fork-local (#81)
+	bindConsentPages(app)     // fork-local (#88)
 	bindHostedAssets(app)     // fork-local (#83): accessible mode and /passkeys files
 
 	return pbRouter, nil

@@ -17,6 +17,7 @@ let canManage = false;
 let myRank = 0;
 let tags = [];
 let recoveryLinked = false;
+let consentsLinked = false;
 
 function say(text, kind) {
   statusEl.textContent = text || "";
@@ -65,6 +66,11 @@ async function loadMembers() {
     // staff of the recovery codes (#83) get a way to the page
     recoveryLinked = true;
     root.querySelector("#myRole").after(el("a", { class: "recoverylink", href: "/orgs/recovery/" + encodeURIComponent(slug) }, tx("js.admin.recoveryLink")));
+  }
+  if (mine && !consentsLinked && (canManage || (mine.tags || []).includes("registrar"))) {
+    // owners, admins and registrars manage the consent purposes of the org (#88)
+    consentsLinked = true;
+    root.querySelector("#myRole").after(el("a", { class: "recoverylink", href: "/orgs/consents/" + encodeURIComponent(slug) }, tx("js.admin.consentsLink")));
   }
   for (const m of r.body.items) {
     const isSelf = me && m.user === me.id;

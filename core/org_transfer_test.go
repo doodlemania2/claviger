@@ -525,3 +525,93 @@ func mustCol(t *testing.T, app core.App, name string) *core.Collection {
 
 	return c
 }
+
+func TestOrgTransferMemberNotice(t *testing.T) {
+	w := newTrWorld(t)
+
+	hhs := mustCol(t, w.app, core.CollectionNameHouseholds)
+	people := mustCol(t, w.app, core.CollectionNameHouseholdMembers)
+
+	h := core.NewRecord(hhs)
+	h.Set("org", w.org1.Id)
+	h.Set("name", "Carols")
+	h.Set("status", "active")
+
+	if err := w.app.SaveNoValidate(h); err != nil {
+		t.Fatal(err)
+	}
+
+	row := func(user *core.Record, name string, guardian, minor bool) *core.Record {
+		r := core.NewRecord(people)
+		r.Set("household", h.Id)
+
+		if user != nil {
+			r.Set("user", user.Id)
+		}
+
+		r.Set("name", name)
+		r.Set("guardian", guardian)
+		r.Set("isMinor", minor)
+		r.Set("status", "active")
+
+		if err := w.app.SaveNoValidate(r); err != nil {
+			t.Fatal(err)
+		}
+
+		return r
+	}
+	row(w.carol, "Carol", true, false)
+	row(w.bob, "Bob", true, false)
+	kid := row(nil, "Kid", false, true)
+
+	var got []*core.OrgTransferNotice
+
+	prev := core.OrgTransferNotifier
+	core.OrgTransferNotifier = func(_ core.App, n *core.OrgTransferNotice) error {
+		got = append(got, n)
+
+		return nil
+	}
+	t.Cleanup(func() { core.OrgTransferNotifier = prev })
+
+	// an owner who is no guardian starts it: both guardians are told
+	tr, err := core.StartOrgTransfer(w.app, w.ctx, w.actor(w.alice, w.org1), w.org1,
+		core.OrgTransferInput{Member: kid.Id, To: w.org2.GetString("slug")})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(got) != 1 || got[0].Person.Id != kid.Id || len(got[0].Recipients) != 2 {
+		t.Fatalf("unexpected notices: %+v", got)
+	}
+
+	if ids := core.GuardedMemberIds(w.app, w.carol.Id); len(ids) != 1 || ids[0] != kid.Id {
+		t.Fatalf("guarded members: %v", ids)
+	}
+
+	// only a guardian decides; a guardian without a household in the target cannot accept
+	if _, err := core.AcceptOrgTransfer(w.app, w.ctx, w.alice, tr); err == nil {
+		t.Fatal("the owner must not accept for the child")
+	} else {
+		wantOrgErr(t, err, 403)
+	}
+
+	_, err = core.AcceptOrgTransfer(w.app, w.ctx, w.carol, tr)
+	wantOrgErr(t, err, 409)
+
+	// the guardian starts it: the other guardian is told, the starter is not
+	got = nil
+
+	if _, err := core.CancelOrgTransfer(w.app, w.ctx, w.carol, tr); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := core.StartOrgTransfer(w.app, w.ctx, w.actor(w.carol, w.org1), w.org1,
+		core.OrgTransferInput{Member: kid.Id, To: w.org2.GetString("slug")}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(got) != 1 || len(got[0].Recipients) != 1 || got[0].Recipients[0].Id != w.bob.Id {
+		t.Fatalf("unexpected notices: %+v", got)
+	}
+}

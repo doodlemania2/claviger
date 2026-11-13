@@ -84,7 +84,7 @@ var builtinDataMap = []DataMapEntry{
 	// ---- member transfers between orgs (#84) ----
 	{Collection: CollectionNameOrgTransfers, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"person"},
 		PersonalFields: []string{"startedBy", "decidedBy"},
-		Note:           "Consent records of a move between orgs (#84). Export: both orgs, state, who started and decided. Pending rows expire after the transfer lifetime."},
+		Note:           "Consent records of a move between orgs (#84). Export: both orgs, state, who started and decided. Pending rows expire after the transfer lifetime. A transfer of a member without a login (a minor) is about the household member row and goes with it."},
 	// ---- consent (#88, 88-2) ----
 	{Collection: CollectionNameConsentPurposes, Treatment: DataMapTreatmentNone,
 		Note: "What a person can consent to (key, text, version, lawful basis). Not about a person."},
