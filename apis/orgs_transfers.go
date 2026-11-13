@@ -16,7 +16,7 @@ import (
 //	POST /api/orgs/{id}/transfers                     {user, to, outcome?}: start a transfer out of {id}
 //	GET  /api/orgs/{id}/transfers                     transfers out of or into {id}; staff see all, members their own (?state=)
 //	POST /api/orgs/{id}/transfers/{tid}/accept        the person only; moves the membership
-//	POST /api/orgs/{id}/transfers/{tid}/decline       the person only
+//	POST /api/orgs/{id}/transfers/{tid}/decline       the person, or an owner/admin of the target org (veto)
 //	POST /api/orgs/{id}/transfers/{tid}/cancel        the starter, staff of the source org, or the person
 //	GET  /api/orgs/{id}/transfers/{tid}/stays         counts of the person's records that stay (staff of the source org)
 //

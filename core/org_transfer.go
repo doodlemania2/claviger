@@ -405,23 +405,54 @@ func closeOrgTransfer(app App, ctx context.Context, t *Record, state, action, de
 	})
 }
 
+// Sides of a decline, recorded in the audit entry as meta.side.
+const (
+	OrgTransferSidePerson = "person"
+	OrgTransferSideTarget = "target"
+)
+
 // DeclineOrgTransfer closes the transfer at the request of the person (or the
-// guardian of a minor).
+// guardian of a minor), or as a veto by an owner or admin of the target org.
+// The target side can only decline: accepting stays with the person. The audit
+// entry records who declined (meta.decidedBy) and which side (meta.side).
 func DeclineOrgTransfer(app App, ctx context.Context, auth *Record, t *Record) (*Record, error) {
 	t, err := loadPendingTransfer(app, ctx, t)
 	if err != nil {
 		return nil, err
 	}
 
+	side := OrgTransferSidePerson
+
 	if !OrgTransferDecider(app, t, auth) {
-		return nil, orgErr(403, "Only the person can decline their transfer.")
+		if !isTargetStaff(app, t, auth) {
+			return nil, orgErr(403, "Only the person or an admin of the receiving organization can decline this transfer.")
+		}
+
+		side = OrgTransferSideTarget
 	}
 
-	if err := closeOrgTransfer(app, ctx, t, OrgTransferDeclined, AuditActionOrgTransferDecline, auth.Id, nil); err != nil {
+	meta := map[string]any{"side": side, "decidedBy": auth.Id}
+
+	if err := closeOrgTransfer(app, ctx, t, OrgTransferDeclined, AuditActionOrgTransferDecline, auth.Id, meta); err != nil {
 		return nil, err
 	}
 
 	return app.FindRecordById(CollectionNameOrgTransfers, t.Id)
+}
+
+// isTargetStaff reports whether auth is an active owner or admin of the
+// receiving org. A superuser does not count: the veto belongs to the org.
+func isTargetStaff(app App, t *Record, auth *Record) bool {
+	if auth == nil || auth.IsSuperuser() {
+		return false
+	}
+
+	to, err := app.FindRecordById(CollectionNameOrgs, t.GetString("toOrg"))
+	if err != nil {
+		return false
+	}
+
+	return NewOrgActor(app, to, auth).CanManage()
 }
 
 // CancelOrgTransfer withdraws a pending transfer: whoever started it, an owner
