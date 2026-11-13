@@ -880,3 +880,27 @@ func TestRecoverySMSNoticeOnlyWithoutEmail(t *testing.T) {
 		t.Fatalf("audit entry: %s", dump)
 	}
 }
+
+func TestRecoverySMSDefaultRegionReadsAnUnprefixedPhone(t *testing.T) {
+	t.Parallel()
+
+	env := newRecoveryEnv(t)
+	env.withHousehold("dave", "(415) 555-0123")
+	fake := env.enableSMS()
+
+	// no region: a number without a country code is no phone
+	if status, _ := env.issue(env.fresh("carol"), "dave", "id_checked", map[string]any{"channel": "sms"}); status != http.StatusBadRequest {
+		t.Fatalf("without a region: %d", status)
+	}
+
+	env.app.Settings().SMS.DefaultRegion = "US"
+
+	status, body := env.issue(env.fresh("carol"), "dave", "id_checked", map[string]any{"channel": "sms"})
+	if status != http.StatusCreated || body["smsSent"] != true {
+		t.Fatalf("with a region: %d %v", status, body)
+	}
+
+	if msgs := fake.messages(); len(msgs) != 1 || msgs[0].To != "+14155550123" {
+		t.Fatalf("messages %v", msgs)
+	}
+}
