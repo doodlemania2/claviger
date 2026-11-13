@@ -4,7 +4,7 @@
 window.app = window.app || {};
 window.app.modals = window.app.modals || {};
 
-// fields: [{ id, label, type: "text"|"select"|"checkbox", options: [] (strings or {value, label}),
+// fields: [{ id, label, type: "text"|"select"|"checkbox"|"textarea", options: [] (strings or {value, label}),
 //            suggestions: [] (text fields: datalist), value, hint, required }]
 // settings: { title, submitLabel, fields, onsubmit(values) -> Promise, onsave }
 window.app.modals.openOrgForm = function(settings) {
@@ -55,10 +55,21 @@ function orgFormModal(settings) {
                 onchange: (e) => values[f.id] = e.target.checked,
             });
         }
+        if (f.type == "textarea") {
+            // fork-local (#88, 88-2): the consent text
+            return t.textarea({
+                id,
+                rows: 6,
+                required: !!f.required,
+                value: () => values[f.id],
+                oninput: (e) => values[f.id] = e.target.value,
+            });
+        }
         const el = t.input({
             type: "text",
             id,
             required: !!f.required,
+            disabled: !!f.disabled,
             placeholder: f.placeholder || "",
             "html-list": f.suggestions?.length ? id + "_list" : undefined,
             value: () => values[f.id],
