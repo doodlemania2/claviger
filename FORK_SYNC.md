@@ -344,6 +344,7 @@ After a sync, also run `go test ./tools/search -run 'Golden|PostgresFilterSQL'` 
 | File | Fork change | Re-check on sync |
 | --- | --- | --- |
 | `apis/sql.go` (+22 -3) | `isWriteQuery` / `sqlTouchesAuditLog` (apis/sql_dialect.go) replace the prefix guess and the audit substring check; the write path is a closure (`runWrite`) so a Postgres read that the server refuses as a write (SQLSTATE 25006) can take it; reads go through `runReadQuery` (a READ ONLY transaction on Postgres). The SQLite statements are unchanged. | New write prefixes in `knownWriteQueryPrefixes` (add to `postgresWriteKeywords` too); the audit guard text. |
+| `apis/realtime.go`, `apis/record_helpers.go`, `core/settings_model.go` | Read audit (#86): `bindAuditReadHooks(app)` in `bindRealtimeApi`; a `readAudited` guard and `auditRealtimeRead` call in `realtimeBroadcastRecord`; `auditExpandRead` after the find in `expandFetch`; `AuditConfig.ReadCollections` and its check in `Settings.PostValidate`. Exact-JSON assertions in `core/settings_model_test.go` carry `"readCollections":[]`. | Run `go test -run 'TestAuditRead' ./apis/` |
 | `apis/backup.go` (+7) | `backupRestore` answers 400 when the database is not SQLite. | |
 | `apis/health.go` (+2 -1) | `data.database` for superusers (the admin UI backups notice). | |
 | `apis/collection.go` (+1 -1) | `collectionsList` gives its `SimpleFieldResolver` the dialect (`WithDialect`): without it `system=false` is sent as a number to a boolean column. | New `SimpleFieldResolver` users on tables other than the aux db. |
