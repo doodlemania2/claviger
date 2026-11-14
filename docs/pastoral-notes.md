@@ -25,7 +25,7 @@ This creates the collection (the name defaults to `pastoral_notes`) with the loc
 | `breakglass` | May ask for, and approve, emergency access. Give it to few people. |
 | `moderator` | May archive a note (and change nothing else). |
 
-Fields: `org`, `author`, `subject` (optional, the person the note is about), `visibility` (`private`, `clergy`, `care`, `congregation`), `sealed`, `body` (an `encryptedText` field), `expiresAt` (optional), `archived`.
+Fields: `org`, `author`, `subject` (optional, the person the note is about), `visibility` (`private`, `clergy`, `care`, `congregation`), `sealed`, `kind` (`care` or `prayer`), `body` (an `encryptedText` field), `expiresAt` (optional), `archived`, `archivedAt` (set by the server).
 
 The `body` encryption needs a key (`CLAVIGER_KEK` and friends, `docs/field-encryption.md`). The app refuses to start without one when an encrypted field exists. So `POST /api/pastoral` refuses (400) until a key is configured.
 
@@ -59,6 +59,21 @@ The route refuses to apply any rule that differs from the locked one, except `nu
 Field encryption gives **protection at rest**, not protection from the operator. "Unreadable to admins" means org admins, and the rules deliver that. For the operator the controls are the read audit, a key held outside the server (Azure Key Vault source) and policy. An owner-held key vault (the note is encrypted in the browser) is a later option and is not built.
 
 An archived note leaves everyone but the author. Realtime subscriptions never deliver a sealed note to anyone but its author; fetch it through the records API, where the read is logged.
+
+## Expiring prayer requests
+
+A note with `kind = "prayer"` that is created without an `expiresAt` gets one: **90 days** from now, or the org's `prayerExpiryDays` (a whole number from 7 to 730, in the org `settings`). The author can set any date at creation. A care note (`kind` `care` or empty) does not expire unless the author gives it a date.
+
+The expiry is run by the retention job (`docs/retention.md`), with two policies on the pastoral collection:
+
+1. `archive` with basis `expiresAt` and a period of 0: at expiry the note gets `archived = true`. The locked read rule then hides it from everyone but the author. `archivedAt` is stamped by the server (nobody can set it) and starts the archive period.
+2. `delete` with basis `archivedAt` and filter `archived = true`, after the archive period you choose (30 days is a sensible start).
+
+No policy ships enabled. A note held back from a person's export (an open `_pastoralHolds` row) is skipped by both, and so is a note under a legal hold. The archive and the delete are not audited one by one; each run writes one `gdpr_retention_run` entry with counts.
+
+**The author can renew.** `POST /api/pastoral/{collection}/{id}/renew` with `{"days": 30}` (optional: the default is the org's) gives the note a new `expiresAt` and brings it back from the archive, until the archive period ends. Only the author can, as an active member of the org: not a moderator, not an org owner, not a superuser (all get 404). It writes the audit entry `pastoral_renew` (`orgId`, `noteId`, `collection`, `expiresAt`, `days`).
+
+Collections made before this change get the `kind` and `archivedAt` fields from a migration, and the new moderator limit in their update rule when the rule still has the old locked text.
 
 ## Break-glass
 

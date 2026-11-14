@@ -1,7 +1,9 @@
 package apis
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -19,6 +21,7 @@ import (
 //	GET  /api/breakglass?org=<id>                   owners (with reasons) and holders (without); no org: the caller's own grants
 //	POST /api/breakglass/{id}/approve               a DIFFERENT holder; fresh passkey; tells the author and the owners, then opens the grant
 //	POST /api/breakglass/{id}/revoke                the org owner, the note's author, or the grantee
+//	POST /api/pastoral/{collection}/{id}/renew     {days?}; the note's author only; a new expiry, back from the archive
 //	GET  /api/gdpr/pastoral-holds?org=<id>          an owner of the org: notes held back from a person's export
 //	GET  /api/gdpr/pastoral-holds/{id}              the hold with the note (a logged read)
 //	POST /api/gdpr/pastoral-holds/{id}/release      {note?}; the next export of the person includes the note
@@ -29,6 +32,8 @@ func bindPastoralApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 	bindPastoralRealtimeGuard(app)
 
 	rg.POST("/pastoral", pastoralCreate).Bind(RequireAuth(), RequireSuperuserAuth())
+
+	rg.POST("/pastoral/{collection}/{id}/renew", pastoralRenew).Bind(RequireAuth(), pastoralNoAPIKey())
 
 	bg := rg.Group("/breakglass").Bind(RequireAuth(), pastoralNoAPIKey())
 	bg.POST("", breakGlassRequest).Bind(RequireFreshPasskey(webauthnStepUpMaxAge))
@@ -295,5 +300,40 @@ func bindPastoralRealtimeGuard(app core.App) {
 
 			return nil // dropped: not delivered
 		},
+	})
+}
+
+// ---- expiry ----------------------------------------------------------------------
+
+type pastoralRenewBody struct {
+	Days int `json:"days" form:"days"`
+}
+
+// pastoralRenew gives the author's note a new expiry (days from now, the org's
+// default when omitted) and brings it back from the archive.
+func pastoralRenew(e *core.RequestEvent) error {
+	var body pastoralRenewBody
+	if err := e.BindBody(&body); err != nil {
+		return e.BadRequestError("Failed to read the request data.", err)
+	}
+
+	col, err := e.App.FindCachedCollectionByNameOrId(e.Request.PathValue("collection"))
+	if err != nil || !core.IsPastoralCollection(col) {
+		return e.NotFoundError("", nil)
+	}
+
+	note, err := core.RenewPastoralNote(e.App, auditContext(e), col, e.Request.PathValue("id"), e.Auth, body.Days)
+
+	switch {
+	case errors.Is(err, core.ErrPastoralNotAuthor):
+		return e.NotFoundError("", nil) // the same answer for a note the caller may not see
+	case errors.Is(err, sql.ErrNoRows):
+		return e.NotFoundError("", nil)
+	case err != nil:
+		return retentionHTTP(e, err)
+	}
+
+	return e.JSON(http.StatusOK, map[string]any{
+		"id": note.Id, "expiresAt": note.GetDateTime("expiresAt"), "archived": note.GetBool("archived"),
 	})
 }
