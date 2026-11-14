@@ -77,6 +77,7 @@ async function openRegisters(page: Page, who: { email: string; password: string 
     await form.getByLabel("Password").fill(who.password);
     await form.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Registers", exact: true })).toBeVisible();
+    await page.locator("#regSelect").selectOption("e2eui_baptisms"); // other specs made registers too
 }
 
 test.beforeAll(async () => {
