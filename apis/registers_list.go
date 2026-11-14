@@ -62,7 +62,7 @@ func registerList(e *core.RequestEvent) error {
 		items = append(items, registerSummaryJSON(e.App, cfg))
 	}
 
-	return e.JSON(http.StatusOK, map[string]any{"items": items, "registrar": acc.Registrar, "superuser": acc.Superuser})
+	return e.JSON(http.StatusOK, map[string]any{"items": items, "registrar": acc.Registrar, "manager": acc.Manager, "superuser": acc.Superuser})
 }
 
 func registerEntries(e *core.RequestEvent) error {

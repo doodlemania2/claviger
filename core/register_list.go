@@ -16,6 +16,7 @@ type RegisterAccess struct {
 	Org       *Record
 	Staff     bool // owner, admin, registrar (or a superuser): may read
 	Registrar bool // may finalize and annotate
+	Manager   bool // owner, admin or superuser: may withdraw a request of someone else
 	Superuser bool
 }
 
@@ -41,7 +42,9 @@ func RegisterAccessFor(app App, orgId string, auth *Record) (*RegisterAccess, er
 		return nil, orgErr(403, "Only registrars, owners and admins can do this.")
 	}
 
-	return &RegisterAccess{Org: org, Staff: true, Registrar: st.registrar, Superuser: st.superuser}, nil
+	manager := st.superuser || st.actor.Role == OrgRoleOwner || st.actor.Role == OrgRoleAdmin
+
+	return &RegisterAccess{Org: org, Staff: true, Registrar: st.registrar, Manager: manager, Superuser: st.superuser}, nil
 }
 
 // RegisterListFilter selects the entries of a register for a list.

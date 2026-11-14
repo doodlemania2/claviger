@@ -110,16 +110,21 @@ func registerEntryJSON(app core.App, cfg *core.PermanentConfig, entry *core.Reco
 		"signers":    cfg.Signers,
 		"chain":      cfg.Chain,
 		"record":     entry.PublicExport(),
+		// names for the screens (87-5): the record carries ids only
+		"finalizedByName":  core.PersonName(app, entry.GetString("finalizedBy")),
+		"secondSignerName": core.PersonName(app, entry.GetString("secondSigner")),
+		"pendingByName":    core.PersonName(app, entry.GetString("pendingBy")),
 	}
 }
 
-func registerAnnotationJSON(a *core.Record) map[string]any {
+func registerAnnotationJSON(app core.App, a *core.Record) map[string]any {
 	return map[string]any{
 		"id":         a.Id,
 		"entry":      a.GetString("entry"),
 		"kind":       a.GetString("kind"),
 		"text":       a.GetString("text"),
 		"author":     a.GetString("author"),
+		"authorName": core.PersonName(app, a.GetString("author")),
 		"reason":     a.GetString("reason"),
 		"supersedes": a.GetString("supersedes"),
 		"created":    a.GetDateTime("created"),
@@ -143,7 +148,7 @@ func registerView(e *core.RequestEvent) error {
 
 	items := make([]map[string]any, 0, len(notes))
 	for _, a := range notes {
-		items = append(items, registerAnnotationJSON(a))
+		items = append(items, registerAnnotationJSON(e.App, a))
 	}
 
 	out := registerEntryJSON(e.App, cfg, entry)
@@ -207,7 +212,7 @@ func registerAnnotate(e *core.RequestEvent) error {
 		return orgHTTP(e, err)
 	}
 
-	return e.JSON(http.StatusCreated, registerAnnotationJSON(a))
+	return e.JSON(http.StatusCreated, registerAnnotationJSON(e.App, a))
 }
 
 // ---- certificate ----------------------------------------------------------------
