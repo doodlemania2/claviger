@@ -83,6 +83,12 @@ var builtinDataExport = map[string]dataExportSpec{
 		"id", "fromOrg", "toOrg", "member", "state", "sourceOutcome", "startedBy", "expiresAt", "decidedAt", "decidedBy",
 		"created", "updated",
 	}},
+	// #86: grants about the person; never the reason (owners only)
+	CollectionNameBreakGlass: {Fields: []string{
+		"id", "org", "collection", "basis", "requestedAt", "activeFrom", "expires", "revoked", "revokedAt",
+		"approvedBy", "readCount", "created",
+	}},
+	CollectionNamePastoralHolds: {Fields: []string{"id", "org", "collection", "state", "heldAt", "decidedAt", "created"}},
 	// #88 88-2: the whole evidence trail of the person, including the text
 	// they were shown; no secrets. Purposes are not about a person (none).
 	CollectionNameConsents: {Fields: []string{

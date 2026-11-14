@@ -85,6 +85,15 @@ var builtinDataMap = []DataMapEntry{
 	{Collection: CollectionNameOrgTransfers, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"person"},
 		PersonalFields: []string{"startedBy", "decidedBy"},
 		Note:           "Consent records of a move between orgs (#84). Export: both orgs, state, who started and decided. Pending rows expire after the transfer lifetime. A transfer of a member without a login (a minor) is about the household member row and goes with it."},
+	// ---- pastoral confidentiality (#86) ----
+	{Collection: CollectionNameBreakGlass, Treatment: DataMapTreatmentRetain, SubjectPaths: []string{"grantee", "approvedBy"},
+		PersonalFields: []string{"grantee", "approvedBy", "revokedBy", "reason"}, AgeOutBasis: "requestedAt",
+		RetainReason: "Evidence of who opened a pastoral note, why and for how long. Kept so that access to the most sensitive data stays accountable.",
+		Note:         "Break-glass grants (#86). Export: the person's own grants (basis, times, who approved) without the reason, which only org owners read."},
+	{Collection: CollectionNamePastoralHolds, Treatment: DataMapTreatmentRetain, SubjectPaths: []string{"subject"},
+		PersonalFields: []string{"subject", "decidedBy", "note"},
+		RetainReason:   "Record of which pastoral notes about a person were held back from their export and who decided. Kept as evidence of the decision.",
+		Note:           "Held pastoral notes (#86). Export: that a note is held or released, never what it says."},
 	// ---- consent (#88, 88-2) ----
 	{Collection: CollectionNameConsentPurposes, Treatment: DataMapTreatmentNone,
 		Note: "What a person can consent to (key, text, version, lawful basis). Not about a person."},
