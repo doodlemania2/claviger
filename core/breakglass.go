@@ -42,9 +42,6 @@ const (
 	AuditActionBreakGlassRequest = "breakglass_request"
 	AuditActionBreakGlassOpen    = "breakglass_open"
 	AuditActionBreakGlassRevoke  = "breakglass_revoke"
-	// AuditActionRead is the entry written for a read of a sealed note by
-	// anyone but its author (see pastoral_audit.go).
-	AuditActionRead = "read"
 
 	BreakGlassBasisSafety           = "safety"
 	BreakGlassBasisLegal            = "legal"

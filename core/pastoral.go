@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -222,6 +223,12 @@ func createPastoralNotes(app App, opts PastoralNotesOpts) (*Collection, error) {
 
 	if !registerNameRegex.MatchString(opts.Name) {
 		return nil, fmt.Errorf("invalid collection name %q", opts.Name)
+	}
+
+	// The body is an encryptedText field. Without a key-encryption key the
+	// app fails closed at the next start, so refuse up front.
+	if !FieldEncryptionAvailable(app) {
+		return nil, errors.New("pastoral notes need field encryption: configure a key-encryption key (CLAVIGER_KEK) and restart first")
 	}
 
 	if _, err := app.FindCollectionByNameOrId(opts.Name); err == nil {

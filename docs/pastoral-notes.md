@@ -27,7 +27,7 @@ This creates the collection (the name defaults to `pastoral_notes`) with the loc
 
 Fields: `org`, `author`, `subject` (optional, the person the note is about), `visibility` (`private`, `clergy`, `care`, `congregation`), `sealed`, `body` (an `encryptedText` field), `expiresAt` (optional), `archived`.
 
-The `body` encryption needs a key (`CLAVIGER_KEK` and friends, `docs/field-encryption.md`). The app refuses to start without one when an encrypted field exists.
+The `body` encryption needs a key (`CLAVIGER_KEK` and friends, `docs/field-encryption.md`). The app refuses to start without one when an encrypted field exists. So `POST /api/pastoral` refuses (400) until a key is configured.
 
 ### The rules are locked
 

@@ -66,11 +66,33 @@ func OrgMemberRule(field string, roles ...string) string {
 // OrgTagRule narrows a member rule to members who carry the tag. The tag is
 // matched on the same membership row.
 func OrgTagRule(field, tag string) (string, error) {
+	return orgTagRule(field, tag, false)
+}
+
+// orgTagRule renders OrgTagRule; legacy renders the text generated before the
+// tag's org was checked (kept only so the migration can recognise it).
+func orgTagRule(field, tag string, legacy bool) (string, error) {
 	if !orgTagRegex.MatchString(tag) {
 		return "", fmt.Errorf("invalid tag %q", tag)
 	}
 
-	return OrgMemberRule(field) + fmt.Sprintf(` && %s._orgMembers_via_org.tags.name ?= "%s"`, field, tag), nil
+	return OrgMemberRule(field) + orgTagCondition(field+"._orgMembers_via_org", tag, legacy), nil
+}
+
+// orgTagCondition is the condition "the membership row m carries a tag called
+// tag that belongs to the membership's own org". Both tests are read through
+// the one `tags` join of the membership, so they hold for the SAME tag row: a
+// tag of another org named tag, next to a tag of this org with another name,
+// grants nothing. The org check is the rule-side twin of OrgTagNames and
+// validateOrgMemberTags (a role tag is owned by one org); it matters for rows
+// written around the hooks (a raw database write, an import). Every generated
+// rule that tests a tag name goes through here.
+func orgTagCondition(m, tag string, legacy bool) string {
+	if legacy {
+		return fmt.Sprintf(` && %s.tags.name ?= "%s"`, m, tag)
+	}
+
+	return fmt.Sprintf(` && %s.tags.name ?= "%s" && %s.tags.org ?= %s.org`, m, tag, m, m)
 }
 
 // OrgParentRule grants access to active members (with the roles) of the
@@ -192,6 +214,12 @@ type OrgAncestorOpts struct {
 // and a membership elsewhere. Members of a lower org never see upward: the
 // rule only walks from the record's org to its ancestors.
 func OrgAncestorRule(field string, opts OrgAncestorOpts) (string, error) {
+	return orgAncestorRule(field, opts, false)
+}
+
+// orgAncestorRule renders OrgAncestorRule; legacy renders the text generated
+// before the tag's org was checked (see orgTagRule).
+func orgAncestorRule(field string, opts OrgAncestorOpts, legacy bool) (string, error) {
 	if opts.Tag != "" && !orgTagRegex.MatchString(opts.Tag) {
 		return "", fmt.Errorf("invalid tag %q", opts.Tag)
 	}
@@ -222,7 +250,7 @@ func OrgAncestorRule(field string, opts OrgAncestorOpts) (string, error) {
 		prefix = fmt.Sprintf(`%s.archived = false && %s.descendant ?= %s && %s.org ?= %s.ancestor`, field, k, field, m, k)
 		member = m
 		depth = k + ".depth"
-		ancestors = fmt.Sprintf(` && %s.tags.name ?= "%s"`, m, opts.Tag)
+		ancestors = orgTagCondition(m, opts.Tag, legacy)
 	} else {
 		cp := field + "." + CollectionNameOrgClosure + "_via_descendant"
 		member = cp + ".ancestor._orgMembers_via_org"
