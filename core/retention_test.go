@@ -87,7 +87,7 @@ func (w *retWorld) item(t testing.TB, title string, ageDays int, owner *core.Rec
 	must(t, w.app.Save(r))
 
 	old := time.Now().UTC().AddDate(0, 0, -ageDays).Format("2006-01-02 15:04:05.000Z")
-	_, err := w.app.DB().NewQuery("UPDATE ret_items SET created={:c} WHERE id={:id}").Bind(dbx.Params{"c": old, "id": r.Id}).Execute()
+	_, err := w.app.DB().NewQuery("UPDATE {{ret_items}} SET [[created]]={:c} WHERE [[id]]={:id}").Bind(dbx.Params{"c": old, "id": r.Id}).Execute()
 	must(t, err)
 
 	return r
@@ -494,7 +494,7 @@ func TestRetentionSkipsOpenPastoralHolds(t *testing.T) {
 
 	held, other := mk("held"), mk("plain")
 
-	_, err = app.DB().NewQuery("UPDATE " + col.Name + " SET created='2000-01-01 00:00:00.000Z'").Execute()
+	_, err = app.DB().NewQuery("UPDATE {{" + col.Name + "}} SET [[created]]='2000-01-01 00:00:00.000Z'").Execute()
 	must(t, err)
 
 	hc, _ := app.FindCollectionByNameOrId(core.CollectionNamePastoralHolds)
@@ -675,7 +675,7 @@ func TestRetentionResumesAfterInterruption(t *testing.T) {
 	}
 
 	es := auditEntriesFor(t, w.app, core.AuditActionRetentionRun)
-	if len(es) != 1 || !strings.Contains(es[0].GetString("meta"), `"resumed":true`) {
+	if len(es) != 1 || !strings.Contains(strings.ReplaceAll(es[0].GetString("meta"), " ", ""), `"resumed":true`) {
 		t.Fatalf("one entry for the whole run, marked resumed: %d", len(es))
 	}
 
@@ -705,8 +705,8 @@ func TestRetentionAuditEntryHoldsCountsOnly(t *testing.T) {
 		t.Fatalf("one entry per run, got %d", len(es))
 	}
 
-	raw := es[0].GetString("meta")
-	for _, leak := range []string{"Secret Name", "private", "secret things"} {
+	raw := strings.ReplaceAll(es[0].GetString("meta"), " ", "")
+	for _, leak := range []string{"SecretName", "private", "secretthings"} {
 		if strings.Contains(raw, leak) {
 			t.Fatalf("content in the audit entry: %s", raw)
 		}
@@ -731,7 +731,7 @@ func TestRetentionDeletesConsentEvidence(t *testing.T) {
 	ev.Set("method", "web")
 	must(t, w.app.SaveNoValidate(ev))
 
-	_, err = w.app.DB().NewQuery("UPDATE " + col.Name + " SET created='2000-01-01 00:00:00.000Z'").Execute()
+	_, err = w.app.DB().NewQuery("UPDATE {{" + col.Name + "}} SET [[created]]='2000-01-01 00:00:00.000Z'").Execute()
 	must(t, err)
 
 	// outside the job the table is append-only

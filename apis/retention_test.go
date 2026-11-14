@@ -107,7 +107,7 @@ func TestRetentionPolicyRoutes(t *testing.T) {
 	}
 
 	// previews change nothing and say what they would do
-	if _, err := env.app.DB().NewQuery("UPDATE " + pastoralCol + " SET created='2000-01-01 00:00:00.000Z'").Execute(); err != nil {
+	if _, err := env.app.DB().NewQuery("UPDATE {{" + pastoralCol + "}} SET [[created]]='2000-01-01 00:00:00.000Z'").Execute(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -362,7 +362,7 @@ func TestPrayerRequestExpiryArchiveDeleteAndRenew(t *testing.T) {
 	runJob()
 
 	old := types.NowDateTime().Add(-31 * 24 * time.Hour).String()
-	if _, err := env.app.DB().NewQuery("UPDATE " + pastoralCol + " SET archivedAt={:a} WHERE id={:id}").Bind(dbx.Params{"a": old, "id": prayer.Id}).Execute(); err != nil {
+	if _, err := env.app.DB().NewQuery("UPDATE {{" + pastoralCol + "}} SET [[archivedAt]]={:a} WHERE [[id]]={:id}").Bind(dbx.Params{"a": old, "id": prayer.Id}).Execute(); err != nil {
 		t.Fatal(err)
 	}
 
