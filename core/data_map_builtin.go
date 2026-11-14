@@ -113,7 +113,7 @@ var builtinDataMap = []DataMapEntry{
 		SubjectPaths:   []string{"subject"},
 		PersonalFields: []string{"subject", "reason", "reference", "placedBy", "liftedBy"}, AgeOutBasis: "liftedAt",
 		RetainReason: "Evidence that a person's data was frozen for a legal matter, and why. Kept after the hold is lifted so that the log of what was kept can be explained.",
-		Note:         "Legal holds (88-3). Export: that a hold existed and when, never the reason or the reference (a hold can be part of a legal matter the person must not be told about by an automatic export; the lawyer decides)."},
+		Note:         "Legal holds (88-3). Export (owner decision 2026-11-14): scope, reason, reference, placed and lifted dates; never who placed or lifted it (a member of staff, a third party)."},
 	// ---- permanent registers (#87) ----
 	{Collection: CollectionNamePermanentCollections, Treatment: DataMapTreatmentNone,
 		Note: "The list of permanent registers (#87). Configuration, not about a person."},

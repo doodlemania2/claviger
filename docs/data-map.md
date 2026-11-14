@@ -59,7 +59,7 @@ The test is `TestDataMapCoversSystemCollections` in `core/data_map_test.go`. It 
 
 ## The retention engine reads the map
 
-An `anonymize` retention policy (`docs/retention.md`) blanks the `personalFields` of the collection's entry. A collection with no entry, or no personal fields, cannot have an anonymize policy enabled. A legal hold on a person reaches the rows the entry's `subjectPaths` tie to them. `_retentionPolicies` is mapped as `none` (not about a person) and `_legalHolds` as `retain` (evidence; the export shows that a hold existed, never why).
+An `anonymize` retention policy (`docs/retention.md`) blanks the `personalFields` of the collection's entry. A collection with no entry, or no personal fields, cannot have an anonymize policy enabled. A legal hold on a person reaches the rows the entry's `subjectPaths` tie to them. `_retentionPolicies` is mapped as `none` (not about a person) and `_legalHolds` as `retain` (evidence). The export of a person includes their holds with reason and reference (owner decision 2026-11-14), but not who placed or lifted them.
 
 ## App collections
 
