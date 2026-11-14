@@ -98,6 +98,11 @@ window.app.store = store({
             label: "Consents",
         },
         {
+            href: "#/registers",
+            icon: "ri-book-2-line",
+            label: "Registers",
+        },
+        {
             href: "#/oidc",
             icon: "ri-id-card-line",
             label: "OpenID Connect",
