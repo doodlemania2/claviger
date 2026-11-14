@@ -44,7 +44,7 @@ One `read` entry per request:
 | `action` | `read` |
 | `targetCollection` | the collection name |
 | `targetId` | the record id when exactly one record was read, empty for a list |
-| `actorType`, `actorCollection`, `actorId` | who read. **Superusers are included**: an admin UI read shows as `superuser`. An anonymous reader is `system` with `meta.anonymous` set on expand and realtime entries. |
+| `actorType`, `actorCollection`, `actorId` | who read. **Superusers are included**: an admin UI read shows as `superuser`. An anonymous reader is `system` with `meta.anonymous: true`. |
 | `ip` | the client IP (not available for expand entries, see below) |
 | `meta.recordIds` | ids of the records returned, at most **100** |
 | `meta.count` | how many records were returned |
@@ -80,6 +80,8 @@ err := core.AuditRecordRead(app, ctx, collection, records, map[string]any{"grant
 ```
 
 Writes one `read` entry for `records` (same shape as above). It does not check the flagged list, so a feature can audit its own reads, for example a break-glass read of a sealed note with the grant id in `meta`. `ctx` carries the actor and IP (`core.WithAuditContext`; in the `apis` package `auditContext(e)` builds it). Extra meta cannot override `recordIds`, `count`, `truncated` or `orgId`. `core.AuditReadsCollection(app, name)` tells whether a collection is flagged.
+
+Pastoral notes (see `docs/pastoral-notes.md`) log sealed-note reads on their own, with `meta.grantId`, whether or not the collection is flagged. If you also flag a pastoral notes collection, a read of a sealed note by someone other than its author writes two entries: the generic one for the request and the sealed-note one with the grant.
 
 If a feature audits the same read itself and the collection is also flagged, the read is logged twice. Pick one.
 

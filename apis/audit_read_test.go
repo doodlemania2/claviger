@@ -164,6 +164,9 @@ func TestAuditReadList(t *testing.T) {
 			if len(entries) != 1 || entries[0].GetString("actorType") != "system" || entries[0].GetString("ip") == "" {
 				t.Fatalf("Unexpected entries: %v", entries)
 			}
+			if meta := tests.CompactJSON(entries[0].GetString("meta")); !strings.Contains(meta, `"anonymous":true`) {
+				t.Fatalf("Expected meta.anonymous, got %s", meta)
+			}
 		},
 	}).Test(t)
 }

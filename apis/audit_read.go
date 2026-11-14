@@ -33,7 +33,7 @@ func bindAuditReadHooks(app core.App) {
 				return e.Next()
 			}
 
-			if err := core.AuditRecordRead(e.App, auditContext(e.RequestEvent), e.Collection, []*core.Record{e.Record}, nil); err != nil {
+			if err := core.AuditRecordRead(e.App, auditContext(e.RequestEvent), e.Collection, []*core.Record{e.Record}, anonymousReadMeta(e.RequestEvent)); err != nil {
 				return e.InternalServerError("Failed to write the read audit entry.", err)
 			}
 
@@ -49,7 +49,7 @@ func bindAuditReadHooks(app core.App) {
 				return e.Next()
 			}
 
-			if err := core.AuditRecordRead(e.App, auditContext(e.RequestEvent), e.Collection, e.Records, nil); err != nil {
+			if err := core.AuditRecordRead(e.App, auditContext(e.RequestEvent), e.Collection, e.Records, anonymousReadMeta(e.RequestEvent)); err != nil {
 				return e.InternalServerError("Failed to write the read audit entry.", err)
 			}
 
@@ -96,4 +96,14 @@ func auditRealtimeRead(app core.App, action string, record *core.Record, clientA
 	}
 
 	return core.AuditRecordRead(app, ctx, record.Collection(), []*core.Record{record}, meta)
+}
+
+// anonymousReadMeta marks a view or list read made without an auth record,
+// like the expand and realtime entries do. The actor type stays "system".
+func anonymousReadMeta(e *core.RequestEvent) map[string]any {
+	if e.Auth != nil {
+		return nil
+	}
+
+	return map[string]any{"anonymous": true}
 }
