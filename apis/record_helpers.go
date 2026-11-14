@@ -444,6 +444,11 @@ func expandFetch(app core.App, originalRequestInfo *core.RequestInfo) core.Expan
 			return nil, findErr
 		}
 
+		// fork-local (#86): read audit of flagged collections
+		if err := auditExpandRead(app, requestInfoPtr, relCollection, records); err != nil {
+			return nil, err
+		}
+
 		enrichErr := triggerRecordEnrichHooks(app, requestInfoPtr, records, func() error {
 			if err := autoResolveRecordsFlags(app, records, requestInfoPtr); err != nil {
 				// non-critical error
