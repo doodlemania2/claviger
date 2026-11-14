@@ -270,9 +270,15 @@ func TestPrayerRequestExpiryArchiveDeleteAndRenew(t *testing.T) {
 		orgMust(t, err)
 	}
 
+	// policies run in creation order, which can tie within a millisecond:
+	// put the archive policy first and the delete policy second
 	runJob := func() *core.RetentionRunResult {
 		res, err := core.RunRetention(env.sysCtx(), env.app, core.RetentionRunOptions{})
 		orgMust(t, err)
+
+		if len(res.Policies) == 2 && res.Policies[0].PolicyId != archive.Id {
+			res.Policies[0], res.Policies[1] = res.Policies[1], res.Policies[0]
+		}
 
 		return res
 	}
