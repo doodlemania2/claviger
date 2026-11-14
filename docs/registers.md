@@ -115,7 +115,29 @@ GET /api/registers/{collection}/{id}/certificate
 
 Returns an HTML page for a final entry: the entry fields, the marginal notes (a retracted one is struck through), the register number and chain hash, the issue date and the issuer. It has print CSS; save it as PDF from the browser. There is no PDF engine in Claviger. The page has no script and no inline style, and its policy allows only its own stylesheet.
 
-It needs a bearer token, so a client fetches it and shows or prints the result (the admin UI of 87-5 will do that); a plain link in the address bar does not carry the token. Registrars, owners and admins of the entry's org (and superusers, who only read) can issue it. Every issue writes a `register_certificate` audit entry. A diocese's seal and wording are not built; whether a certificate is valid is the church's call.
+It needs a bearer token, so a client fetches it and shows or prints the result (the registers page does that, see [Screens](#screens)); a plain link in the address bar does not carry the token. Registrars, owners and admins of the entry's org (and superusers, who only read) can issue it. Every issue writes a `register_certificate` audit entry. A diocese's seal and wording are not built; whether a certificate is valid is the church's call.
+
+## Reading routes
+
+```
+GET /api/registers?org={id}                   the registers, and what the caller may do in that org
+GET /api/registers/{collection}?org=&state=&page=&perPage=   entries, newest first (state: draft, pending, final)
+GET /api/registers/_verify                    superuser: recompute every hash chain, report the breaks
+```
+
+The first two need an org (a superuser may leave it out and read across orgs) and the caller must be staff of it: registrars, owners and admins. A member who is not staff gets 403, a stranger 404. The list answers `registrar` (may finalize and annotate) and `manager` (owner, admin or superuser: may withdraw a request of someone else). Entries and annotations carry the names of the people (`finalizedByName`, `secondSignerName`, `pendingByName`, `authorName`) next to the ids. `_verify` is the same check as `claviger registers verify`, run on the live data. API keys are refused on the first two.
+
+## Screens
+
+**Registrars: `/orgs/registers/<org slug>`.** A hosted page in the style of the other org pages (strict Content-Security-Policy, strings from the message catalog, accessible mode, a sign-in of its own, DOM nodes only). The org page links to it for owners, admins and registrars. It lists the registers of the server and their entries by state, and opens an entry with its **marginal notes** (oldest first, a retracted note struck through, who wrote it and why). A registrar can:
+
+- **finalize** a draft. With one signer it is final at once. With two signers the button reads "Put forward for a second signature"; a different registrar then sees "Confirm and finalize", and the person who put it forward sees that the entry is waiting and can withdraw the request. Both ask for confirmation first, because finalizing is irreversible;
+- **add a note** to a final entry (kind, text, reason; a retraction chooses the note it takes back);
+- open the **certificate**. The page fetches it with the signed-in token and shows it in a sandboxed frame (no script can run in it) with a Print button; save it as a PDF from the print dialog.
+
+Finalizing and noting need a fresh passkey. The page does not ask in advance: it sends the request, and when the server answers `passkey_step_up_required` it runs the passkey ceremony and sends the request again. If the ceremony does not finish, nothing was changed. Owners and admins without the tag see the same entries read-only, with a message that says why. The server decides everything; the page only shows it.
+
+**Superusers: Registers in the admin UI (`#/registers`).** A superuser cannot sign or annotate, so the page reads: the registers (and "New register" from the sacramental template), the entries across all orgs by state, an entry with its marginal notes, and **Verify the chain**, which shows each chain's head and any breaks. A superuser can also **withdraw** a pending finalization.
 
 ## Data map and export
 
@@ -123,4 +145,4 @@ Both collections are registered with `retain` and the stated reason, so an expor
 
 ## Not built yet
 
-The admin UI for finalizing, annotating and the entry-with-margin view (87-5), webhook events, per-org certificate wording, and anonymization.
+Webhook events, per-org certificate wording, and anonymization.
