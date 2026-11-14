@@ -99,6 +99,11 @@ var webhookEventTypes = map[string]string{
 // (#88, 88-1): the personal data export.
 var webhookEntryEventTypes = map[string]string{
 	AuditActionDataExport: "gdpr.export",
+
+	// #86: break-glass access to pastoral notes; the reason is left out of the payload
+	AuditActionBreakGlassRequest: "breakglass.request",
+	AuditActionBreakGlassOpen:    "breakglass.open",
+	AuditActionBreakGlassRevoke:  "breakglass.revoke",
 }
 
 // -------------------------------------------------------------------
@@ -301,7 +306,7 @@ func ValidateWebhookEvents(events []string) error {
 		}
 		switch action {
 		case "*", AuditActionCreate, AuditActionUpdate, AuditActionDelete, AuditActionCredentialExpiring, AuditActionCredentialLapsed:
-		case AuditActionDataExport: // fork-local (#88): see webhookEntryEventTypes
+		case AuditActionDataExport, AuditActionBreakGlassRequest, AuditActionBreakGlassOpen, AuditActionBreakGlassRevoke: // fork-local (#88, #86): see webhookEntryEventTypes
 		default:
 			return fmt.Errorf("invalid action in event filter %q (expected create, update, delete, credential_expiring, credential_lapsed or *)", ev)
 		}
@@ -658,8 +663,20 @@ func (m *webhookManager) onEntryEvent(e *AuditEntryEvent) error {
 	if !ok {
 		return nil
 	}
-	if status, _ := e.Entry.Meta["status"].(string); status != "ok" && status != "partial" {
-		return nil
+	meta := e.Entry.Meta
+
+	if e.Entry.Action == AuditActionDataExport {
+		if status, _ := meta["status"].(string); status != "ok" && status != "partial" {
+			return nil
+		}
+	} else if strings.HasPrefix(e.Entry.Action, "breakglass_") {
+		// #86: ids, basis and times only. The reason is read by org owners only.
+		meta = make(map[string]any, len(e.Entry.Meta))
+		for k, v := range e.Entry.Meta {
+			if k != "reason" {
+				meta[k] = v
+			}
+		}
 	}
 
 	var matched []*webhookEndpoint
@@ -681,7 +698,7 @@ func (m *webhookManager) onEntryEvent(e *AuditEntryEvent) error {
 			RecordId:      e.Entry.RecordId,
 			Actor:         e.Entry.Actor,
 			ChangedFields: []string{},
-			Record:        e.Entry.Meta,
+			Record:        meta,
 		},
 	})
 	if err != nil {

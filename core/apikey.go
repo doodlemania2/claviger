@@ -91,6 +91,8 @@ var APIKeyForbiddenCollections = []string{
 	CollectionNameCredentials,   // #81: safeguarding attestations about people; no machine access
 	CollectionNameRecoveryCodes, // #83: hashes of live recovery codes
 	CollectionNameOrgTransfers,  // #84: consent records; no machine access
+	CollectionNameBreakGlass,    // #86: grants of access to pastoral notes
+	CollectionNamePastoralHolds, // #86
 
 	CollectionNameHouseholds,       // #80: families and children; no machine access
 	CollectionNameHouseholdMembers, // #80

@@ -70,7 +70,10 @@ type DataExportManifest struct {
 	Skipped       []DataExportSkipped    `json:"skipped"`
 	Errors        []DataExportError      `json:"errors"`
 	NotIncluded   []DataExportSkipped    `json:"notIncluded"`
-	Files         DataExportFiles        `json:"files"`
+	// Held lists what was left out because an org has to review it first
+	// (pastoral notes about the person, #86). Counts only, never content.
+	Held  []DataExportHeld `json:"held"`
+	Files DataExportFiles  `json:"files"`
 }
 
 type DataExportSubject struct {
@@ -95,6 +98,13 @@ type DataExportCollection struct {
 
 type DataExportSkipped struct {
 	Name   string `json:"name"`
+	Reason string `json:"reason"`
+}
+
+// DataExportHeld says how many rows of a collection are held for review.
+type DataExportHeld struct {
+	Name   string `json:"name"`
+	Count  int    `json:"count"`
 	Reason string `json:"reason"`
 }
 
@@ -215,6 +225,7 @@ func WriteDataExport(app App, subject *Record, dst io.Writer) (*DataExportManife
 		Collections:   []DataExportCollection{},
 		Skipped:       []DataExportSkipped{},
 		Errors:        []DataExportError{},
+		Held:          []DataExportHeld{},
 		NotIncluded: []DataExportSkipped{{
 			Name:   LogsTableName,
 			Reason: "Request logs are not part of the export. They are removed by the log retention setting (logs.maxDays).",
@@ -329,6 +340,8 @@ func (ex *dataExporter) exportEntry(entry dataMapRow) error {
 	}
 	var collected []exported
 	var queryErr error
+	pastoral := IsPastoralCollection(col)
+	heldCount := 0
 
 	for offset := int64(0); ; offset += dataExportPageSize {
 		var records []*Record
@@ -346,6 +359,18 @@ func (ex *dataExporter) exportEntry(entry dataMapRow) error {
 		for _, rec := range records {
 			if matches != nil && !matches(rec) {
 				continue
+			}
+			// #86: a pastoral note about the person is held for the org to
+			// review, not exported (see pastoral_holds.go)
+			if pastoral {
+				held, err := holdPastoralForExport(ex.app, col, rec, ex.subject.Id)
+				if err != nil {
+					ex.fail(entry.Collection, err)
+				}
+				if held {
+					heldCount++
+					continue
+				}
 			}
 			row := make(map[string]any, len(fields))
 			for _, name := range fields {
@@ -365,6 +390,13 @@ func (ex *dataExporter) exportEntry(entry dataMapRow) error {
 	if queryErr != nil {
 		ex.fail(entry.Collection, queryErr)
 		return nil
+	}
+
+	if heldCount > 0 {
+		ex.m.Held = append(ex.m.Held, DataExportHeld{
+			Name: col.Name, Count: heldCount,
+			Reason: "These notes can describe other people. An owner of the org reviews them and may release them to you.",
+		})
 	}
 
 	w, err := ex.zw.Create(fileName)
@@ -665,6 +697,11 @@ func dataExportReadme(m *DataExportManifest) string {
 	b.WriteString("Passwords, password hashes, tokens, API key secrets, passkey keys and other\n")
 	b.WriteString("secrets are never included. Other people's data is left out.\n")
 	b.WriteString("Values stored encrypted in the system are decrypted here.\n")
+	if len(m.Held) > 0 {
+		b.WriteString("\nSome records about you are held for review by the organization that keeps\n")
+		b.WriteString("them (see \"held\" in manifest.json). They can describe other people. The\n")
+		b.WriteString("organization decides whether to release them to you.\n")
+	}
 	if m.Partial() {
 		b.WriteString("\nSome parts could not be exported. See \"errors\" and \"files.skipped\" in manifest.json.\n")
 	}
