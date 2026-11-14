@@ -18,6 +18,7 @@ import (
 // core/register*.go for the rules.
 //
 //	POST   /api/registers                                 {template: "sacramental", name, signers?, retainReason?}; superuser; creates a register from the template
+//	GET    /api/registers, /api/registers/{collection}, /api/registers/_verify   read routes of the screens (registers_list.go)
 //	GET    /api/registers/{collection}/{id}               the entry with its annotations, oldest first (registrar, owner, admin)
 //	POST   /api/registers/{collection}/{id}/finalize      finalize, or take the next step when the register has two signers; registrar (never a superuser); fresh passkey
 //	DELETE /api/registers/{collection}/{id}/finalize      withdraw a pending finalization
@@ -29,6 +30,9 @@ import (
 func bindRegistersApi(rg *router.RouterGroup[*core.RequestEvent]) {
 	g := rg.Group("/registers").Bind(RequireAuth())
 	g.POST("", registerCreate).Bind(RequireSuperuserAuth())
+	g.GET("", registerList)                                        // fork-local (#87, 87-5)
+	g.GET("/_verify", registerVerify).Bind(RequireSuperuserAuth()) // a register name starts with a letter, so it cannot clash
+	g.GET("/{collection}", registerEntries)
 	g.GET("/{collection}/{id}", registerView)
 	g.POST("/{collection}/{id}/finalize", registerFinalize).Bind(refuseSuperuserSigning(), RequireFreshPasskey(webauthnStepUpMaxAge))
 	g.DELETE("/{collection}/{id}/finalize", registerWithdraw)
