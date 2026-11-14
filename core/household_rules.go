@@ -101,7 +101,11 @@ func HouseholdGuardianWriteRule(opts HouseholdRuleOpts) string {
 // HouseholdStaffRule is the condition "the user is staff of the org at field":
 // an owner or admin, or a member tagged "registrar".
 func HouseholdStaffRule(orgField string) string {
-	tag, _ := OrgTagRule(orgField, HouseholdRegistrarTag)
+	return householdStaffRule(orgField, false)
+}
+
+func householdStaffRule(orgField string, legacy bool) string {
+	tag, _ := orgTagRule(orgField, HouseholdRegistrarTag, legacy)
 
 	return fmt.Sprintf(`(%s) || (%s && %s._orgMembers_via_org.role ?= "%s")`,
 		OrgMemberRule(orgField, OrgRoleOwner, OrgRoleAdmin), tag, orgField, OrgRoleMember)
@@ -120,11 +124,13 @@ func HouseholdRuleSet(opts HouseholdRuleOpts) OrgRuleSet {
 // householdRules returns the list and view rules of the two system collections:
 // the people of the household (active rows with a login), and the staff of the
 // household's org. A person with a login also reads their own row.
-func householdRules() (households, members string) {
+func householdRules() (households, members string) { return householdRulesFor(false) }
+
+func householdRulesFor(legacy bool) (households, members string) {
 	households = fmt.Sprintf(`@request.auth.id != "" && ((%s) || (%s))`,
-		HouseholdMemberRule(""), HouseholdStaffRule("org"))
+		HouseholdMemberRule(""), householdStaffRule("org", legacy))
 	members = fmt.Sprintf(`@request.auth.id != "" && (user = @request.auth.id || (%s) || (%s))`,
-		HouseholdMemberRule("household"), HouseholdStaffRule("household.org"))
+		HouseholdMemberRule("household"), householdStaffRule("household.org", legacy))
 
 	return households, members
 }
