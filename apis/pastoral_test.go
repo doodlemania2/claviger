@@ -903,3 +903,22 @@ func decodeJSONMap(t testing.TB, b []byte) map[string]any {
 
 	return out
 }
+
+func TestPastoralTemplateNeedsAKey(t *testing.T) {
+	t.Setenv("CLAVIGER_KEK", "")
+	t.Setenv("CLAVIGER_KEK_FILE", "")
+
+	env := newCeremonyEnv(t)
+	if core.FieldEncryptionAvailable(env.app) {
+		t.Skip("the test app has a key from another source")
+	}
+
+	s, body := env.do(http.MethodPost, "/api/pastoral", map[string]any{"name": "pn"}, auditSuperuserToken)
+	if s != http.StatusBadRequest || !strings.Contains(toJSON(body), "key-encryption key") {
+		t.Fatalf("expected a refusal without a key: %d %v", s, body)
+	}
+
+	if _, err := env.app.FindCollectionByNameOrId("pn"); err == nil {
+		t.Fatal("nothing must be created without a key")
+	}
+}
