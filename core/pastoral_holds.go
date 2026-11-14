@@ -34,6 +34,119 @@ const (
 // PastoralHoldStates are the values of the state field.
 var PastoralHoldStates = []string{PastoralHoldHeld, PastoralHoldReleased, PastoralHoldWithheld}
 
+// PastoralHoldNotice tells the owners of an org that a held note waits for
+// their review. It carries no note content.
+type PastoralHoldNotice struct {
+	Org        *Record
+	Hold       *Record
+	Recipients []*Record
+}
+
+// PastoralHoldNotifier emails the notice and returns how many it reached. The
+// mails package sets it. A failure never blocks the export.
+var PastoralHoldNotifier func(app App, n *PastoralHoldNotice) (int, error)
+
+// UnlinkPastoralSubject is what erasure (88-4) calls for a person: pastoral
+// notes whose subject is the person stay for their author but lose the link,
+// and the holds about the person are deleted (nobody is left to export to).
+// It returns the number of notes unlinked and holds deleted.
+func UnlinkPastoralSubject(app App, ctx context.Context, userIds ...string) (notes, holds int, err error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	err = app.RunInTransaction(func(txApp App) error {
+		cols, _ := txApp.FindAllCollections(CollectionTypeBase)
+
+		for _, id := range userIds {
+			if id == "" {
+				continue
+			}
+
+			for _, col := range cols {
+				if !IsPastoralCollection(col) || col.Fields.GetByName("subject") == nil {
+					continue
+				}
+
+				rows, err := txApp.FindRecordsByFilter(col, "subject={:s}", "", 0, 0, dbx.Params{"s": id})
+				if err != nil {
+					return err
+				}
+
+				for _, r := range rows {
+					r.Set("subject", "")
+
+					if err := txApp.SaveWithContext(ctx, r); err != nil {
+						return err
+					}
+
+					notes++
+				}
+			}
+
+			if _, err := txApp.FindCachedCollectionByNameOrId(CollectionNamePastoralHolds); err != nil {
+				continue
+			}
+
+			hs, err := txApp.FindRecordsByFilter(CollectionNamePastoralHolds, "subject={:s}", "", 0, 0, dbx.Params{"s": id})
+			if err != nil {
+				return err
+			}
+
+			for _, h := range hs {
+				if err := txApp.Delete(h); err != nil {
+					return err
+				}
+
+				holds++
+			}
+		}
+
+		return nil
+	})
+
+	return notes, holds, err
+}
+
+func notifyPastoralHold(app App, hold *Record) {
+	if PastoralHoldNotifier == nil {
+		return
+	}
+
+	// one notice while a review is waiting: only the first open hold of an org tells
+	if n, err := app.CountRecords(CollectionNamePastoralHolds, dbx.HashExp{"org": hold.GetString("org"), "state": PastoralHoldHeld}); err != nil || n != 1 {
+		return
+	}
+
+	org, err := app.FindRecordById(CollectionNameOrgs, hold.GetString("org"))
+	if err != nil {
+		return
+	}
+
+	userCol, err := OrgUserCollection(app)
+	if err != nil {
+		return
+	}
+
+	owners, _ := app.FindRecordsByFilter(CollectionNameOrgMembers, "org={:o} && role='owner' && status='active'", "created", 0, 0, dbx.Params{"o": org.Id})
+
+	var to []*Record
+
+	for _, m := range owners {
+		if u, err := app.FindRecordById(userCol, m.GetString("user")); err == nil && usableEmail(u) {
+			to = append(to, u)
+		}
+	}
+
+	if len(to) == 0 {
+		return
+	}
+
+	if _, err := PastoralHoldNotifier(app, &PastoralHoldNotice{Org: org, Hold: hold, Recipients: to}); err != nil {
+		app.Logger().Warn("Failed to tell the org owners about a held note", "error", err.Error())
+	}
+}
+
 // holdPastoralForExport is called by the export for a note about the subject.
 // It returns true when the note must be left out of the file (not released).
 func holdPastoralForExport(app App, col *Collection, note *Record, subjectId string) (held bool, err error) {
@@ -63,7 +176,13 @@ func holdPastoralForExport(app App, col *Collection, note *Record, subjectId str
 
 	ctx := WithAuditContext(context.Background(), AuditActor{Type: AuditActorTypeSystem}, "")
 
-	return true, writePastoralHoldAudit(app, ctx, AuditActionHoldCreate, hold, nil)
+	if err := writePastoralHoldAudit(app, ctx, AuditActionHoldCreate, hold, nil); err != nil {
+		return true, err
+	}
+
+	notifyPastoralHold(app, hold)
+
+	return true, nil
 }
 
 // PastoralHoldView is a hold with the note it points at.

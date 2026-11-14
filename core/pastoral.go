@@ -284,10 +284,8 @@ func createPastoralNotes(app App, opts PastoralNotesOpts) (*Collection, error) {
 		return nil, err
 	}
 
-	if err := registerDataMapRetain(app, opts.Name, []string{"subject"},
-		[]string{"subject", "body"},
-		"Pastoral notes can hold information about other people and are kept until the org decides; they are not erased with the person they are about.",
-		"Pastoral notes (#86). Notes about a person are never put in their automatic export: the export records them as held for review and an owner of the note's org releases them by hand."); err != nil {
+	if err := registerDataMapAnonymize(app, opts.Name, []string{"subject"}, []string{"subject"},
+		"Pastoral notes (#86). The note stays for its author; erasure of the person it is about clears the subject link (UnlinkPastoralSubject). Notes about a person are never put in their automatic export: the export records them as held for review and an owner of the note's org releases them by hand."); err != nil {
 		return nil, err
 	}
 

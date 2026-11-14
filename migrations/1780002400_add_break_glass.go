@@ -90,11 +90,10 @@ func init() {
 				Note:         "Break-glass grants (#86). Export: the person's own grants (basis, times, who approved) without the reason, which only org owners read.",
 			},
 			{
-				Collection: core.CollectionNamePastoralHolds, Treatment: core.DataMapTreatmentRetain,
+				Collection: core.CollectionNamePastoralHolds, Treatment: core.DataMapTreatmentErase,
 				SubjectPaths:   []string{"subject"},
 				PersonalFields: []string{"subject", "decidedBy", "note"},
-				RetainReason:   "Record of which pastoral notes about a person were held back from their export and who decided. Kept as evidence of the decision.",
-				Note:           "Held pastoral notes (#86). Export: that a note is held or released, never what it says.",
+				Note:           "Held pastoral notes (#86). Export: that a note is held or released, never what it says. Deleted when the person is erased (UnlinkPastoralSubject).",
 			},
 		} {
 			if err := core.RegisterDataMapEntry(txApp, entry); err != nil {

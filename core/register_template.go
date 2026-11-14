@@ -170,6 +170,32 @@ func registerDataMapRetain(app App, collection string, subjectPaths, personal []
 	return app.Save(rec)
 }
 
+// registerDataMapAnonymize writes the custom _dataMap row of a collection with
+// the treatment "anonymize": erasure blanks the personal fields and keeps the row.
+func registerDataMapAnonymize(app App, collection string, subjectPaths, personal []string, note string) error {
+	col, err := app.FindCachedCollectionByNameOrId(CollectionNameDataMap)
+	if err != nil {
+		return nil
+	}
+
+	rec, err := app.FindFirstRecordByData(col, "collection", collection)
+	if err != nil {
+		rec = NewRecord(col)
+	} else if rec.GetBool("builtin") {
+		return nil
+	}
+
+	rec.Set("collection", collection)
+	rec.Set("treatment", DataMapTreatmentAnonymize)
+	rec.Set("subjectPaths", nonNilStrings(subjectPaths))
+	rec.Set("personalFields", nonNilStrings(personal))
+	rec.Set("retainReason", "")
+	rec.Set("note", note)
+	rec.Set("builtin", false)
+
+	return app.Save(rec)
+}
+
 // ---- template ---------------------------------------------------------------
 
 // SacramentalRegisterOpts configures CreateSacramentalRegister.

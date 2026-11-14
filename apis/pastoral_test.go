@@ -922,3 +922,135 @@ func TestPastoralTemplateNeedsAKey(t *testing.T) {
 		t.Fatal("nothing must be created without a key")
 	}
 }
+
+func TestBreakGlassRequestTellsOtherHolders(t *testing.T) {
+	env := newPastoralEnv(t)
+
+	env.app.TestMailer.Reset()
+
+	if s, b := env.request("frank", "sealed", goodReason, 0); s != http.StatusCreated {
+		t.Fatalf("request: %d %v", s, b)
+	}
+
+	msgs := env.app.TestMailer.Messages()
+	if len(msgs) != 1 || msgs[0].To[0].Address != "carol@orgs.test" {
+		t.Fatalf("only the other holder is told: %d", len(msgs))
+	}
+
+	for _, leak := range []string{"Parishioner", "safety", "secret sealed", env.notes["sealed"]} {
+		if strings.Contains(msgs[0].HTML, leak) {
+			t.Fatalf("the notice must not carry %q", leak)
+		}
+	}
+
+	if !strings.Contains(msgs[0].HTML, "/api/breakglass?org="+orgP1) {
+		t.Fatal("the notice carries a route hint")
+	}
+
+	// a failing mailer never blocks the request
+	old := core.BreakGlassRequestNotifier
+	core.BreakGlassRequestNotifier = func(core.App, *core.BreakGlassRequestNotice) (int, error) {
+		return 0, http.ErrAbortHandler
+	}
+
+	t.Cleanup(func() { core.BreakGlassRequestNotifier = old })
+
+	if s, b := env.request("frank", "private", goodReason, 0); s != http.StatusCreated {
+		t.Fatalf("a failed notice must not block: %d %v", s, b)
+	}
+}
+
+func TestPastoralHoldTellsOwnersOnce(t *testing.T) {
+	env := newPastoralEnv(t)
+
+	col, _ := env.app.FindCollectionByNameOrId(pastoralCol)
+	for i := 0; i < 2; i++ {
+		r := core.NewRecord(col)
+		r.Set("org", orgP1)
+		r.Set("author", orgUserID("dave"))
+		r.Set("subject", orgUserID("frank"))
+		r.Set("visibility", "clergy")
+		r.Set("body", "about frank")
+		orgMust(t, env.app.Save(r))
+	}
+
+	env.app.TestMailer.Reset()
+
+	var buf bytes.Buffer
+	if _, err := core.WriteDataExport(env.app, mustUser(t, env, "frank"), &buf); err != nil {
+		t.Fatal(err)
+	}
+
+	msgs := env.app.TestMailer.Messages()
+	if len(msgs) != 1 || msgs[0].To[0].Address != "alice@orgs.test" {
+		t.Fatalf("one notice to the owner: %d", len(msgs))
+	}
+
+	if strings.Contains(msgs[0].HTML, "about frank") {
+		t.Fatal("no note content in the notice")
+	}
+
+	// a failing mailer never blocks the export
+	old := core.PastoralHoldNotifier
+	core.PastoralHoldNotifier = func(core.App, *core.PastoralHoldNotice) (int, error) { return 0, http.ErrAbortHandler }
+
+	t.Cleanup(func() { core.PastoralHoldNotifier = old })
+
+	if _, err := core.WriteDataExport(env.app, mustUser(t, env, "frank"), &buf); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPastoralErasureUnlinksSubject(t *testing.T) {
+	env := newPastoralEnv(t)
+
+	col, _ := env.app.FindCollectionByNameOrId(pastoralCol)
+	r := core.NewRecord(col)
+	r.Set("org", orgP1)
+	r.Set("author", orgUserID("dave"))
+	r.Set("subject", orgUserID("frank"))
+	r.Set("visibility", "private")
+	r.Set("body", "kept for the author")
+	orgMust(t, env.app.Save(r))
+
+	var buf bytes.Buffer
+	if _, err := core.WriteDataExport(env.app, mustUser(t, env, "frank"), &buf); err != nil {
+		t.Fatal(err)
+	}
+
+	if hs, _ := env.app.FindAllRecords(core.CollectionNamePastoralHolds); len(hs) != 1 {
+		t.Fatalf("holds: %d", len(hs))
+	}
+
+	row, err := env.app.FindFirstRecordByData(core.CollectionNameDataMap, "collection", pastoralCol)
+	orgMust(t, err)
+
+	if row.GetString("treatment") != core.DataMapTreatmentAnonymize || !strings.Contains(toJSON(row.Get("personalFields")), "subject") ||
+		strings.Contains(toJSON(row.Get("personalFields")), "body") {
+		t.Fatalf("the data map unlinks the subject only: %v %v", row.GetString("treatment"), row.Get("personalFields"))
+	}
+
+	hm, _ := env.app.FindFirstRecordByData(core.CollectionNameDataMap, "collection", core.CollectionNamePastoralHolds)
+	if hm.GetString("treatment") != core.DataMapTreatmentErase {
+		t.Fatalf("holds are deleted: %s", hm.GetString("treatment"))
+	}
+
+	notes, holds, err := core.UnlinkPastoralSubject(env.app, context.Background(), orgUserID("frank"))
+	if err != nil || notes != 1 || holds != 1 {
+		t.Fatalf("unlink: %d %d %v", notes, holds, err)
+	}
+
+	got, _ := env.app.FindRecordById(col, r.Id)
+	if got.GetString("subject") != "" || got.GetString("body") != "kept for the author" || got.GetString("author") != orgUserID("dave") {
+		t.Fatalf("the note stays for the author, unlinked: %v", got.PublicExport())
+	}
+
+	if hs, _ := env.app.FindAllRecords(core.CollectionNamePastoralHolds); len(hs) != 0 {
+		t.Fatal("the holds are gone")
+	}
+
+	// the author still reads it
+	if s, _ := env.do(http.MethodGet, "/api/collections/"+pastoralCol+"/records/"+r.Id, nil, env.plain("dave")); s != http.StatusOK {
+		t.Fatalf("author: %d", s)
+	}
+}
