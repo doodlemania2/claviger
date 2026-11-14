@@ -754,3 +754,54 @@ func TestRetentionDeletesConsentEvidence(t *testing.T) {
 		t.Fatalf("%+v", res.Policies[0])
 	}
 }
+
+func TestRetentionWebhookEventFilters(t *testing.T) {
+	for _, ev := range []string{
+		core.CollectionNameRetentionPolicies + ":" + core.AuditActionRetentionRun,
+		core.CollectionNameLegalHolds + ":" + core.AuditActionLegalHold,
+		core.CollectionNameLegalHolds + ":" + core.AuditActionLegalHoldLift,
+	} {
+		if err := core.ValidateWebhookEvents([]string{ev}); err != nil {
+			t.Errorf("%s: %v", ev, err)
+		}
+	}
+}
+
+func TestUpgradePastoralExpiryAddsFieldsAndKeepsRulesLocked(t *testing.T) {
+	setTestKEK(t)
+
+	f := newOrgFixture(t)
+
+	col, err := core.CreatePastoralNotes(f.app, core.PastoralNotesOpts{})
+	must(t, err)
+
+	// what a collection made before 86-5 looks like
+	col.Fields.RemoveByName("kind")
+	col.Fields.RemoveByName("archivedAt")
+
+	legacy := strings.Replace(*col.UpdateRule, ` && @request.body.kind:isset = false && @request.body.archivedAt:isset = false`, "", 1)
+	col.UpdateRule = &legacy
+	must(t, f.app.Save(col))
+
+	changed, err := core.UpgradePastoralExpiry(f.app)
+	must(t, err)
+
+	if len(changed) != 1 {
+		t.Fatalf("one collection upgraded: %v", changed)
+	}
+
+	col, _ = f.app.FindCollectionByNameOrId(col.Name)
+	if col.Fields.GetByName("kind") == nil || col.Fields.GetByName("archivedAt") == nil {
+		t.Fatal("fields added")
+	}
+
+	want := core.PastoralRules(col.Name)
+	if *col.UpdateRule != *want.Update {
+		t.Fatal("the locked update rule is the new text")
+	}
+
+	// idempotent
+	if again, _ := core.UpgradePastoralExpiry(f.app); len(again) != 0 {
+		t.Fatalf("second run changed %v", again)
+	}
+}

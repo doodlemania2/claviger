@@ -8,7 +8,7 @@ Claviger keeps an append-only audit log in the hidden system collection `_auditL
 |---|---|
 | `create`, `update`, `delete` | Every record change in an audited collection, with before and after values (secrets, hidden fields and encrypted fields redacted). |
 | `settings.update`, `collection.create`, `collection.update`, `collection.delete` | Admin changes to settings and schema. |
-| feature actions (`field_key_rotate`, `recovery_issue`, `org_transfer_start`, `gdpr_export`, ...) | Operations that are not a plain record change. |
+| feature actions (`field_key_rotate`, `recovery_issue`, `org_transfer_start`, `gdpr_export`, `gdpr_retention_run`, `gdpr_hold`, `gdpr_hold_lift`, `pastoral_renew`, ...) | Operations that are not a plain record change. |
 | `read` | Reads of **flagged** collections (below). Nothing is recorded for a read by default. |
 
 Entries carry the actor (`superuser`, `record`, `scim` or `system`), the client IP, and a `meta` object. `meta.orgId` (or `meta.orgIds`) is set when the record belongs to an organization.
@@ -70,6 +70,7 @@ The entry never stores record content, only ids. A request that returns no recor
 | Create and update responses | no | They return the record the caller just wrote, and the write is audited. |
 | Superuser SQL endpoint, Go and JS hooks, `app.FindRecord...` | no | Server-side code is not a request. Hooks can call the helper below. |
 | Personal data export (#88) | no | It has its own entries (`gdpr_export*`). |
+| Retention job (#88) | no | Rows it deletes, anonymizes or archives write no entry of their own (a delete entry would keep the data). One `gdpr_retention_run` entry per run holds the counts. |
 
 If the audit entry cannot be written, a view or list answers 500 and a realtime event is not delivered. Reads of a flagged collection are never served unaudited.
 
