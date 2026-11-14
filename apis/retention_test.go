@@ -356,7 +356,7 @@ func TestPrayerRequestExpiryArchiveDeleteAndRenew(t *testing.T) {
 	runJob()
 
 	old := types.NowDateTime().Add(-31 * 24 * time.Hour).String()
-	if _, err := env.app.DB().NewQuery("UPDATE "+pastoralCol+" SET archivedAt={:a} WHERE id={:id}").Bind(dbx.Params{"a": old, "id": prayer.Id}).Execute(); err != nil {
+	if _, err := env.app.DB().NewQuery("UPDATE " + pastoralCol + " SET archivedAt={:a} WHERE id={:id}").Bind(dbx.Params{"a": old, "id": prayer.Id}).Execute(); err != nil {
 		t.Fatal(err)
 	}
 

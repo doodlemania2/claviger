@@ -83,7 +83,6 @@ const (
 var (
 	RetentionActions = []string{RetentionActionDelete, RetentionActionAnonymize, RetentionActionArchive}
 	RetentionUnits   = []string{RetentionUnitDays, RetentionUnitMonths, RetentionUnitYears}
-	retentionStates  = []string{retentionRunning, retentionDone}
 )
 
 // ErrRetentionRunning is returned when a retention run is already in progress.
@@ -330,10 +329,10 @@ func validateRetentionPolicy(app App, rec *Record) error {
 	}
 
 	if col != nil && errs["collection"] == nil {
-		switch {
-		case basis == "":
+		switch basis {
+		case "":
 			errs["basis"] = validation.NewError("validation_required", "A basis is required.")
-		case basis == RetentionBasisAgeOut:
+		case RetentionBasisAgeOut:
 			f := col.Fields.GetByName("birthDate")
 			if f == nil || (f.Type() != FieldTypeText && f.Type() != FieldTypeEncryptedText) {
 				errs["basis"] = validation.NewError("validation_retention_basis", "The age-out basis needs a birthDate text field.")
