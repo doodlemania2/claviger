@@ -38,6 +38,7 @@ func bindRealtimeApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
 	sub.POST("", realtimeSetSubscriptions)
 
 	bindRealtimeEvents(app)
+	bindAuditReadHooks(app)  // fork-local (#86)
 	bindRealtimeReplica(app) // fork-local (#106 M7)
 }
 
@@ -628,6 +629,8 @@ func realtimeBroadcastRecord(app core.App, action string, record *core.Record, d
 			var clientAuth *core.Record
 
 			for _, client := range chunk {
+				readAudited := false // fork-local (#86): one read entry per client and event
+
 				// note: not executed concurrently to avoid races and to ensure
 				// that the access checks are applied for the current record db state
 				for prefix, rule := range subscriptionRuleMap {
@@ -708,6 +711,22 @@ func realtimeBroadcastRecord(app core.App, action string, record *core.Record, d
 								slog.Any("error", enrichErr),
 							)
 							continue
+						}
+
+						// fork-local (#86): read audit of flagged collections. Delete events
+						// are dry cached inside the delete transaction and are not audited.
+						if !dryCache && !readAudited && core.AuditReadsCollection(app, collection.Name) {
+							ip, _ := client.Get(RealtimeClientIPKey).(string)
+							if err := auditRealtimeRead(app, action, record, clientAuth, ip); err != nil {
+								app.Logger().Warn(
+									"[broadcastRecord] read audit failed, event not delivered",
+									slog.String("id", cleanRecord.Id),
+									slog.String("collectionName", collection.Name),
+									slog.String("error", err.Error()),
+								)
+								continue
+							}
+							readAudited = true
 						}
 
 						data := &recordData{

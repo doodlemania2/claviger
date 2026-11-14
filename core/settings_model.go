@@ -290,7 +290,7 @@ func (s *Settings) PostValidate(ctx context.Context, app App) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return validation.ValidateStructWithContext(ctx, s,
+	if err := validation.ValidateStructWithContext(ctx, s,
 		validation.Field(&s.SuperuserIPs, validation.Each(validation.Required, validation.By(validators.IPOrSubnet))),
 		validation.Field(&s.Meta),
 		validation.Field(&s.Logs),
@@ -304,7 +304,16 @@ func (s *Settings) PostValidate(ctx context.Context, app App) error {
 		validation.Field(&s.SMS),
 		validation.Field(&s.DataExport),
 		validation.Field(&s.Audit),
-	)
+	); err != nil {
+		return err
+	}
+
+	// fork-local (#86): the flagged read-audit collections must exist
+	if err := s.Audit.validateReadCollections(app); err != nil {
+		return validation.Errors{"audit": err}
+	}
+
+	return nil
 }
 
 // Merge merges the "other" settings into the current one.
@@ -381,13 +390,48 @@ type AuditConfig struct {
 	// The CLAVIGER_AUDIT_RETENTION_DAYS environment variable, when set to a
 	// valid number, overrides this value (see AuditRetentionDaysEnv).
 	RetentionDays int `form:"retentionDays" json:"retentionDays"`
+
+	// ReadCollections lists the names of the collections whose record reads
+	// (view and list requests, realtime events, expands) are written to the
+	// audit log as "read" entries (#86). Empty = reads are not audited.
+	ReadCollections []string `form:"readCollections" json:"readCollections"`
 }
 
 // Validate makes AuditConfig validatable by implementing [validation.Validatable] interface.
 func (c AuditConfig) Validate() error {
 	return validation.ValidateStruct(&c,
 		validation.Field(&c.RetentionDays, validation.Min(0), validation.Max(36500)),
+		validation.Field(&c.ReadCollections, validation.Length(0, 200), validation.Each(validation.Required)),
 	)
+}
+
+// validateReadCollections checks that every flagged collection exists and
+// can be flagged. It runs from Settings.PostValidate because it needs the app.
+func (c AuditConfig) validateReadCollections(app App) error {
+	seen := make(map[string]struct{}, len(c.ReadCollections))
+
+	for i, name := range c.ReadCollections {
+		if name == CollectionNameAuditLog {
+			return validation.Errors{"readCollections": validation.NewError(
+				"validation_audit_read_self",
+				fmt.Sprintf("The %s collection cannot be flagged (reading the audit log would write to it).", CollectionNameAuditLog),
+			)}
+		}
+		if _, dup := seen[name]; dup {
+			return validation.Errors{"readCollections": validation.Errors{
+				strconv.Itoa(i): validation.NewError("validation_audit_read_duplicate", "Duplicated collection name."),
+			}}
+		}
+		seen[name] = struct{}{}
+
+		if _, err := app.FindCachedCollectionByNameOrId(name); err != nil {
+			return validation.Errors{"readCollections": validation.Errors{
+				strconv.Itoa(i): validation.NewError("validation_audit_read_unknown", "Missing collection \""+name+"\"."),
+			}}
+		}
+	}
+
+	return nil
 }
 
 // -------------------------------------------------------------------
