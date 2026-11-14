@@ -100,6 +100,12 @@ var webhookEventTypes = map[string]string{
 var webhookEntryEventTypes = map[string]string{
 	AuditActionDataExport: "gdpr.export",
 
+	// #88 88-3: retention runs and legal holds; the payload is the entry's
+	// meta (ids and counts), never a reason, a filter or a row
+	AuditActionRetentionRun:  "gdpr.retention",
+	AuditActionLegalHold:     "gdpr.hold",
+	AuditActionLegalHoldLift: "gdpr.hold_lift",
+
 	// #86: break-glass access to pastoral notes; the reason is left out of the payload
 	AuditActionBreakGlassRequest: "breakglass.request",
 	AuditActionBreakGlassOpen:    "breakglass.open",
@@ -306,7 +312,8 @@ func ValidateWebhookEvents(events []string) error {
 		}
 		switch action {
 		case "*", AuditActionCreate, AuditActionUpdate, AuditActionDelete, AuditActionCredentialExpiring, AuditActionCredentialLapsed:
-		case AuditActionDataExport, AuditActionBreakGlassRequest, AuditActionBreakGlassOpen, AuditActionBreakGlassRevoke: // fork-local (#88, #86): see webhookEntryEventTypes
+		case AuditActionRetentionRun, AuditActionLegalHold, AuditActionLegalHoldLift:
+		case AuditActionDataExport, AuditActionBreakGlassRequest, AuditActionBreakGlassRevoke, AuditActionBreakGlassOpen: // fork-local (#88, #86): see webhookEntryEventTypes
 		default:
 			return fmt.Errorf("invalid action in event filter %q (expected create, update, delete, credential_expiring, credential_lapsed or *)", ev)
 		}

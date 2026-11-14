@@ -1135,6 +1135,12 @@ func (app *BaseApp) registerConsentHooks() {
 			return me.Next()
 		}
 
+		// the retention job ends the evidence after the limitation period
+		// the congregation set (core/retention.go); nothing else may delete
+		if me.Type == ModelEventTypeDelete && me.Context != nil && me.Context.Value(retentionDeleteCtxKey{}) != nil {
+			return me.Next()
+		}
+
 		return fmt.Errorf("the %s collection is append-only: %s is not allowed", CollectionNameConsentEvents, me.Type)
 	}
 

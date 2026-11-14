@@ -71,6 +71,7 @@ var auditExcludedCollections = []string{
 	CollectionNameOrgTransfers,      // #84: explicit org_transfer_* entries
 	CollectionNameBreakGlass,        // #86: explicit breakglass_* entries (a read raises readCount)
 	CollectionNamePastoralHolds,     // #86: explicit pastoral_* entries
+	CollectionNameLegalHolds,        // #88: explicit gdpr_hold* entries (the reason stays out of the log)
 }
 
 // auditNoiseFields are fields whose changes alone do not warrant an entry
@@ -87,6 +88,12 @@ var auditSensitiveNameRegex = regexp.MustCompile(`(?i)(password|passwd|passphras
 type auditCtxKey struct{}
 type auditWriterCtxKey struct{}
 type auditSchemaCtxKey struct{}
+
+// auditSuppressCtxKey marks a write whose record-change entry is not wanted:
+// the retention job (core/retention.go) deletes personal data, and a delete
+// entry would keep it in the log. The key type is unexported, so no route or
+// hook outside the core package can set it.
+type auditSuppressCtxKey struct{}
 
 // WithAuditSchemaChange returns a copy of ctx that lets a change of the
 // _auditLog collection definition (fields, indexes, rules) through its
@@ -389,6 +396,10 @@ func auditCollectionSignature(c *Collection) string {
 
 func auditRecordChange(e *RecordEvent, action string) error {
 	collection := e.Record.Collection()
+
+	if e.Context != nil && e.Context.Value(auditSuppressCtxKey{}) != nil {
+		return e.Next()
+	}
 
 	if slices.Contains(auditExcludedCollections, collection.Name) {
 		return e.Next()

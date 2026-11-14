@@ -136,7 +136,7 @@ func PastoralRules(collection string) OrgRuleSet {
 		` && @request.body.body:isset = false && @request.body.visibility:isset = false` +
 		` && @request.body.sealed:isset = false && @request.body.org:isset = false` +
 		` && @request.body.author:isset = false && @request.body.subject:isset = false` +
-		` && @request.body.expiresAt:isset = false`
+		` && @request.body.expiresAt:isset = false` + pastoralExpiryLock
 
 	update := `@request.auth.id != "" && (` +
 		`(author = @request.auth.id && ` + m + ` && @request.body.author:isset = false && @request.body.org:isset = false)` +
@@ -268,8 +268,13 @@ func createPastoralNotes(app App, opts PastoralNotesOpts) (*Collection, error) {
 		&SelectField{Name: "visibility", Required: true, MaxSelect: 1, Values: PastoralVisibilities},
 		&BoolField{Name: "sealed"},
 		&EncryptedTextField{Name: "body", Required: true, Max: pastoralBodyMax},
+		// 86-5: a prayer request expires (kind prayer defaults to the org's
+		// prayerExpiryDays, 90); the retention job archives it at expiresAt
+		// and deletes it after the archive period (docs/retention.md)
+		&SelectField{Name: "kind", MaxSelect: 1, Values: PastoralKinds},
 		&DateField{Name: "expiresAt"},
 		&BoolField{Name: "archived"},
+		&DateField{Name: "archivedAt"},
 		&AutodateField{Name: "created", OnCreate: true},
 		&AutodateField{Name: "updated", OnCreate: true, OnUpdate: true},
 	)
