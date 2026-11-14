@@ -18,6 +18,7 @@ import (
 // core/register*.go for the rules.
 //
 //	POST   /api/registers                                 {template: "sacramental", name, signers?, retainReason?}; superuser; creates a register from the template
+//	GET    /api/registers, /api/registers/{collection}, /api/registers/_verify   read routes of the screens (registers_list.go)
 //	GET    /api/registers/{collection}/{id}               the entry with its annotations, oldest first (registrar, owner, admin)
 //	POST   /api/registers/{collection}/{id}/finalize      finalize, or take the next step when the register has two signers; registrar (never a superuser); fresh passkey
 //	DELETE /api/registers/{collection}/{id}/finalize      withdraw a pending finalization
@@ -29,6 +30,9 @@ import (
 func bindRegistersApi(rg *router.RouterGroup[*core.RequestEvent]) {
 	g := rg.Group("/registers").Bind(RequireAuth())
 	g.POST("", registerCreate).Bind(RequireSuperuserAuth())
+	g.GET("", registerList)                                        // fork-local (#87, 87-5)
+	g.GET("/_verify", registerVerify).Bind(RequireSuperuserAuth()) // a register name starts with a letter, so it cannot clash
+	g.GET("/{collection}", registerEntries)
 	g.GET("/{collection}/{id}", registerView)
 	g.POST("/{collection}/{id}/finalize", registerFinalize).Bind(refuseSuperuserSigning(), RequireFreshPasskey(webauthnStepUpMaxAge))
 	g.DELETE("/{collection}/{id}/finalize", registerWithdraw)
@@ -106,16 +110,21 @@ func registerEntryJSON(app core.App, cfg *core.PermanentConfig, entry *core.Reco
 		"signers":    cfg.Signers,
 		"chain":      cfg.Chain,
 		"record":     entry.PublicExport(),
+		// names for the screens (87-5): the record carries ids only
+		"finalizedByName":  core.PersonName(app, entry.GetString("finalizedBy")),
+		"secondSignerName": core.PersonName(app, entry.GetString("secondSigner")),
+		"pendingByName":    core.PersonName(app, entry.GetString("pendingBy")),
 	}
 }
 
-func registerAnnotationJSON(a *core.Record) map[string]any {
+func registerAnnotationJSON(app core.App, a *core.Record) map[string]any {
 	return map[string]any{
 		"id":         a.Id,
 		"entry":      a.GetString("entry"),
 		"kind":       a.GetString("kind"),
 		"text":       a.GetString("text"),
 		"author":     a.GetString("author"),
+		"authorName": core.PersonName(app, a.GetString("author")),
 		"reason":     a.GetString("reason"),
 		"supersedes": a.GetString("supersedes"),
 		"created":    a.GetDateTime("created"),
@@ -139,7 +148,7 @@ func registerView(e *core.RequestEvent) error {
 
 	items := make([]map[string]any, 0, len(notes))
 	for _, a := range notes {
-		items = append(items, registerAnnotationJSON(a))
+		items = append(items, registerAnnotationJSON(e.App, a))
 	}
 
 	out := registerEntryJSON(e.App, cfg, entry)
@@ -203,7 +212,7 @@ func registerAnnotate(e *core.RequestEvent) error {
 		return orgHTTP(e, err)
 	}
 
-	return e.JSON(http.StatusCreated, registerAnnotationJSON(a))
+	return e.JSON(http.StatusCreated, registerAnnotationJSON(e.App, a))
 }
 
 // ---- certificate ----------------------------------------------------------------

@@ -60,6 +60,7 @@ func NewRouter(app core.App) (*router.Router[*core.RequestEvent], error) {
 	bindHouseholdsApi(apiGroup)      // fork-local (#80)
 	bindMyAccessStatusApi(apiGroup)  // fork-local (#81)
 	bindRegistersApi(apiGroup)       // fork-local (#87)
+	bindPastoralApi(app, apiGroup)   // fork-local (#86)
 	bindDataExportApi(app, apiGroup) // fork-local (#88, 88-1)
 	bindSCIMApi(app, pbRouter)       // fork-local (#79c)
 
@@ -73,6 +74,7 @@ func NewRouter(app core.App) (*router.Router[*core.RequestEvent], error) {
 	bindHouseholdsPages(app)  // fork-local (#80)
 	bindCredentialsPages(app) // fork-local (#81)
 	bindConsentPages(app)     // fork-local (#88)
+	bindRegistersPages(app)   // fork-local (#87, 87-5)
 	bindHostedAssets(app)     // fork-local (#83): accessible mode and /passkeys files
 
 	return pbRouter, nil

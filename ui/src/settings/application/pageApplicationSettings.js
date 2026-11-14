@@ -144,7 +144,7 @@ export function pageApplicationSettings() {
             superuserIPs: settings.superuserIPs || [],
             meta: settings.meta || {},
             batch: settings.batch || {},
-            audit: settings.audit || { retentionDays: 0 },
+            audit: settings.audit || { retentionDays: 0, readCollections: [] },
             trustedProxy: settings.trustedProxy || { headers: [] },
             rateLimits: settings.rateLimits || { excludedIPs: [], rules: [] },
         };

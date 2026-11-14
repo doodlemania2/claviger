@@ -69,6 +69,8 @@ var auditExcludedCollections = []string{
 	CollectionNameDataRequests,      // #88: the gdpr_export* entries describe the requests
 	CollectionNameRecoveryCodes,     // #83: explicit recovery_* entries; no hash in the log
 	CollectionNameOrgTransfers,      // #84: explicit org_transfer_* entries
+	CollectionNameBreakGlass,        // #86: explicit breakglass_* entries (a read raises readCount)
+	CollectionNamePastoralHolds,     // #86: explicit pastoral_* entries
 }
 
 // auditNoiseFields are fields whose changes alone do not warrant an entry
