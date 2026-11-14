@@ -91,6 +91,20 @@ type BreakGlassNotice struct {
 // Nil means nobody can be reached, so no grant is ever approved.
 var BreakGlassNotifier func(app App, n *BreakGlassNotice) (int, error)
 
+// BreakGlassRequestNotice tells the other holders of the breakglass tag that a
+// request is waiting for approval. It carries no reason, basis or note content:
+// the holders read those where they decide.
+type BreakGlassRequestNotice struct {
+	Org        *Record
+	Grant      *Record
+	Requester  *Record
+	Recipients []*Record
+}
+
+// BreakGlassRequestNotifier emails the notice and returns how many it reached.
+// The mails package sets it. A failure never blocks the request.
+var BreakGlassRequestNotifier func(app App, n *BreakGlassRequestNotice) (int, error)
+
 // BreakGlassAvailable reports whether the break-glass collection exists.
 func BreakGlassAvailable(app App) bool {
 	_, err := app.FindCachedCollectionByNameOrId(CollectionNameBreakGlass)
@@ -250,7 +264,44 @@ func RequestBreakGlass(app App, ctx context.Context, auth *Record, in BreakGlass
 		return nil, err
 	}
 
+	notifyBreakGlassRequest(app, org, grant, auth)
+
 	return grant, nil
+}
+
+// notifyBreakGlassRequest emails the org's other holders. Best effort.
+func notifyBreakGlassRequest(app App, org, grant, requester *Record) {
+	if BreakGlassRequestNotifier == nil {
+		return
+	}
+
+	userCol, err := OrgUserCollection(app)
+	if err != nil {
+		return
+	}
+
+	members, _ := app.FindRecordsByFilter(CollectionNameOrgMembers, "org={:o} && status='active'", "created", 0, 0, dbx.Params{"o": org.Id})
+
+	var to []*Record
+
+	for _, m := range members {
+		uid := m.GetString("user")
+		if uid == requester.Id || !slices.Contains(OrgTagNames(app, m), PastoralTagBreakGlass) {
+			continue
+		}
+
+		if u, err := app.FindRecordById(userCol, uid); err == nil && usableEmail(u) {
+			to = append(to, u)
+		}
+	}
+
+	if len(to) == 0 {
+		return
+	}
+
+	if _, err := BreakGlassRequestNotifier(app, &BreakGlassRequestNotice{Org: org, Grant: grant, Requester: requester, Recipients: to}); err != nil {
+		app.Logger().Warn("Failed to tell the breakglass holders about a request", "error", err.Error())
+	}
 }
 
 // openBreakGlass returns a pending or active grant of the grantee on the note.

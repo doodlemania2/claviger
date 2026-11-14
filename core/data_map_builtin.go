@@ -90,10 +90,9 @@ var builtinDataMap = []DataMapEntry{
 		PersonalFields: []string{"grantee", "approvedBy", "revokedBy", "reason"}, AgeOutBasis: "requestedAt",
 		RetainReason: "Evidence of who opened a pastoral note, why and for how long. Kept so that access to the most sensitive data stays accountable.",
 		Note:         "Break-glass grants (#86). Export: the person's own grants (basis, times, who approved) without the reason, which only org owners read."},
-	{Collection: CollectionNamePastoralHolds, Treatment: DataMapTreatmentRetain, SubjectPaths: []string{"subject"},
+	{Collection: CollectionNamePastoralHolds, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"subject"},
 		PersonalFields: []string{"subject", "decidedBy", "note"},
-		RetainReason:   "Record of which pastoral notes about a person were held back from their export and who decided. Kept as evidence of the decision.",
-		Note:           "Held pastoral notes (#86). Export: that a note is held or released, never what it says."},
+		Note:           "Held pastoral notes (#86). Export: that a note is held or released, never what it says. Deleted when the person is erased (UnlinkPastoralSubject)."},
 	// ---- consent (#88, 88-2) ----
 	{Collection: CollectionNameConsentPurposes, Treatment: DataMapTreatmentNone,
 		Note: "What a person can consent to (key, text, version, lawful basis). Not about a person."},
