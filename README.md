@@ -85,6 +85,8 @@ JavaScript hooks. Every feature below is off, or has no effect, until you config
 | Personal data export | One ZIP per person, driven by the data map: [docs/data-export.md](docs/data-export.md) |
 | Consent records | What was agreed, when, on which wording, by whom: [docs/consent.md](docs/consent.md) |
 | Retention and legal holds | Daily retention job, holds that block deletion: [docs/retention.md](docs/retention.md) |
+| Erasure | Confirmed requests, a grace period, holds and registers respected, audit scrub, re-erasure after a restore: [docs/erasure.md](docs/erasure.md) |
+| Admin screens | Data map, requests, holds, retention and consent in the admin UI under Data protection |
 
 Retention periods, pastoral disclosure and the interaction of permanent registers with
 erasure all need local legal review. The guides say so where it applies.
@@ -93,8 +95,7 @@ erasure all need local legal review. The guides say so where it applies.
 
 Not built yet. Labels and details are in the [issues](../../issues).
 
-- Erasure and the GDPR admin screens ([#88](../../issues/88)), in progress. The data map,
-  export, consent and retention parts above have shipped.
+- Register restriction flow, administrator guide and DPIA templates ([#88](../../issues/88)).
 - Children's check-in ([#82](../../issues/82)).
 - Church software SSO presets ([#85](../../issues/85)).
 - Enterprise inbound SSO ([#92](../../issues/92)).
