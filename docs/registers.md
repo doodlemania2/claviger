@@ -81,7 +81,7 @@ The annotation audit entry is `register_annotate`.
 
 `restricted` is the one default mutable field. It lets a registrar stop an entry from being shown outside the registrar role while the entry stays.
 
-A final entry is **retained** when a person asks for erasure, for the reason recorded in the data map. A later erasure feature calls
+A final entry is **retained** when a person asks for erasure, for the reason recorded in the data map. The erasure job (88-4, `docs/erasure.md`) calls
 
 ```go
 core.AnnotateErasureRequest(app, ctx, entry, reason)

@@ -70,6 +70,7 @@ The entry never stores record content, only ids. A request that returns no recor
 | Create and update responses | no | They return the record the caller just wrote, and the write is audited. |
 | Superuser SQL endpoint, Go and JS hooks, `app.FindRecord...` | no | Server-side code is not a request. Hooks can call the helper below. |
 | Personal data export (#88) | no | It has its own entries (`gdpr_export*`). |
+| Erasure job (#88) | no | Its own writes leave no record-change entries. It writes `gdpr_erase_request`, `gdpr_erase_confirm`, `gdpr_erase_cancel` and `gdpr_erase` (ids and counts), and scrubs the entries about the erased person (see below). |
 | Retention job (#88) | no | Rows it deletes, anonymizes or archives write no entry of their own (a delete entry would keep the data). One `gdpr_retention_run` entry per run holds the counts. |
 
 If the audit entry cannot be written, a view or list answers 500 and a realtime event is not delivered. Reads of a flagged collection are never served unaudited.
@@ -89,6 +90,10 @@ If a feature audits the same read itself and the collection is also flagged, the
 ### Webhooks
 
 `read` entries do not produce webhook events (they would be one event per page view). A feature that needs one for its own reads, such as break-glass, adds its own action to the webhook event map.
+
+### Erasure: the one exception to append-only
+
+`core.ScrubAuditForErasure` is the only code that changes an entry. For the entries about an erased person it empties `before`, `after` and `ip`, reduces `meta` to the org ids, and replaces the person's id with a pseudonym; the action, the time, the collection names and the changed field names stay. The guard of `_auditLog` lets an update through only with a context key that only this function can create, and only when no column but those changes. It is itself audited by the person's `gdpr_erase` entry. Which entries may be kept for a security reason is a question for a lawyer (spec open question 18); today nothing is kept. See `docs/erasure.md`.
 
 ### Retention and privacy
 

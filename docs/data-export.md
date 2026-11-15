@@ -114,7 +114,7 @@ A webhook endpoint with the filter `*`, `_dataRequests:*` or `_dataRequests:gdpr
 
 - A notification email when the export is ready (the status route and the audit entry tell the requester; an email needs translated templates).
 - Pastoral notes (#86) and households (#80): they get a data map entry when their collections exist.
-- Erasure (88-4). The `erase` request type and the erasure states exist in `_dataRequests` so the schema does not change later.
+- Erasure is built (88-4, `docs/erasure.md`): the `erase` rows of `_dataRequests` are the requests, and the person's export requests are erased with them.
 - Several replicas: the job is one at a time per process. With SQLite there is only one process. With several replicas on Postgres the claim of a queued request is a compare-and-swap, so two replicas do not run the same request.
 
 ## For developers
