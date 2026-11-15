@@ -8,6 +8,7 @@ import { auditScene, backupScene, fieldEncryptionScene, telemetryScene } from ".
 import { orgsScene, staffScene } from "./parish-orgs";
 import { householdsScene, safeguardingScene } from "./parish-care";
 import { consentScene, recoveryScene } from "./parish-people";
+import { dataProtectionScene, pastoralScene, registerScene, transferScene } from "./parish-records";
 import { passkeySignin, usersPasskeys } from "./dev-users";
 
 export type SceneFn = (browser: Browser, world: World, index: number) => Promise<void>;
@@ -30,4 +31,8 @@ export const SCENES: Record<string, SceneFn> = {
     safeguarding: safeguardingScene,
     recovery: recoveryScene,
     consent: consentScene,
+    register: registerScene,
+    pastoral: pastoralScene,
+    transfer: transferScene,
+    "data-protection": dataProtectionScene,
 };

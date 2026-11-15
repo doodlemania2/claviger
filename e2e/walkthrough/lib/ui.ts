@@ -68,6 +68,15 @@ export async function apiCard(actor: Actor, title: string, call: string, status:
 
 export const hostedSignIn = async (page: Page, who: Pick<Person, "email" | "password">): Promise<void> => {
     const form = page.locator("form#pw");
+    // a page that already holds this tab's session (after /passkeys, say) opens straight on its content
+    const needed = await form
+        .getByLabel("Email or username")
+        .waitFor({ state: "visible", timeout: 3000 })
+        .then(
+            () => true,
+            () => false,
+        );
+    if (!needed) return;
     await typeIn(form.getByLabel("Email or username"), who.email);
     await typeIn(form.getByLabel("Password"), who.password);
     await press(form.getByRole("button", { name: "Sign in", exact: true }), page, 1200);

@@ -67,8 +67,10 @@ export async function startStack(world: World): Promise<Stack> {
     const flags = ["--dir", world.dataDir, "--encryptionEnv", "PB_ENCRYPTION_KEY"];
 
     // The parish story starts from an existing superuser; the developer story creates it on camera.
-    if (world.story === "parish" && world.admin.email) {
+    if (world.story === "parish" && world.admin.email && !world.notes.superuserMade) {
         execFileSync(BIN, ["superuser", "upsert", world.admin.email, world.admin.password, ...flags], { env, cwd: sandbox, stdio: "ignore" });
+        world.notes.superuserMade = "yes";
+        saveWorld(world);
     }
 
     const logFile = join(world.dir, "server.log");
