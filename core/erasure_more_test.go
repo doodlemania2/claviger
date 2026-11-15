@@ -982,3 +982,86 @@ func TestErasureNoticeIsSentBeforeTheAddressIsAnonymized(t *testing.T) {
 		t.Errorf("the notice says the account is anonymized: %+v", res)
 	}
 }
+
+func TestErasureOfAChildWithoutLoginReplaysAfterARestore(t *testing.T) {
+	w := newErWorld(t)
+	app := w.app()
+	kid := w.kid2
+
+	// the staff path works for a person without a login
+	req, res := w.erase(t, kid)
+	if req.GetString("state") != core.DataRequestStateDone || res.Anonymized[core.CollectionNameHouseholdMembers] != 1 {
+		t.Fatalf("state %s %+v", req.GetString("state"), res)
+	}
+
+	// the household still has its guardian and its shape
+	if _, err := app.FindRecordById(core.CollectionNameHouseholds, w.h2.Id); err != nil {
+		t.Fatal("the household must stay")
+	}
+
+	// a restore brings the child back
+	back := w.fresh(t, kid)
+	back.Set("name", "Kid Two Again")
+	back.Set("status", core.HouseholdMemberActive)
+	mustSave(t, app, back)
+
+	n, err := core.ReplayErasureLog(app)
+	if err != nil || n != 1 {
+		t.Fatalf("replay found %d: %v", n, err)
+	}
+
+	rows, _ := app.FindRecordsByFilter(core.CollectionNameDataRequests, "type = 'erase' && state = 'queued'", "", 0, 0)
+	if len(rows) != 1 {
+		t.Fatalf("queued: %d", len(rows))
+	}
+
+	if done := w.finish(t, rows[0].Id); done.GetString("state") != core.DataRequestStateDone {
+		t.Fatalf("state %s err %s", done.GetString("state"), done.GetString("error"))
+	}
+
+	if got := w.fresh(t, kid); got.GetString("name") != "" || got.GetString("status") != core.HouseholdMemberLeft {
+		t.Errorf("the replay must erase the child again: %v", got.FieldsData())
+	}
+
+	if n, _ := core.ReplayErasureLog(app); n != 0 {
+		t.Errorf("idempotent: %d", n)
+	}
+
+	// a person with a login is refused through the household row: use the account
+	if _, err := core.RequestErasure(app, core.ErasureRequestInput{Subject: w.yanM, Requester: w.su, Mode: core.ErasureModeAdmin, IdentityCheck: "x", Ctx: w.ctx}); err == nil {
+		t.Error("a row with a login is erased through the account")
+	}
+}
+
+func TestErasureEntryIsDeliveredAsAWebhookWithIdsAndCountsOnly(t *testing.T) {
+	w := newErWorld(t)
+	app := w.app()
+	gwen := w.users["gwen"]
+
+	t.Setenv(core.WebhooksAllowLocalhostEnv, "true")
+	core.WebhookTestSeams(app).SetServing(false) // nothing is sent; the deliveries are queued
+
+	addEndpoint(t, app, "http://127.0.0.1:9/hook", []string{"*"}, true)
+
+	_, _ = w.erase(t, gwen)
+
+	rows, err := app.FindRecordsByFilter(core.CollectionNameWebhookDeliveries, "eventType = 'gdpr.erase'", "", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(rows) != 1 {
+		t.Fatalf("one gdpr.erase delivery, got %d", len(rows))
+	}
+
+	payload := string(erJSON(t, rows[0].GetRaw("payload")))
+	for _, bad := range []string{gwen.Id, gwen.Email()} {
+		if strings.Contains(payload, bad) {
+			t.Errorf("the webhook payload names the person: %s", payload)
+		}
+	}
+
+	if !strings.Contains(payload, core.ErasurePseudonym(gwen.Id)) {
+		t.Errorf("the payload should carry the pseudonym: %s", payload)
+	}
+}
