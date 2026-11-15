@@ -131,6 +131,12 @@ test("Registers page: a registrar finalizes with a passkey, writes a note, retra
     await expect(page.locator("#facts")).toContainText("Final");
     await expect(page.locator("#facts")).toContainText("Register number");
     await expect(page.locator("#facts code")).toHaveText(/^[0-9a-f]{64}$/);
+
+    // the long chain hash wraps instead of widening the page on a phone
+    const desktop = page.viewportSize();
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    if (desktop) await page.setViewportSize(desktop);
     await expect(page.locator("#finalize")).toBeHidden();
     await expect(page.locator(`tr[data-entry='${ids.smith}']`)).toHaveAttribute("data-state", "final");
 
