@@ -1,5 +1,7 @@
 // Fork-local (Claviger #95): create an API key and show it once.
 
+import { withStepUp } from "@/gdpr/gdprCommon";
+
 export function openApiKeyCreateModal(settings = { oncreated: null }) {
     const modal = apiKeyCreateModal(settings);
     document.body.appendChild(modal);
@@ -58,7 +60,7 @@ function apiKeyCreateModal(settings) {
                 body.expires = new Date(data.expires).toISOString().replace("T", " ");
             }
 
-            const result = await app.pb.send("/api/apikeys", { method: "POST", body, requestKey: uniqueId });
+            const result = await withStepUp(() => app.pb.send("/api/apikeys", { method: "POST", body, requestKey: uniqueId }));
 
             data.isSubmitting = false;
             data.createdKey = result.key;
