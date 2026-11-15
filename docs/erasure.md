@@ -129,6 +129,10 @@ A person's view of a request hides the ids of kept rows and the hold ids; a supe
 
 Audit actions: `gdpr_erase_request`, `gdpr_erase_confirm`, `gdpr_erase_cancel`, `gdpr_erase`. Emails: `email.erasureConfirm.*`, `email.erasureGrace.*`, `email.erasureResult.*` in the catalog (English is the source; the other languages are drafts until a native speaker reviews them).
 
+## In the admin UI
+
+The admin UI has a **Data protection** section (superusers). **Data requests** (`#/gdpr/requests`) lists the exports and erasures; for an erasure a superuser can view it with its result, **cancel** one that has not started (it needs a fresh passkey, like the API route), and **start** an erasure for a person, with the identity check text or the emailed confirmation. The **grace period in days** (`erasure.graceDays`, 0 to 30) can be given for one erasure on that form, and the default grace period is set on the same page. The other pages are the data map (`#/gdpr/data-map`), legal holds (`#/gdpr/holds`) and retention policies (`#/gdpr/retention`). Every screen uses the routes described here.
+
 ## For a lawyer
 
 - **Which audit entries may be kept** for a security reason (spec open question 18). The scrub keeps nothing: every entry about the person loses `before`, `after` and the IP. Keeping some entries (failed sign-ins, ban decisions) under a legitimate-interest basis is a decision for a lawyer, who decides the list and the basis. The function would then take an exclusion list; it does not today.
@@ -138,7 +142,6 @@ Audit actions: `gdpr_erase_request`, `gdpr_erase_confirm`, `gdpr_erase_cancel`, 
 
 ## Not built
 
-- The admin screens (88-5).
 - Anonymizing a final register entry with two approvers (88-7).
 - Per-collection hold reasons in the result (they are left out on purpose).
 - An outbound SCIM client. Claviger is the SCIM *target*: the memberships that came from SCIM are suspended before they are removed, and an administrator tells the identity provider.

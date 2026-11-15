@@ -112,4 +112,4 @@ The page is a shell and carries no purpose text; everything is loaded through th
 
 - A hosted page where people manage their own consents (the routes exist).
 - Webhook events for consent changes (the audit entries are delivered like other entries).
-- Automatic expiry of old events (retention, 88-3).
+- Automatic expiry of old events is a retention policy you add yourself (`docs/retention.md`); none is enabled by default.
