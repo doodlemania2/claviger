@@ -106,7 +106,9 @@ export async function startWorld(opts: StartOptions = {}): Promise<World> {
     const base = `http://localhost:${port}`;
     const bin = opts.bin ?? process.env.CLAVIGER_GUIDES_BIN ?? defaultBin;
 
-    if (!existsSync(bin)) {
+    // Build every run (go build is incremental), so a stale binary never shows old screens.
+    // E2E_SKIP_BUILD=1 reuses an existing binary, as in the e2e suite.
+    if (!existsSync(bin) || (!process.env.E2E_SKIP_BUILD && !opts.bin && !process.env.CLAVIGER_GUIDES_BIN)) {
         log("building claviger");
         mkdirSync(dirname(bin), { recursive: true });
         execFileSync("go", ["build", "-o", bin, "./examples/base"], { cwd: repoRoot, stdio: "inherit" });
