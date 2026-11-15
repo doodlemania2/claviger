@@ -63,6 +63,7 @@ func NewRouter(app core.App) (*router.Router[*core.RequestEvent], error) {
 	bindPastoralApi(app, apiGroup)   // fork-local (#86)
 	bindDataExportApi(app, apiGroup) // fork-local (#88, 88-1)
 	bindRetentionApi(apiGroup)       // fork-local (#88, 88-3)
+	bindErasureApi(app, apiGroup)    // fork-local (#88, 88-4)
 	bindSCIMApi(app, pbRouter)       // fork-local (#79c)
 
 	// UI routes
