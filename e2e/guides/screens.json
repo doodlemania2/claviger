@@ -1711,7 +1711,8 @@
      "name": "default"
     }
    ],
-   "anon": true
+   "anon": true,
+   "flow": true
   },
   {
    "id": "hosted-oidc-consent",
@@ -1744,7 +1745,8 @@
      ]
     }
    ],
-   "anon": true
+   "anon": true,
+   "flow": true
   },
   {
    "id": "hosted-oidc-chooser",
@@ -1784,7 +1786,8 @@
     }
    ],
    "anon": true,
-   "allowStatus": true
+   "allowStatus": true,
+   "flow": true
   },
   {
    "id": "hosted-oidc-device",
@@ -1805,7 +1808,8 @@
      ]
     }
    ],
-   "anon": true
+   "anon": true,
+   "flow": true
   },
   {
    "id": "hosted-oidc-error",
@@ -1827,7 +1831,8 @@
     }
    ],
    "anon": true,
-   "allowStatus": true
+   "allowStatus": true,
+   "flow": true
   },
   {
    "id": "hosted-oidc-device-approve",
@@ -1866,7 +1871,8 @@
      ]
     }
    ],
-   "anon": true
+   "anon": true,
+   "flow": true
   },
   {
    "id": "hosted-oidc-logged-out",
@@ -1901,7 +1907,8 @@
      "allowStatus": true
     }
    ],
-   "anon": true
+   "anon": true,
+   "flow": true
   },
   {
    "id": "hosted-orgs-admin",
@@ -2159,7 +2166,8 @@
      ]
     }
    ],
-   "anon": true
+   "anon": true,
+   "flow": true
   },
   {
    "id": "hosted-erasure-cancel",
@@ -2172,7 +2180,8 @@
      "name": "default"
     }
    ],
-   "anon": true
+   "anon": true,
+   "flow": true
   }
  ]
 }

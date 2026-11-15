@@ -283,7 +283,9 @@ async function newContext(browser, world, { persona, passkey, dark, mobile, host
         (url) => url.hostname !== "localhost" && url.hostname !== "127.0.0.1",
         (route) => route.abort(),
     );
-    if (persona) {
+    // a persona with no account (the invitee) means "not signed in", not a failed sign-in
+    const noAccount = persona && persona !== "superuser" && world.personas[persona] && !world.personas[persona].id;
+    if (persona && !noAccount) {
         const a = await authFor(world, persona);
         const payload = JSON.stringify({ token: a.token, record: a.record });
         await ctx.addInitScript(
@@ -415,6 +417,8 @@ async function main() {
             for (const sh of readSpecShots(args.specs)) {
                 if (!known.has(sh.screen)) problems.push(`${sh.spec}: shot "${sh.out}" names unknown screen "${sh.screen}"`);
                 if (sh.persona && sh.persona !== "superuser" && !PERSONAS.includes(sh.persona)) problems.push(`${sh.spec}: unknown persona "${sh.persona}"`);
+                const scr = screens.find((x) => sh.screen === x.id || sh.screen.startsWith(x.id + "--"));
+                if (scr?.flow && sh.path) console.warn(`  warning: ${sh.spec}: shot "${sh.out}" gives path ${sh.path}, but ${scr.id} is a flow screen: the path is ignored`);
             }
         }
         if (args.live) problems.push(...(await liveCheck(screens, args)));
@@ -439,7 +443,8 @@ async function main() {
             if (!x) throw new Error(`${sh.spec}: unknown screen "${sh.screen}"`);
             if (args.only.length && !args.only.some((o) => o === sh.screen || o === sh.out)) continue;
             const name = String(sh.out).replace(/\.png$/, "");
-            jobs.push({ ...x, route: sh.path || x.screen.route, persona: sh.persona, file: (v) => join(outRoot, sh.area, "img", name + (v === "dark" ? "-dark" : v === "mobile" ? "-mobile" : "") + ".png") });
+            // a flow screen needs a generated request (an authorize call, a device code, a token): the manifest recipe wins
+            jobs.push({ ...x, route: x.screen.flow ? x.screen.route : sh.path || x.screen.route, persona: sh.persona, file: (v) => join(outRoot, sh.area, "img", name + (v === "dark" ? "-dark" : v === "mobile" ? "-mobile" : "") + ".png") });
         }
     } else {
         jobs = selectStems(screens, args.only).map((x) => ({ ...x, route: x.screen.route, file: (v) => join(outRoot, x.screen.area, "img", x.stem + (v === "dark" ? "-dark" : v === "mobile" ? "-mobile" : "") + ".png") }));

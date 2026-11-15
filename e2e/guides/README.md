@@ -56,6 +56,12 @@ shots:
     path: /_/#/webhooks              # optional: the manifest route is the default
 ```
 
+**Flow screens.** An entry marked `"flow": true` in `screens.json` needs something the world generates for each run: an
+authorize request (`hosted-oidc-login`, `-consent`, `-chooser`, `-error`), a device code (`hosted-oidc-device`,
+`-device-approve`), an invitation token (`hosted-orgs-invite`) or an erasure token (`hosted-erasure-confirm`, `-cancel`).
+For these the kit runs the manifest's own recipe and **ignores the spec's `path`**: it is informational only, and
+`--check --specs` prints a warning when a spec gives one. A persona with no account (`invitee`) means "not signed in".
+
 `capture --specs <docs-site/guides>` reads `<area>/*.md`, parses the front matter, and writes `<area>/img/webhooks-new.png`,
 `webhooks-new-dark.png` (and `-mobile.png` for a hosted page). The kit reaches the state by itself, from the manifest
 (route plus the steps of that state) and the persona; a spec never says how. `capture --check --specs <dir>` fails on an unknown screen or persona.
