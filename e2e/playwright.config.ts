@@ -5,7 +5,6 @@ import { defineConfig } from "@playwright/test";
 export const PORT = Number(process.env.E2E_PORT || 18090);
 
 export default defineConfig({
-    testDir: "./tests",
     globalSetup: "./global-setup.ts",
     globalTeardown: "./global-teardown.ts",
     fullyParallel: false,
@@ -14,6 +13,11 @@ export default defineConfig({
     timeout: 60_000,
     expect: { timeout: 10_000 },
     reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
+    projects: [
+        { name: "e2e", testDir: "./tests" },
+        // the screenshot kit: starts its own instance on free ports, so it needs nothing from global-setup
+        { name: "guides", testDir: "./guides", testMatch: "*.spec.ts" },
+    ],
     use: {
         baseURL: `http://localhost:${PORT}`,
         trace: "retain-on-failure",
