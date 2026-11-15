@@ -347,6 +347,7 @@
   "oidc.err.cannotResume": "تعذّر استئناف تسجيل الدخول هذا. عد إلى التطبيق وابدأ من جديد.",
   "oidc.err.tooManyRequests": "طلبات تسجيل دخول كثيرة جداً. انتظر دقيقة ثم حاول مرة أخرى.",
   "oidc.err.invalidRequest": "طلب غير صالح.",
+  "oidc.err.invalidAuthorize": "رابط تسجيل الدخول هذا غير صالح. عد إلى التطبيق وحاول مرة أخرى.",
   "oidc.err.signInExpired": "انتهت صلاحية تسجيل الدخول هذا. عد إلى التطبيق وحاول مرة أخرى.",
   "oidc.err.signInOtherBrowser": "بدأ تسجيل الدخول هذا في متصفح آخر.",
   "oidc.err.wrongAccountType": "سجّل الدخول بحساب من النوع المناسب.",

@@ -347,6 +347,7 @@
   "oidc.err.cannotResume": "无法继续此次登录。请返回应用并重新开始。",
   "oidc.err.tooManyRequests": "登录请求过多。请等待一分钟后重试。",
   "oidc.err.invalidRequest": "无效的请求。",
+  "oidc.err.invalidAuthorize": "此登录链接无效。请返回应用后重试。",
   "oidc.err.signInExpired": "此次登录已过期。请返回应用后重试。",
   "oidc.err.signInOtherBrowser": "此登录是在另一个浏览器中发起的。",
   "oidc.err.wrongAccountType": "请使用正确类型的账号登录。",
