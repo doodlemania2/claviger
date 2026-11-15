@@ -1,0 +1,297 @@
+{
+  "property": "claviger",
+  "audiences": ["developer", "superuser", "staff", "member"],
+  "features": [
+    {
+      "id": "installer",
+      "name": "First-run installer",
+      "status": "ready",
+      "summary": "The first start prints a one-time link that creates the first administrator account.",
+      "audiences": ["developer", "superuser"],
+      "screens": ["admin-login"],
+      "sources": ["apis/installer.go"]
+    },
+    {
+      "id": "data-api",
+      "name": "Collections and data API",
+      "status": "ready",
+      "summary": "Define collections in the admin UI and get a REST and realtime API with access rules for each one.",
+      "audiences": ["developer"],
+      "screens": ["admin-collections", "admin-collections-empty", "admin-settings-export-collections", "admin-settings-import-collections"],
+      "sources": ["core/collection*.go", "core/record*.go", "apis/collection*.go", "apis/record_crud*.go", "apis/realtime.go", "apis/batch.go", "ui/src/collections/**", "ui/src/records/**"]
+    },
+    {
+      "id": "passkeys",
+      "name": "Passkeys",
+      "status": "ready",
+      "summary": "Sign in with a passkey on your phone or computer instead of a password.",
+      "audiences": ["member", "superuser", "developer"],
+      "headline": true,
+      "screens": ["hosted-passkeys", "admin-auth-confirm-passkey-reset"],
+      "sources": ["apis/record_auth_with_webauthn*.go", "apis/record_auth_passkey_reset_*.go", "apis/passkeys_page.go", "apis/hosted_assets/passkeys-page.*", "core/webauthn_*.go", "core/collection_webauthn_validate.go", "migrations/*webauthn*.go"]
+    },
+    {
+      "id": "superuser-totp",
+      "name": "Authenticator app for administrators",
+      "status": "ready",
+      "summary": "Administrators protect their account with an authenticator app code and one-time backup codes.",
+      "audiences": ["superuser"],
+      "screens": ["admin-settings-security", "admin-login"],
+      "sources": ["apis/record_auth_totp.go", "core/totp_model.go", "core/mfa_*.go", "ui/src/settings/security/**"]
+    },
+    {
+      "id": "oidc-provider",
+      "name": "OpenID Connect sign-in for your apps",
+      "status": "ready",
+      "summary": "Your apps send people to Claviger to sign in and get back signed claims, never a password.",
+      "audiences": ["developer", "member"],
+      "headline": true,
+      "screens": ["admin-oidc", "hosted-oidc-login", "hosted-oidc-consent", "hosted-oidc-chooser", "hosted-oidc-device", "hosted-oidc-device-approve", "hosted-oidc-logged-out", "hosted-oidc-error"],
+      "sources": ["oidc/**", "ui/src/oidc/**"]
+    },
+    {
+      "id": "api-keys",
+      "name": "Scoped API keys",
+      "status": "ready",
+      "summary": "Give a service a key that can do only what it needs, shown once and stored only as a hash.",
+      "audiences": ["developer"],
+      "screens": ["admin-settings-api-keys"],
+      "sources": ["core/apikey.go", "apis/apikey*.go", "ui/src/settings/apikeys/**"]
+    },
+    {
+      "id": "webhooks",
+      "name": "Signed webhooks",
+      "status": "ready",
+      "summary": "Tell other systems when records change, with signed deliveries, retries and a delivery log.",
+      "audiences": ["developer"],
+      "headline": true,
+      "screens": ["admin-webhooks"],
+      "sources": ["core/webhooks*.go", "apis/webhooks.go", "ui/src/webhooks/**"]
+    },
+    {
+      "id": "audit-log",
+      "name": "Audit log",
+      "status": "ready",
+      "summary": "Every change is recorded with who made it, when and from where, with secrets redacted.",
+      "audiences": ["superuser", "staff"],
+      "screens": ["admin-audit"],
+      "sources": ["core/audit_*.go", "apis/audit_*.go", "ui/src/audit/**"]
+    },
+    {
+      "id": "field-encryption",
+      "name": "Encrypted fields",
+      "status": "ready",
+      "summary": "Sensitive fields are stored encrypted, so a stolen database file or backup shows nothing readable.",
+      "audiences": ["developer", "superuser"],
+      "headline": true,
+      "screens": ["admin-settings-encryption-keys"],
+      "sources": ["core/field_sealed.go", "core/field_encrypted_*.go", "core/field_keys*.go", "apis/field_keys.go", "apis/field_encrypted.go", "tools/keys/**", "ui/src/settings/fieldkeys/**"]
+    },
+    {
+      "id": "encrypted-backups",
+      "name": "Encrypted backups",
+      "status": "ready",
+      "summary": "Backups are encrypted with your key and can be test-restored before the day you need them.",
+      "audiences": ["superuser"],
+      "screens": ["admin-settings-backups"],
+      "sources": ["core/backup*.go", "apis/backup*.go", "tools/backupenc/**", "ui/src/settings/backups/**"]
+    },
+    {
+      "id": "scim",
+      "name": "SCIM user provisioning",
+      "status": "ready",
+      "summary": "Microsoft Entra ID or Okta can create, update and remove users and groups automatically.",
+      "audiences": ["developer", "superuser"],
+      "sources": ["core/scim*.go", "apis/scim*.go"]
+    },
+    {
+      "id": "captcha-rate-limits",
+      "name": "Captcha and rate limits",
+      "status": "ready",
+      "summary": "Slow down password guessing and bot sign-ups with rate limits and an optional captcha.",
+      "audiences": ["superuser"],
+      "screens": ["admin-settings-captcha"],
+      "sources": ["core/settings_captcha.go", "tools/captcha/**", "apis/captcha*.go", "apis/rate_limit_*.go", "apis/middlewares_rate_limit.go", "ui/src/settings/captcha/**"]
+    },
+    {
+      "id": "sms",
+      "name": "Text messages",
+      "status": "ready",
+      "summary": "Send sign-in and recovery codes by text message through your own SMS provider.",
+      "audiences": ["superuser", "member"],
+      "screens": ["admin-settings-sms"],
+      "sources": ["core/sms.go", "core/settings_sms.go", "tools/sms/**", "apis/settings_sms.go", "ui/src/settings/sms/**"]
+    },
+    {
+      "id": "telemetry",
+      "name": "OpenTelemetry and metrics",
+      "status": "ready",
+      "summary": "Send logs, traces and metrics to your monitoring, or read Prometheus metrics behind a token.",
+      "audiences": ["developer"],
+      "sources": ["core/telemetry.go", "core/logger_otel.go", "tools/telemetry/**", "apis/middlewares_telemetry.go"]
+    },
+    {
+      "id": "postgres",
+      "name": "PostgreSQL support",
+      "status": "ready",
+      "summary": "Run on PostgreSQL instead of the built-in SQLite database when you need to.",
+      "audiences": ["developer"],
+      "sources": ["tools/dialect/**", "core/*_dialect.go", "apis/*_dialect.go", "scripts/pgembedded/**"]
+    },
+    {
+      "id": "multi-replica",
+      "name": "Several servers",
+      "status": "ready",
+      "summary": "On PostgreSQL, run more than one Claviger server behind a load balancer.",
+      "audiences": ["developer"],
+      "sources": ["core/multireplica.go", "apis/multireplica_state.go", "apis/realtime_replica.go", "tools/replica/**"]
+    },
+    {
+      "id": "organizations",
+      "name": "Organizations",
+      "status": "ready",
+      "summary": "Model a diocese, its parishes and their groups, with members, roles, tags and invitations.",
+      "audiences": ["staff", "superuser", "member"],
+      "headline": true,
+      "screens": ["admin-orgs", "hosted-orgs-admin", "hosted-orgs-invite"],
+      "sources": ["core/org*.go", "apis/orgs*.go", "apis/orgs_pages/admin.js", "apis/orgs_pages/invite.js", "apis/invitations.go", "ui/src/orgs/**"]
+    },
+    {
+      "id": "transfers",
+      "name": "Member transfers",
+      "status": "ready",
+      "summary": "Move a person's membership from one parish to another with both sides agreeing.",
+      "audiences": ["staff"],
+      "sources": ["core/org_transfer.go", "apis/orgs_transfers.go"]
+    },
+    {
+      "id": "households",
+      "name": "Households",
+      "status": "ready",
+      "summary": "Keep families together, with guardians who manage their children's details and see their household.",
+      "audiences": ["staff", "member"],
+      "headline": true,
+      "screens": ["admin-households", "hosted-households-mine"],
+      "sources": ["core/household*.go", "apis/households*.go", "apis/orgs_pages/households.js", "ui/src/households/**"]
+    },
+    {
+      "id": "credentials",
+      "name": "Safeguarding credentials",
+      "status": "ready",
+      "summary": "Track background checks and training, and keep people without a current credential off rosters.",
+      "audiences": ["staff", "member"],
+      "headline": true,
+      "screens": ["admin-credentials", "hosted-credentials-mine"],
+      "sources": ["core/credential*.go", "apis/credentials*.go", "apis/orgs_pages/credentials.js", "apis/orgs_pages/certificate.css", "ui/src/credentials/**"]
+    },
+    {
+      "id": "consent",
+      "name": "Consent records",
+      "status": "ready",
+      "summary": "Record what each person, or a guardian for a child, has agreed to, with the full history.",
+      "audiences": ["staff", "member"],
+      "screens": ["admin-consents", "hosted-orgs-consents"],
+      "sources": ["core/consent.go", "apis/consent*.go", "apis/orgs_pages/consents.js", "ui/src/consents/**"]
+    },
+    {
+      "id": "registers",
+      "name": "Sacramental registers",
+      "status": "ready",
+      "summary": "Keep baptism, marriage and other registers with tamper-evident entries and annotations.",
+      "audiences": ["staff"],
+      "headline": true,
+      "screens": ["admin-registers", "hosted-orgs-registers"],
+      "sources": ["core/register*.go", "apis/registers*.go", "apis/orgs_pages/registers.js", "ui/src/registers/**"]
+    },
+    {
+      "id": "pastoral-notes",
+      "name": "Pastoral notes and prayer requests",
+      "status": "ready",
+      "summary": "Clergy and care teams keep private notes and prayer requests that expire when they should.",
+      "audiences": ["staff"],
+      "screens": ["admin-collections-pastoral"],
+      "sources": ["core/pastoral*.go", "apis/pastoral.go"]
+    },
+    {
+      "id": "break-glass",
+      "name": "Break-glass access",
+      "status": "ready",
+      "summary": "In an emergency, a named person can open a restricted record, and the access is logged and reviewed.",
+      "audiences": ["staff"],
+      "sources": ["core/breakglass.go"]
+    },
+    {
+      "id": "account-recovery",
+      "name": "Account recovery",
+      "status": "ready",
+      "summary": "People who lose their passkey get back in with a recovery code or help from parish staff.",
+      "audiences": ["member", "staff"],
+      "screens": ["hosted-recovery", "hosted-orgs-recovery"],
+      "sources": ["core/recovery*.go", "apis/recovery*.go", "apis/orgs_pages/recovery*.js"]
+    },
+    {
+      "id": "data-export",
+      "name": "Personal data export",
+      "status": "ready",
+      "summary": "Anyone can download everything Claviger holds about them, and staff can answer access requests.",
+      "audiences": ["member", "superuser"],
+      "screens": ["admin-settings-data-export", "admin-gdpr-requests"],
+      "sources": ["core/data_export*.go", "core/data_requests.go", "core/settings_data_export.go", "apis/data_export.go", "ui/src/settings/dataExport/**"]
+    },
+    {
+      "id": "data-map",
+      "name": "Data map",
+      "status": "ready",
+      "summary": "See which collections hold personal data, and get a warning when a new one is not mapped.",
+      "audiences": ["superuser"],
+      "screens": ["admin-gdpr-data-map"],
+      "sources": ["core/data_map*.go", "apis/data_map.go", "ui/src/gdpr/**"]
+    },
+    {
+      "id": "retention",
+      "name": "Retention and legal holds",
+      "status": "ready",
+      "summary": "Delete old records on a schedule, with a dry run first, and keep anything under a legal hold.",
+      "audiences": ["superuser", "staff"],
+      "screens": ["admin-gdpr-retention", "admin-gdpr-holds"],
+      "sources": ["core/retention.go", "core/legal_hold.go", "core/pastoral_holds.go", "apis/retention.go", "ui/src/gdpr/**"]
+    },
+    {
+      "id": "erasure",
+      "name": "Right to erasure",
+      "status": "ready",
+      "summary": "People can ask to be erased, with a grace period to cancel, and guardians can ask for their children.",
+      "audiences": ["member", "superuser"],
+      "screens": ["admin-gdpr-requests", "hosted-erasure-confirm", "hosted-erasure-cancel"],
+      "sources": ["core/erasure*.go", "core/settings_erasure.go", "apis/erasure.go", "ui/src/gdpr/**"]
+    },
+    {
+      "id": "localization",
+      "name": "Translated sign-in pages",
+      "status": "ready",
+      "summary": "Sign-in, recovery and household pages appear in the person's own language.",
+      "audiences": ["member"],
+      "sources": ["core/i18n.go", "tools/i18n/**", "apis/pages_i18n.go"]
+    },
+    {
+      "id": "accessible-pages",
+      "name": "Accessible sign-in pages",
+      "status": "ready",
+      "summary": "Every sign-in page has a larger text and high contrast mode and works with a keyboard and screen reader.",
+      "audiences": ["member"],
+      "sources": ["apis/hosted_assets/a11y-mode.*", "apis/orgs_pages/hosted.css"]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "developer-story",
+      "name": "A developer sets up Claviger for their apps",
+      "features": ["installer", "data-api", "passkeys", "oidc-provider", "webhooks", "audit-log", "field-encryption", "encrypted-backups", "telemetry", "superuser-totp", "api-keys"]
+    },
+    {
+      "id": "parish-story",
+      "name": "A parish runs its people on Claviger",
+      "features": ["organizations", "households", "credentials", "consent", "registers", "pastoral-notes", "break-glass", "transfers", "account-recovery", "data-export", "retention", "erasure"]
+    }
+  ]
+}
