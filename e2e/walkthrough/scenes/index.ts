@@ -5,6 +5,7 @@ import { apiKeyScene, totpScene } from "./dev-security";
 import { oidcScene } from "./dev-oidc";
 import { webhookScene } from "./dev-webhook";
 import { auditScene, backupScene, fieldEncryptionScene, telemetryScene } from "./dev-ops";
+import { orgsScene, staffScene } from "./parish-orgs";
 import { passkeySignin, usersPasskeys } from "./dev-users";
 
 export type SceneFn = (browser: Browser, world: World, index: number) => Promise<void>;
@@ -21,4 +22,6 @@ export const SCENES: Record<string, SceneFn> = {
     "field-encryption": fieldEncryptionScene,
     backup: backupScene,
     telemetry: telemetryScene,
+    orgs: orgsScene,
+    staff: staffScene,
 };

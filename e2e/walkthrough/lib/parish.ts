@@ -35,8 +35,8 @@ export async function ensureMember(orgId: string, email: string, role: string, t
 }
 
 /** The users every parish scene needs, the users collection with passkeys on, and the mail settings. */
-export async function prepParish(world: World): Promise<void> {
-    for (const key of Object.keys(world.people)) await ensureUser(world, key);
+export async function prepParish(world: World, skip: string[] = []): Promise<void> {
+    for (const key of Object.keys(world.people)) if (!skip.includes(key)) await ensureUser(world, key);
     if (!world.notes.parishPrep) {
         await api("PATCH", "/api/collections/users", { webauthn: { enabled: true, discoverable: true } });
         world.notes.parishPrep = "yes";

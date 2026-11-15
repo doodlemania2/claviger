@@ -258,7 +258,7 @@ export class Rig {
         const pick = n ? all.find((m) => m.index === Number(n)) : mine[mine.length - 1];
         if (!pick) return PAGE("Mailbox", bar + '<main style="padding:24px">No mail yet.</main>');
         const body = pick.html
-            ? pick.html.replace(/<script[\s\S]*?<\/script>/gi, "")
+            ? pick.html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/\starget="?_blank"?/gi, "")
             : `<pre style="white-space:pre-wrap;font:16px/1.5 system-ui">${esc(pick.text).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>')}</pre>`;
         const list = mine
             .slice()
@@ -267,7 +267,7 @@ export class Rig {
             .join("");
         return PAGE(
             "Mailbox",
-            `${bar}<main style="display:flex;gap:24px;padding:18px 26px"><aside style="width:230px;font-size:14px"><b>Inbox</b>${list}</aside><section style="flex:1;background:#fff;border-radius:10px;padding:18px 24px"><div style="color:#475569;font-size:14px">From ${esc(pick.from)}<br>To ${esc(pick.to.join(", "))}</div><h2 style="margin:8px 0 14px">${esc(pick.subject)}</h2>${body}</section></main>`,
+            `${bar}<main style="display:flex;gap:24px;padding:18px 26px"><aside style="width:230px;font-size:14px"><b>Inbox</b>${list}</aside><section style="flex:1;background:#fff;border-radius:10px;padding:18px 24px"><div style="color:#475569;font-size:14px">From ${esc(pick.from.replace(/\s+BODY=.*/i, ""))}<br>To ${esc(pick.to.join(", "))}</div><h2 style="margin:8px 0 14px">${esc(pick.subject)}</h2>${body}</section></main>`,
         );
     }
 }

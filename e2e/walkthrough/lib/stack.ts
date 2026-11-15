@@ -160,14 +160,18 @@ export async function ensureUser(world: World, key: string): Promise<Person> {
     const p = world.people[key];
     if (!p) throw new Error(`no person ${key}`);
     if (p.id) return p;
-    const rec = await api("POST", "/api/collections/users/records", {
-        email: p.email,
-        password: p.password,
-        passwordConfirm: p.password,
-        verified: true,
-        name: p.name,
-    });
-    p.id = rec.id;
+    const made = await rawCall(
+        "POST",
+        "/api/collections/users/records",
+        { email: p.email, password: p.password, passwordConfirm: p.password, verified: true, name: p.name },
+        await adminToken(),
+    );
+    if (made.status < 300) p.id = made.json.id;
+    else {
+        // already there (made on camera, or by an earlier run): find it
+        const found = await api("GET", `/api/collections/users/records?filter=${encodeURIComponent(`email="${p.email}"`)}`);
+        p.id = found.items[0].id;
+    }
     saveWorld(world);
     return p;
 }
