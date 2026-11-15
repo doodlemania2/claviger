@@ -1,0 +1,2100 @@
+{
+ "screens": [
+  {
+   "id": "admin-collections",
+   "area": "collections",
+   "route": "/_/#/collections?collection=users",
+   "audience": "developers",
+   "title": "Collections and records",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "new-record",
+     "steps": [
+      {
+       "click": "role=button[name=\"New record\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "record",
+     "steps": [
+      {
+       "click": "tbody tr:has-text(\"dara.calloway@example.com\")"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "record-more-options",
+     "steps": [
+      {
+       "click": "tbody tr:has-text(\"dara.calloway@example.com\")"
+      },
+      {
+       "wait": ".modal"
+      },
+      {
+       "click": "role=button[name=\"More options\"]"
+      }
+     ]
+    },
+    {
+     "name": "sessions-and-ban",
+     "steps": [
+      {
+       "click": "tbody tr:has-text(\"corwin.ashby@example.com\")"
+      },
+      {
+       "wait": ".modal"
+      },
+      {
+       "click": "role=button[name=\"More options\"]"
+      },
+      {
+       "click": "text=Sessions and ban"
+      },
+      {
+       "wait": ".modal >> text=Sessions and ban"
+      }
+     ]
+    },
+    {
+     "name": "impersonate",
+     "steps": [
+      {
+       "click": "tbody tr:has-text(\"dara.calloway@example.com\")"
+      },
+      {
+       "wait": ".modal"
+      },
+      {
+       "click": "role=button[name=\"More options\"]"
+      },
+      {
+       "click": "text=Impersonate"
+      },
+      {
+       "wait": ".modal >> text=Impersonate"
+      }
+     ]
+    },
+    {
+     "name": "api-preview",
+     "steps": [
+      {
+       "click": "role=button[name=\"API preview\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "new-collection",
+     "steps": [
+      {
+       "click": "role=button[name=\"New collection\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "settings-fields",
+     "steps": [
+      {
+       "click": "[aria-label=\"Collection settings\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "settings-rules",
+     "steps": [
+      {
+       "click": "[aria-label=\"Collection settings\"]"
+      },
+      {
+       "wait": ".modal"
+      },
+      {
+       "click": ".modal >> text=API rules"
+      }
+     ]
+    },
+    {
+     "name": "settings-options",
+     "steps": [
+      {
+       "click": "[aria-label=\"Collection settings\"]"
+      },
+      {
+       "wait": ".modal"
+      },
+      {
+       "click": ".modal >> text=Options"
+      }
+     ]
+    },
+    {
+     "name": "options-passkeys",
+     "steps": [
+      {
+       "click": "[aria-label=\"Collection settings\"]"
+      },
+      {
+       "wait": ".modal"
+      },
+      {
+       "click": ".modal >> text=Options"
+      },
+      {
+       "click": "summary:has-text(\"WebAuthn / Passkeys\")"
+      },
+      {
+       "top": "summary:has-text(\"WebAuthn / Passkeys\")"
+      }
+     ]
+    },
+    {
+     "name": "options-password",
+     "steps": [
+      {
+       "click": "[aria-label=\"Collection settings\"]"
+      },
+      {
+       "wait": ".modal"
+      },
+      {
+       "click": ".modal >> text=Options"
+      },
+      {
+       "click": "summary:has-text(\"Identity/Password\")"
+      },
+      {
+       "top": "summary:has-text(\"Identity/Password\")"
+      }
+     ]
+    },
+    {
+     "name": "options-oauth2",
+     "steps": [
+      {
+       "click": "[aria-label=\"Collection settings\"]"
+      },
+      {
+       "wait": ".modal"
+      },
+      {
+       "click": ".modal >> text=Options"
+      },
+      {
+       "click": "summary:has-text(\"OAuth2\")"
+      },
+      {
+       "top": "summary:has-text(\"OAuth2\")"
+      }
+     ]
+    },
+    {
+     "name": "options-otp",
+     "steps": [
+      {
+       "click": "[aria-label=\"Collection settings\"]"
+      },
+      {
+       "wait": ".modal"
+      },
+      {
+       "click": ".modal >> text=Options"
+      },
+      {
+       "click": "summary:has-text(\"One-time password\")"
+      },
+      {
+       "top": "summary:has-text(\"One-time password\")"
+      }
+     ]
+    },
+    {
+     "name": "options-mfa",
+     "steps": [
+      {
+       "click": "[aria-label=\"Collection settings\"]"
+      },
+      {
+       "wait": ".modal"
+      },
+      {
+       "click": ".modal >> text=Options"
+      },
+      {
+       "click": "summary:has-text(\"Multi-factor\")"
+      },
+      {
+       "top": "summary:has-text(\"Multi-factor\")"
+      }
+     ]
+    },
+    {
+     "name": "options-tokens",
+     "steps": [
+      {
+       "click": "[aria-label=\"Collection settings\"]"
+      },
+      {
+       "wait": ".modal"
+      },
+      {
+       "click": ".modal >> text=Options"
+      },
+      {
+       "click": "summary:has-text(\"Token options\")"
+      },
+      {
+       "top": "summary:has-text(\"Token options\")"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-collections-rota",
+   "area": "collections",
+   "route": "/_/#/collections?collection=volunteer_rota",
+   "audience": "developers",
+   "title": "A collection with records",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "new-record",
+     "steps": [
+      {
+       "click": "role=button[name=\"New record\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "settings-fields",
+     "steps": [
+      {
+       "click": "[aria-label=\"Collection settings\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "settings-rules",
+     "steps": [
+      {
+       "click": "[aria-label=\"Collection settings\"]"
+      },
+      {
+       "wait": ".modal"
+      },
+      {
+       "click": ".modal >> text=API rules"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-collections-empty",
+   "area": "collections",
+   "route": "/_/#/collections?collection=event_signups",
+   "audience": "developers",
+   "title": "A collection with no records",
+   "states": [
+    {
+     "name": "default"
+    }
+   ]
+  },
+  {
+   "id": "admin-collections-superusers",
+   "area": "collections",
+   "route": "/_/#/collections?collection=_superusers",
+   "audience": "superusers",
+   "title": "Superuser accounts",
+   "states": [
+    {
+     "name": "default"
+    }
+   ]
+  },
+  {
+   "id": "admin-collections-pastoral",
+   "area": "collections",
+   "route": "/_/#/collections?collection=pastoral_notes",
+   "audience": "superusers",
+   "title": "Pastoral notes collection",
+   "states": [
+    {
+     "name": "default"
+    }
+   ]
+  },
+  {
+   "id": "admin-logs",
+   "area": "logs",
+   "route": "/_/#/logs",
+   "audience": "developers",
+   "title": "Request logs",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "entry",
+     "steps": [
+      {
+       "click": "tbody tr >> nth=2"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "settings",
+     "steps": [
+      {
+       "click": "[aria-label=\"Logs settings\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-audit",
+   "area": "audit",
+   "route": "/_/#/audit",
+   "audience": "superusers",
+   "title": "Audit log",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "entry",
+     "steps": [
+      {
+       "click": "tbody tr >> nth=1"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "filtered",
+     "steps": [
+      {
+       "select": [
+        "#audit_filter_action",
+        "create"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-webhooks",
+   "area": "integrations",
+   "route": "/_/#/webhooks",
+   "audience": "developers",
+   "title": "Webhooks",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "new",
+     "steps": [
+      {
+       "click": "role=button[name=\"New webhook\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "edit",
+     "steps": [
+      {
+       "click": "tr:has-text(\"hooks.example.org\") [aria-label=\"Edit\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "secret",
+     "steps": [
+      {
+       "click": "role=button[name=\"New webhook\"]"
+      },
+      {
+       "wait": ".modal"
+      },
+      {
+       "fill": [
+        "role=textbox[name=\"URL (https)\"]",
+        "https://hooks.example.org/rota"
+       ]
+      },
+      {
+       "fill": [
+        "role=textbox[name=\"Description\"]",
+        "Rota planner"
+       ]
+      },
+      {
+       "fill": [
+        "role=textbox[name=\"Events (one per line)\"]",
+        "users:update"
+       ]
+      },
+      {
+       "click": ".modal >> role=button[name=\"Create\"]"
+      },
+      {
+       "wait": "role=textbox[name=\"Signing secret\"]"
+      }
+     ],
+     "mutates": true,
+     "mask": [
+      "role=textbox[name=\"Signing secret\"]"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-orgs",
+   "area": "organizations",
+   "route": "/_/#/orgs",
+   "audience": "superusers",
+   "title": "Organizations",
+   "states": [
+    {
+     "name": "default",
+     "steps": [
+      {
+       "click": "tr[data-org-id]:has-text(\"st-brendans\") >> nth=0"
+      },
+      {
+       "pause": 500
+      }
+     ]
+    },
+    {
+     "name": "new",
+     "steps": [
+      {
+       "click": "role=button[name=\"New organization\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "edit",
+     "steps": [
+      {
+       "click": "tr[data-org-id]:has-text(\"st-brendans\") >> nth=0"
+      },
+      {
+       "click": "tr[data-org-id]:has-text(\"st-brendans\") >> nth=0 >> button[aria-label=\"Edit\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "move",
+     "steps": [
+      {
+       "click": "tr[data-org-id]:has-text(\"st-brendans\") >> nth=0"
+      },
+      {
+       "click": "tr[data-org-id]:has-text(\"st-brendans\") >> nth=0 >> button[aria-label=\"Move\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "members",
+     "steps": [
+      {
+       "click": "tr[data-org-id]:has-text(\"st-brendans\") >> nth=0"
+      },
+      {
+       "pause": 400
+      },
+      {
+       "top": "text=Members of St. Brendan's Parish"
+      }
+     ]
+    },
+    {
+     "name": "add-member",
+     "steps": [
+      {
+       "click": "tr[data-org-id]:has-text(\"st-brendans\") >> nth=0"
+      },
+      {
+       "pause": 400
+      },
+      {
+       "click": "role=button[name=\"Add member\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "edit-member",
+     "steps": [
+      {
+       "click": "tr[data-org-id]:has-text(\"st-brendans\") >> nth=0"
+      },
+      {
+       "pause": 400
+      },
+      {
+       "click": "tr:has-text(\"tomas.brennan\") [aria-label=\"Edit\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "invitations",
+     "steps": [
+      {
+       "click": "tr[data-org-id]:has-text(\"st-brendans\") >> nth=0"
+      },
+      {
+       "pause": 400
+      },
+      {
+       "top": "text=Invitations"
+      }
+     ]
+    },
+    {
+     "name": "invite",
+     "steps": [
+      {
+       "click": "tr[data-org-id]:has-text(\"st-brendans\") >> nth=0"
+      },
+      {
+       "pause": 400
+      },
+      {
+       "click": "role=button[name=\"Invite\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "scim",
+     "steps": [
+      {
+       "click": "tr[data-org-id]:has-text(\"st-brendans\") >> nth=0"
+      },
+      {
+       "pause": 400
+      },
+      {
+       "top": "text=SCIM provisioning"
+      }
+     ]
+    },
+    {
+     "name": "scim-settings",
+     "steps": [
+      {
+       "click": "tr[data-org-id]:has-text(\"st-brendans\") >> nth=0"
+      },
+      {
+       "pause": 400
+      },
+      {
+       "top": "text=SCIM provisioning"
+      },
+      {
+       "click": "role=button[name=\"Settings\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "scim-new-token",
+     "steps": [
+      {
+       "click": "tr[data-org-id]:has-text(\"st-brendans\") >> nth=0"
+      },
+      {
+       "pause": 400
+      },
+      {
+       "top": "text=SCIM provisioning"
+      },
+      {
+       "click": "role=button[name=\"New token\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "rule-templates",
+     "steps": [
+      {
+       "click": "tr[data-org-id]:has-text(\"st-brendans\") >> nth=0"
+      },
+      {
+       "pause": 400
+      },
+      {
+       "click": "role=button[name=\"Rule templates for org-owned collections\"]"
+      },
+      {
+       "wait": "#snippet_depth"
+      },
+      {
+       "top": "#snippet_depth"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-households",
+   "area": "congregation",
+   "route": "/_/#/households",
+   "audience": "superusers",
+   "title": "Households",
+   "states": [
+    {
+     "name": "default",
+     "steps": [
+      {
+       "select": [
+        "#households_org",
+        "{orgId}"
+       ]
+      },
+      {
+       "pause": 500
+      }
+     ]
+    },
+    {
+     "name": "household",
+     "steps": [
+      {
+       "select": [
+        "#households_org",
+        "{orgId}"
+       ]
+      },
+      {
+       "pause": 500
+      },
+      {
+       "click": "tbody tr:has-text(\"Calloway family\")"
+      },
+      {
+       "wait": "text=Idris Calloway"
+      }
+     ]
+    },
+    {
+     "name": "new",
+     "steps": [
+      {
+       "select": [
+        "#households_org",
+        "{orgId}"
+       ]
+      },
+      {
+       "pause": 500
+      },
+      {
+       "click": "role=button[name=\"New household\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "duplicates",
+     "steps": [
+      {
+       "select": [
+        "#households_org",
+        "{orgId}"
+       ]
+      },
+      {
+       "pause": 500
+      },
+      {
+       "click": "role=button[name=\"Find duplicates\"]"
+      },
+      {
+       "wait": "text=Hal Fenwick"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-credentials",
+   "area": "congregation",
+   "route": "/_/#/credentials",
+   "audience": "superusers",
+   "title": "Credentials",
+   "states": [
+    {
+     "name": "default",
+     "steps": [
+      {
+       "select": [
+        "#credentials_org",
+        "{orgId}"
+       ]
+      },
+      {
+       "pause": 500
+      }
+     ]
+    },
+    {
+     "name": "record",
+     "steps": [
+      {
+       "select": [
+        "#credentials_org",
+        "{orgId}"
+       ]
+      },
+      {
+       "pause": 500
+      },
+      {
+       "click": "role=button[name=\"Record credential\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "new-type",
+     "steps": [
+      {
+       "select": [
+        "#credentials_org",
+        "{orgId}"
+       ]
+      },
+      {
+       "pause": 500
+      },
+      {
+       "click": "role=button[name=\"New type\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "pending",
+     "steps": [
+      {
+       "select": [
+        "#credentials_org",
+        "{orgId}"
+       ]
+      },
+      {
+       "pause": 500
+      },
+      {
+       "select": [
+        "#credentials_state",
+        "pending"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-consents",
+   "area": "congregation",
+   "route": "/_/#/consents",
+   "audience": "superusers",
+   "title": "Consent purposes and history",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "new-purpose",
+     "steps": [
+      {
+       "click": "role=button[name=\"New purpose\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "edit-purpose",
+     "steps": [
+      {
+       "click": "[aria-label=\"Edit Parish newsletter\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "history",
+     "steps": [
+      {
+       "fill": [
+        "#consent_subject",
+        "{childMemberId}"
+       ]
+      },
+      {
+       "click": "role=button[name=\"Show history\"]"
+      },
+      {
+       "pause": 800
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-registers",
+   "area": "congregation",
+   "route": "/_/#/registers",
+   "audience": "superusers",
+   "title": "Permanent registers",
+   "states": [
+    {
+     "name": "default",
+     "steps": [
+      {
+       "select": [
+        "#register_select",
+        "baptisms"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "entry",
+     "steps": [
+      {
+       "select": [
+        "#register_select",
+        "baptisms"
+       ]
+      },
+      {
+       "click": "tr[data-state=\"final\"] [aria-label^=\"Open entry\"]"
+      },
+      {
+       "pause": 600
+      }
+     ]
+    },
+    {
+     "name": "pending",
+     "steps": [
+      {
+       "select": [
+        "#register_select",
+        "marriages"
+       ]
+      },
+      {
+       "select": [
+        "#register_state",
+        "pending"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "verify",
+     "steps": [
+      {
+       "click": "#register_verify_btn"
+      },
+      {
+       "pause": 800
+      }
+     ]
+    },
+    {
+     "name": "new-register",
+     "steps": [
+      {
+       "click": "role=button[name=\"New register\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-oidc",
+   "area": "identity",
+   "route": "/_/#/oidc",
+   "audience": "developers",
+   "title": "OpenID Connect clients",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "new-client",
+     "steps": [
+      {
+       "click": "role=button[name=\"New client\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "edit-client",
+     "steps": [
+      {
+       "click": "tr:has-text(\"Parish directory\") [aria-label=\"Edit\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-gdpr-data-map",
+   "area": "data-protection",
+   "route": "/_/#/gdpr/data-map",
+   "audience": "superusers",
+   "title": "Data map",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "map-collection",
+     "steps": [
+      {
+       "click": "#datamap_new"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "edit-entry",
+     "steps": [
+      {
+       "click": "[aria-label=\"Edit volunteer_rota\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "unmapped",
+     "steps": [
+      {
+       "click": "[data-unmapped=\"newsletter_drafts\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-gdpr-requests",
+   "area": "data-protection",
+   "route": "/_/#/gdpr/requests",
+   "audience": "superusers",
+   "title": "Data requests and erasure",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "start-erasure",
+     "steps": [
+      {
+       "click": "#erase_panel summary"
+      },
+      {
+       "top": "#erase_panel"
+      }
+     ]
+    },
+    {
+     "name": "erasure-lookup",
+     "steps": [
+      {
+       "click": "#erase_panel summary"
+      },
+      {
+       "fill": [
+        "#erase_id",
+        "{guardianId}"
+       ]
+      },
+      {
+       "click": "#erase_lookup"
+      },
+      {
+       "pause": 600
+      },
+      {
+       "top": "#erase_panel"
+      }
+     ]
+    },
+    {
+     "name": "erasure-result",
+     "steps": [
+      {
+       "click": "[aria-label^=\"View erasure\"]"
+      },
+      {
+       "pause": 600
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-gdpr-holds",
+   "area": "data-protection",
+   "route": "/_/#/gdpr/holds",
+   "audience": "superusers",
+   "title": "Legal holds",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "place",
+     "steps": [
+      {
+       "click": "#hold_new"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    }
+   ],
+   "passkey": "superuser"
+  },
+  {
+   "id": "admin-gdpr-retention",
+   "area": "data-protection",
+   "route": "/_/#/gdpr/retention",
+   "audience": "superusers",
+   "title": "Retention policies",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "new",
+     "steps": [
+      {
+       "click": "#retention_new"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "preview",
+     "steps": [
+      {
+       "click": "[aria-label^=\"Preview Archive\"]"
+      },
+      {
+       "pause": 800
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-settings",
+   "area": "settings",
+   "route": "/_/#/settings",
+   "audience": "superusers",
+   "title": "Application settings",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "audit-log",
+     "steps": [
+      {
+       "click": "summary:has-text(\"Audit log\")"
+      },
+      {
+       "top": "summary:has-text(\"Audit log\")"
+      }
+     ]
+    },
+    {
+     "name": "rate-limiting",
+     "steps": [
+      {
+       "click": "summary:has-text(\"Rate limiting\")"
+      },
+      {
+       "top": "summary:has-text(\"Rate limiting\")"
+      }
+     ]
+    },
+    {
+     "name": "batch",
+     "steps": [
+      {
+       "click": "summary:has-text(\"Batch\")"
+      },
+      {
+       "top": "summary:has-text(\"Batch\")"
+      }
+     ]
+    },
+    {
+     "name": "ip-proxy-headers",
+     "steps": [
+      {
+       "click": "summary:has-text(\"IP proxy headers\")"
+      },
+      {
+       "top": "summary:has-text(\"IP proxy headers\")"
+      }
+     ]
+    },
+    {
+     "name": "superuser-ips",
+     "steps": [
+      {
+       "click": "summary:has-text(\"Superuser IPs\")"
+      },
+      {
+       "top": "summary:has-text(\"Superuser IPs\")"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-settings-mail",
+   "area": "settings",
+   "route": "/_/#/settings/mail",
+   "audience": "superusers",
+   "title": "Mail settings",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "smtp",
+     "steps": [
+      {
+       "click": "text=Use SMTP mail server"
+      }
+     ]
+    },
+    {
+     "name": "test-email",
+     "steps": [
+      {
+       "click": "role=button[name=\"Send test email\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-settings-security",
+   "area": "identity",
+   "route": "/_/#/settings/security",
+   "audience": "superusers",
+   "title": "Security and TOTP",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "totp-password",
+     "steps": [
+      {
+       "fill": [
+        "input[type=password]",
+        "demo-pass-1234"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "totp-qr",
+     "steps": [
+      {
+       "fill": [
+        "input[type=password]",
+        "demo-pass-1234"
+       ]
+      },
+      {
+       "click": "role=button[name=\"Set up authenticator app\"]"
+      },
+      {
+       "pause": 1500
+      }
+     ],
+     "mutates": true,
+     "mask": [
+      "canvas"
+     ]
+    }
+   ],
+   "mask": [
+    "canvas",
+    "img[alt*='QR']",
+    "svg[class*=qr]"
+   ]
+  },
+  {
+   "id": "admin-settings-storage",
+   "area": "settings",
+   "route": "/_/#/settings/storage",
+   "audience": "superusers",
+   "title": "File storage",
+   "states": [
+    {
+     "name": "default"
+    }
+   ]
+  },
+  {
+   "id": "admin-settings-backups",
+   "area": "settings",
+   "route": "/_/#/settings/backups",
+   "audience": "superusers",
+   "title": "Backups",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "new-backup",
+     "steps": [
+      {
+       "click": "role=button[name=\"Initialize new backup\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "restore",
+     "steps": [
+      {
+       "click": "[aria-label=\"Restore\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-settings-crons",
+   "area": "settings",
+   "route": "/_/#/settings/crons",
+   "audience": "superusers",
+   "title": "Cron jobs",
+   "states": [
+    {
+     "name": "default"
+    }
+   ]
+  },
+  {
+   "id": "admin-settings-api-keys",
+   "area": "integrations",
+   "route": "/_/#/settings/api-keys",
+   "audience": "developers",
+   "title": "API keys",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "new-key",
+     "steps": [
+      {
+       "click": "role=button[name=\"New API key\"]"
+      },
+      {
+       "wait": ".modal"
+      }
+     ]
+    },
+    {
+     "name": "key-created",
+     "steps": [
+      {
+       "click": "role=button[name=\"New API key\"]"
+      },
+      {
+       "wait": ".api-key-create-modal"
+      },
+      {
+       "fill": [
+        ".api-key-create-modal input[id$=\"_name\"]",
+        "Rota planner (new)"
+       ]
+      },
+      {
+       "check": ".api-key-create-modal input[id$=\"_all\"]"
+      },
+      {
+       "click": ".api-key-create-modal >> role=button[name=\"Create key\"]"
+      },
+      {
+       "wait": "text=shown only once"
+      }
+     ],
+     "mutates": true,
+     "mask": [
+      ".api-key-create-modal code"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-settings-encryption-keys",
+   "area": "settings",
+   "route": "/_/#/settings/encryption-keys",
+   "audience": "superusers",
+   "title": "Field encryption keys",
+   "states": [
+    {
+     "name": "default"
+    }
+   ]
+  },
+  {
+   "id": "admin-settings-captcha",
+   "area": "settings",
+   "route": "/_/#/settings/captcha",
+   "audience": "superusers",
+   "title": "Captcha",
+   "states": [
+    {
+     "name": "default"
+    }
+   ]
+  },
+  {
+   "id": "admin-settings-sms",
+   "area": "settings",
+   "route": "/_/#/settings/sms",
+   "audience": "superusers",
+   "title": "SMS",
+   "states": [
+    {
+     "name": "default"
+    }
+   ]
+  },
+  {
+   "id": "admin-settings-data-export",
+   "area": "settings",
+   "route": "/_/#/settings/data-export",
+   "audience": "superusers",
+   "title": "Data export settings",
+   "states": [
+    {
+     "name": "default"
+    }
+   ]
+  },
+  {
+   "id": "admin-settings-export-collections",
+   "area": "settings",
+   "route": "/_/#/settings/export-collections",
+   "audience": "developers",
+   "title": "Export collections",
+   "states": [
+    {
+     "name": "default"
+    }
+   ]
+  },
+  {
+   "id": "admin-settings-import-collections",
+   "area": "settings",
+   "route": "/_/#/settings/import-collections",
+   "audience": "developers",
+   "title": "Import collections",
+   "states": [
+    {
+     "name": "default"
+    }
+   ]
+  },
+  {
+   "id": "admin-settings-sql",
+   "area": "settings",
+   "route": "/_/#/settings/sql",
+   "audience": "developers",
+   "title": "SQL console",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "result",
+     "steps": [
+      {
+       "fill": [
+        ".code-editor-content",
+        "SELECT name, kind FROM _orgs ORDER BY name"
+       ]
+      },
+      {
+       "click": "role=button[name=\"Execute\"]"
+      },
+      {
+       "pause": 800
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin-login",
+   "area": "admin",
+   "route": "/_/#/login",
+   "audience": "superusers",
+   "title": "Sign in to the admin UI",
+   "states": [
+    {
+     "name": "default"
+    }
+   ],
+   "anon": true
+  },
+  {
+   "id": "admin-request-password-reset",
+   "area": "admin",
+   "route": "/_/#/request-password-reset",
+   "audience": "superusers",
+   "title": "Request a password reset",
+   "states": [
+    {
+     "name": "default"
+    }
+   ],
+   "anon": true
+  },
+  {
+   "id": "admin-auth-confirm-password-reset",
+   "area": "admin",
+   "route": "/_/#/auth/confirm-password-reset/{demoToken}",
+   "audience": "members",
+   "title": "Choose a new password",
+   "states": [
+    {
+     "name": "default"
+    }
+   ],
+   "anon": true,
+   "allowStatus": true
+  },
+  {
+   "id": "admin-auth-confirm-passkey-reset",
+   "area": "admin",
+   "route": "/_/#/auth/confirm-passkey-reset/{demoToken}",
+   "audience": "members",
+   "title": "Replace your passkeys",
+   "states": [
+    {
+     "name": "default"
+    }
+   ],
+   "anon": true,
+   "allowStatus": true
+  },
+  {
+   "id": "admin-auth-confirm-verification",
+   "area": "admin",
+   "route": "/_/#/auth/confirm-verification/{demoToken}",
+   "audience": "members",
+   "title": "Confirm your email address",
+   "states": [
+    {
+     "name": "default"
+    }
+   ],
+   "anon": true,
+   "allowStatus": true
+  },
+  {
+   "id": "admin-auth-confirm-email-change",
+   "area": "admin",
+   "route": "/_/#/auth/confirm-email-change/{demoToken}",
+   "audience": "members",
+   "title": "Confirm an email change",
+   "states": [
+    {
+     "name": "default"
+    }
+   ],
+   "anon": true,
+   "allowStatus": true
+  },
+  {
+   "id": "admin-auth-oauth2-redirect-success",
+   "area": "admin",
+   "route": "/_/#/auth/oauth2-redirect-success",
+   "audience": "members",
+   "title": "OAuth2 redirect: success",
+   "states": [
+    {
+     "name": "default"
+    }
+   ],
+   "anon": true
+  },
+  {
+   "id": "admin-auth-oauth2-redirect-failure",
+   "area": "admin",
+   "route": "/_/#/auth/oauth2-redirect-failure",
+   "audience": "members",
+   "title": "OAuth2 redirect: failure",
+   "states": [
+    {
+     "name": "default"
+    }
+   ],
+   "anon": true
+  },
+  {
+   "id": "hosted-passkeys",
+   "area": "hosted",
+   "route": "/passkeys",
+   "audience": "members",
+   "title": "The passkeys page",
+   "states": [
+    {
+     "name": "default",
+     "persona": "guardian"
+    },
+    {
+     "name": "signed-out",
+     "anon": true
+    },
+    {
+     "name": "with-passkey",
+     "persona": "registrar",
+     "passkey": "registrar"
+    }
+   ],
+   "persona": "guardian"
+  },
+  {
+   "id": "hosted-oidc-login",
+   "area": "hosted",
+   "route": "{oidcLogin}",
+   "audience": "members",
+   "title": "OpenID Connect sign-in",
+   "states": [
+    {
+     "name": "default"
+    }
+   ],
+   "anon": true
+  },
+  {
+   "id": "hosted-oidc-consent",
+   "area": "hosted",
+   "route": "{oidcConsent}",
+   "audience": "members",
+   "title": "OpenID Connect consent",
+   "states": [
+    {
+     "name": "default",
+     "steps": [
+      {
+       "fill": [
+        "label:has-text(\"Email or username\") input",
+        "{guardianEmail}"
+       ]
+      },
+      {
+       "fill": [
+        "label:has-text(\"Password\") input",
+        "{demoPassword}"
+       ]
+      },
+      {
+       "click": "form#pw button[type=submit], button:has-text(\"Sign in\")"
+      },
+      {
+       "wait": "text=Allow"
+      }
+     ]
+    }
+   ],
+   "anon": true
+  },
+  {
+   "id": "hosted-oidc-chooser",
+   "area": "hosted",
+   "route": "{oidcLogin}",
+   "audience": "members",
+   "title": "OpenID Connect account chooser",
+   "states": [
+    {
+     "name": "default",
+     "steps": [
+      {
+       "fill": [
+        "label:has-text(\"Email or username\") input",
+        "{guardianEmail}"
+       ]
+      },
+      {
+       "fill": [
+        "label:has-text(\"Password\") input",
+        "{demoPassword}"
+       ]
+      },
+      {
+       "click": "form#pw button[type=submit], button:has-text(\"Sign in\")"
+      },
+      {
+       "pause": 800
+      },
+      {
+       "goto": "{oidcChooser}"
+      },
+      {
+       "pause": 500
+      }
+     ]
+    }
+   ],
+   "anon": true,
+   "allowStatus": true
+  },
+  {
+   "id": "hosted-oidc-device",
+   "area": "hosted",
+   "route": "/oidc/device?user_code={deviceUserCode}",
+   "audience": "members",
+   "title": "OpenID Connect device code",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "empty",
+     "steps": [
+      {
+       "goto": "/oidc/device"
+      }
+     ]
+    }
+   ],
+   "anon": true
+  },
+  {
+   "id": "hosted-oidc-logged-out",
+   "area": "hosted",
+   "route": "/oidc/logged-out",
+   "audience": "members",
+   "title": "OpenID Connect signed-out page",
+   "states": [
+    {
+     "name": "default"
+    }
+   ],
+   "anon": true
+  },
+  {
+   "id": "hosted-orgs-invite",
+   "area": "hosted",
+   "route": "/orgs/invite/{inviteToken}",
+   "audience": "members",
+   "title": "Accept an invitation",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "invalid",
+     "steps": [
+      {
+       "goto": "/orgs/invite/not-a-real-token-0123456789"
+      }
+     ],
+     "allowStatus": true
+    }
+   ],
+   "anon": true
+  },
+  {
+   "id": "hosted-orgs-admin",
+   "area": "hosted",
+   "route": "/orgs/{orgSlug}",
+   "audience": "staff",
+   "title": "The organization page",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "members",
+     "steps": [
+      {
+       "top": "#members"
+      }
+     ]
+    },
+    {
+     "name": "invite",
+     "steps": [
+      {
+       "top": "#inviteForm"
+      }
+     ]
+    },
+    {
+     "name": "invitations",
+     "steps": [
+      {
+       "top": "#invitations"
+      }
+     ]
+    },
+    {
+     "name": "tags",
+     "steps": [
+      {
+       "top": "#tagForm"
+      }
+     ]
+    },
+    {
+     "name": "scim",
+     "steps": [
+      {
+       "top": "#scimTokenForm"
+      }
+     ]
+    },
+    {
+     "name": "signed-out",
+     "anon": true
+    }
+   ],
+   "persona": "org-owner"
+  },
+  {
+   "id": "hosted-orgs-registers",
+   "area": "hosted",
+   "route": "/orgs/registers/{orgSlug}",
+   "audience": "staff",
+   "title": "Registers (hosted)",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "draft-entry",
+     "steps": [
+      {
+       "select": [
+        "#regSelect",
+        "baptisms"
+       ]
+      },
+      {
+       "click": "tr[data-state=\"draft\"] button >> nth=0"
+      },
+      {
+       "pause": 600
+      }
+     ]
+    },
+    {
+     "name": "final-entry",
+     "steps": [
+      {
+       "select": [
+        "#regSelect",
+        "baptisms"
+       ]
+      },
+      {
+       "click": "tr[data-state=\"final\"] button >> nth=0"
+      },
+      {
+       "pause": 600
+      }
+     ]
+    },
+    {
+     "name": "certificate",
+     "steps": [
+      {
+       "select": [
+        "#regSelect",
+        "baptisms"
+       ]
+      },
+      {
+       "click": "tr[data-state=\"final\"] button >> nth=0"
+      },
+      {
+       "pause": 600
+      },
+      {
+       "click": "#certBtn"
+      },
+      {
+       "pause": 1200
+      }
+     ],
+     "mobile": false
+    },
+    {
+     "name": "pending-entry",
+     "steps": [
+      {
+       "select": [
+        "#regSelect",
+        "marriages"
+       ]
+      },
+      {
+       "select": [
+        "#stateSelect",
+        "pending"
+       ]
+      },
+      {
+       "click": "tr[data-state=\"pending\"] button >> nth=0"
+      },
+      {
+       "pause": 600
+      }
+     ]
+    },
+    {
+     "name": "signed-out",
+     "anon": true
+    }
+   ],
+   "persona": "registrar",
+   "passkey": "registrar"
+  },
+  {
+   "id": "hosted-orgs-consents",
+   "area": "hosted",
+   "route": "/orgs/consents/{orgSlug}",
+   "audience": "staff",
+   "title": "Consent purposes (hosted)",
+   "states": [
+    {
+     "name": "default"
+    }
+   ],
+   "persona": "org-owner"
+  },
+  {
+   "id": "hosted-orgs-recovery",
+   "area": "hosted",
+   "route": "/orgs/recovery/{orgSlug}",
+   "audience": "staff",
+   "title": "Account recovery for staff",
+   "states": [
+    {
+     "name": "default"
+    }
+   ],
+   "persona": "org-owner"
+  },
+  {
+   "id": "hosted-recovery",
+   "area": "hosted",
+   "route": "/recovery",
+   "audience": "members",
+   "title": "Redeem a recovery code",
+   "states": [
+    {
+     "name": "default"
+    }
+   ],
+   "anon": true
+  },
+  {
+   "id": "hosted-households-mine",
+   "area": "hosted",
+   "route": "/households/mine",
+   "audience": "members",
+   "title": "My household",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "single-adult",
+     "persona": "member"
+    },
+    {
+     "name": "no-household",
+     "persona": "greeter"
+    }
+   ],
+   "persona": "guardian"
+  },
+  {
+   "id": "hosted-credentials-mine",
+   "area": "hosted",
+   "route": "/credentials/mine",
+   "audience": "members",
+   "title": "My credentials",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "current",
+     "persona": "care-team"
+    },
+    {
+     "name": "none",
+     "persona": "member"
+    }
+   ],
+   "persona": "coordinator"
+  },
+  {
+   "id": "hosted-erasure-confirm",
+   "area": "hosted",
+   "route": "/erasure/confirm?token={erasureConfirmToken}",
+   "audience": "members",
+   "title": "Confirm an erasure",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "invalid",
+     "steps": [
+      {
+       "goto": "/erasure/confirm?token=not-a-real-token"
+      }
+     ]
+    }
+   ],
+   "anon": true
+  },
+  {
+   "id": "hosted-erasure-cancel",
+   "area": "hosted",
+   "route": "/erasure/cancel?token={erasureCancelToken}",
+   "audience": "members",
+   "title": "Cancel an erasure",
+   "states": [
+    {
+     "name": "default"
+    }
+   ],
+   "anon": true
+  }
+ ]
+}
