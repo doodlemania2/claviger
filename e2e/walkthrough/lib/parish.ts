@@ -88,3 +88,26 @@ export async function ensurePasskey(actor: Actor, who: { email: string; password
     await expect(page.getByText("Passkey added.")).toBeVisible();
     await actor.say("");
 }
+
+/** The Vasquez-Hale household with Rosa (guardian, linked to her login) and Teo (minor). Found, or made without a camera. */
+export async function ensureHousehold(world: World): Promise<{ id: string; teo: string; rosaMember: string }> {
+    const find = async () => {
+        const list = await api("GET", `/api/households?org=${world.ids.parish}`);
+        return list.items.find((h: any) => h.name === "Vasquez-Hale family");
+    };
+    let h = await find();
+    if (!h) {
+        await api("POST", "/api/households", {
+            org: world.ids.parish,
+            name: "Vasquez-Hale family",
+            address: { street: "14 Willow Lane", city: "Marlowe Vale" },
+            first: { name: world.people.rosa.name, role: "head", guardian: true, user: world.people.rosa.id },
+        });
+        h = await find();
+        await api("POST", `/api/households/${h.id}/members`, { name: "Teo Vasquez-Hale", role: "child", isMinor: true, birthDate: "2016-04-02" });
+    }
+    const full = await api("GET", `/api/households/${h.id}`);
+    const teo = full.members.find((m: any) => m.name === "Teo Vasquez-Hale");
+    const rosa = full.members.find((m: any) => m.name === world.people.rosa.name);
+    return { id: h.id, teo: teo.id, rosaMember: rosa.id };
+}
