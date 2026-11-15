@@ -175,3 +175,77 @@ test("Consent history renders for a person", async ({ problems }) => {
     await expect(history).toBeVisible();
     await expect(history).toContainText("History (append-only)");
 });
+
+async function throwaway(tag: string) {
+    const email = `gdpr-${tag}-${Date.now()}@example.com`;
+    const rec = await api("POST", "/api/collections/users/records", { email, password: "throwaway-pass-123", passwordConfirm: "throwaway-pass-123", verified: true, name: `Gone ${tag}` });
+    return { id: rec.id as string, email };
+}
+
+async function startErasureInUi(id: string, email: string, grace: string) {
+    await page.goto("/_/#/gdpr/requests");
+    await page.locator("#erase_panel summary").click();
+    await page.locator("#erase_id").fill(id);
+    await page.locator("#erase_lookup").click();
+    await expect(page.locator("#erase_person")).toContainText(email);
+    await page.locator("#erase_identity").fill("Seen at the office (e2e)");
+    await page.locator("#erase_grace").fill(grace);
+    // a deliberate second step: the button stays off until the email or id is typed
+    await expect(page.locator("#erase_start")).toBeDisabled();
+    await page.locator("#erase_typed").fill("wrong");
+    await expect(page.locator("#erase_start")).toBeDisabled();
+    await page.locator("#erase_typed").fill(email);
+    await expect(page.locator("#erase_start")).toBeEnabled();
+    await page.locator("#erase_start").click();
+    await expect(page.locator("#requests_notice")).toContainText("The erasure was requested.", { timeout: 15_000 });
+}
+
+test("Erasure: start one with no grace period, see it in the list and read its result", async ({ problems }) => {
+    watch(page, problems);
+    problems.ignore(/status of 403.*\/api\/gdpr\//);
+    const u = await throwaway("now");
+    await startErasureInUi(u.id, u.email, "0");
+
+    let row = page.locator("tr[data-type='erase']", { hasText: u.id });
+    await expect(row).toBeVisible();
+    // the finished request no longer names the person (it holds a pseudonym), so follow it by its id
+    const reqId = (await row.getAttribute("data-request"))!;
+    await expect.poll(async () => (await api("GET", `/api/gdpr/erasures/${reqId}`)).state, { timeout: 60_000 }).toMatch(/done|partial/);
+    await page.reload();
+    row = page.locator(`tr[data-request='${reqId}']`);
+    await expect(row).toHaveAttribute("data-state", /done|partial/);
+
+    await row.getByRole("button", { name: /^View erasure/ }).click();
+    const view = page.locator("#erasure_view");
+    await expect(view).toContainText("Result");
+    await expect(view).toContainText("Anonymized");
+    await expect(view).toContainText("Kept");
+    await expect(view).toContainText("Seen at the office (e2e)");
+});
+
+test("Erasure: cancel one during the grace period", async ({ problems }) => {
+    watch(page, problems);
+    problems.ignore(/status of 403.*\/api\/gdpr\//);
+    const u = await throwaway("grace");
+    await startErasureInUi(u.id, u.email, "5");
+
+    const row = page.locator("tr[data-type='erase']", { hasText: u.id });
+    await expect(row).toHaveAttribute("data-state", "grace");
+    await row.getByRole("button", { name: /^Cancel erasure/ }).click();
+    await page.getByRole("button", { name: "Yes", exact: true }).click();
+    await expect(page.locator("#requests_notice")).toContainText("cancelled");
+    await expect(page.locator("tr[data-type='erase']", { hasText: u.id })).toHaveAttribute("data-state", "cancelled");
+    await expect(page.locator("tr[data-type='erase']", { hasText: u.id }).getByRole("button", { name: /^Cancel erasure/ })).toHaveCount(0);
+});
+
+test("Erasure: the grace period setting is saved", async ({ problems }) => {
+    watch(page, problems);
+    await page.goto("/_/#/gdpr/requests");
+    await page.locator("#erasure_grace_days").fill("9");
+    await page.locator("#erasure_grace_save").click();
+    await expect(page.locator("#requests_notice")).toContainText("grace period was saved");
+    expect((await api("GET", "/api/settings")).erasure.graceDays).toBe(9);
+    await page.locator("#erasure_grace_days").fill("");
+    await page.locator("#erasure_grace_save").click();
+    await expect.poll(async () => (await api("GET", "/api/settings")).erasure.graceDays).toBeNull();
+});
