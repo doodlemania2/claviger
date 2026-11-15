@@ -157,6 +157,8 @@ export class SceneRun {
         for (const [name, spec] of this.specs) {
             const a = this.actors.get(name);
             if (!a) continue;
+            // the last screen of every actor: the first thing to look at when a scene fails
+            await a.page.screenshot({ path: join(this.dir, `last-${name}.png`) }).catch(() => undefined);
             const video = a.page.video();
             if (a.passkeys) await savePasskeys(name).catch(() => undefined);
             await a.ctx.storageState({ path: join(this.world.dir, "auth", `${name}.json`) }).catch(() => undefined);

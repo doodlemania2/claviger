@@ -2,6 +2,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import type { Actor } from "./scene";
 import { PACE } from "./scene";
 import { stack } from "./stack";
+import { totp } from "./totp";
 import { saveWorld, type Person, type World } from "./world";
 
 /** A deliberate pause so a person watching the video can follow. */
@@ -77,6 +78,13 @@ export async function adminSignIn(page: Page, who: { email: string; password: st
     await typeIn(page.getByRole("textbox", { name: /^Email/ }), who.email);
     await typeIn(page.getByRole("textbox", { name: /^Password/ }), who.password);
     await press(page.getByRole("button", { name: "Login" }), page, 1200);
+    // a superuser who enrolled an authenticator app is asked for a code next
+    const secret = stack().world.notes.totpSecret;
+    const second = page.getByLabel("Authenticator or backup code");
+    if (secret && (await second.waitFor({ timeout: 4000 }).then(() => true, () => false))) {
+        await typeIn(second, totp(secret, Date.now() + 30_000));
+        await press(page.getByRole("button", { name: /next|login|confirm/i }).last(), page, 1200);
+    }
     await expect(page).toHaveURL(/#\/collections/);
 }
 

@@ -40,7 +40,7 @@ export function overlayInit(): void {
             left: "50%",
             bottom: "18px",
             transform: "translateX(-50%)",
-            "max-width": "92vw",
+            "max-width": "76vw",
             padding: "10px 18px",
             background: "rgba(15, 23, 42, 0.92)",
             color: "#fff",
@@ -63,7 +63,7 @@ export function overlayInit(): void {
         }
         const el = make("walk-label", {
             left: "10px",
-            top: "10px",
+            bottom: "10px",
             padding: "3px 10px",
             background: "rgba(30, 64, 175, 0.92)",
             color: "#fff",

@@ -1,6 +1,6 @@
 import { test, type Browser } from "@playwright/test";
 import { STORIES, storyOf } from "./lib/story";
-import { startStack, stopStack } from "./lib/stack";
+import { configureInstance, ensureSuperuser, startStack, stopStack } from "./lib/stack";
 import { currentWorld, saveWorld, type World } from "./lib/world";
 import { SCENES } from "./scenes";
 
@@ -53,6 +53,10 @@ Array.from({ length: SLOTS }, (_, i) => i + 1).forEach((number) => {
         test.skip(!id || !run, "this story has fewer scenes");
         test.skip(only.length > 0 && !only.includes(String(number)) && !only.includes(id ?? ""));
         console.log(`[scene] ${String(number)}: ${id ?? ""} (${world.story})`);
+        if (id !== "first-run" && world.story === "developer") {
+            await ensureSuperuser(world);
+            await configureInstance(world, "Alder and Finch Auth");
+        }
         await (run as SceneFn)(browser, world, number);
         saveWorld(world);
     });

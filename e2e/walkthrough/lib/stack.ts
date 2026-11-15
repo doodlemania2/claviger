@@ -182,3 +182,15 @@ export async function configureInstance(world: World, appName: string): Promise<
     world.notes.configured = "yes";
     saveWorld(world);
 }
+
+/** For a scene run on its own (WALK_ONLY): make the superuser the first-run scene would have made. */
+export async function ensureSuperuser(world: World): Promise<void> {
+    if (world.notes.superuserMade) return;
+    execFileSync(BIN, ["superuser", "upsert", world.admin.email, world.admin.password, "--dir", world.dataDir, "--encryptionEnv", "PB_ENCRYPTION_KEY"], {
+        env: serverEnv(world),
+        cwd: join(world.dir, "sandbox"),
+        stdio: "ignore",
+    });
+    world.notes.superuserMade = "yes";
+    saveWorld(world);
+}
