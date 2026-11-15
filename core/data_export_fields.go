@@ -88,8 +88,12 @@ var builtinDataExport = map[string]dataExportSpec{
 		"id", "org", "collection", "basis", "requestedAt", "activeFrom", "expires", "revoked", "revokedAt",
 		"approvedBy", "readCount", "created",
 	}},
-	// #88 88-3: that a hold existed and when; never the reason or the reference
-	CollectionNameLegalHolds:    {Fields: []string{"id", "scope", "collection", "placedAt", "liftedAt", "created"}},
+	// #88 88-3: owner decision 2026-11-14: the subject gets their holds with
+	// the reason and the reference. placedBy and liftedBy stay out: they name
+	// staff, who are third parties.
+	CollectionNameLegalHolds: {Fields: []string{
+		"id", "scope", "collection", "recordId", "reason", "reference", "placedAt", "liftedAt", "created",
+	}},
 	CollectionNamePastoralHolds: {Fields: []string{"id", "org", "collection", "state", "heldAt", "decidedAt", "created"}},
 	// #88 88-2: the whole evidence trail of the person, including the text
 	// they were shown; no secrets. Purposes are not about a person (none).

@@ -805,3 +805,38 @@ func TestUpgradePastoralExpiryAddsFieldsAndKeepsRulesLocked(t *testing.T) {
 		t.Fatalf("second run changed %v", again)
 	}
 }
+
+func TestDataExportIncludesTheSubjectsLegalHolds(t *testing.T) {
+	w := newRetWorld(t)
+
+	su, _ := w.app.FindAuthRecordByEmail(core.CollectionNameSuperusers, "test@example.com")
+
+	mine, err := core.PlaceLegalHold(w.app, w.ctx, su, core.LegalHoldInput{Scope: "subject", Subject: w.users[0].Id, Reason: "Pending claim 77", Reference: "REF-77"})
+	must(t, err)
+
+	_, err = core.PlaceLegalHold(w.app, w.ctx, su, core.LegalHoldInput{Scope: "subject", Subject: w.users[1].Id, Reason: "Someone else's matter", Reference: "REF-OTHER"})
+	must(t, err)
+
+	z := buildExport(t, w.app, w.users[0])
+	rows := z.rows(t, core.CollectionNameLegalHolds)
+
+	if len(rows) != 1 || rows[0]["id"] != mine.Id || rows[0]["reason"] != "Pending claim 77" || rows[0]["reference"] != "REF-77" || rows[0]["scope"] != "subject" {
+		t.Fatalf("the subject's own hold with reason and reference: %v", rows)
+	}
+
+	for _, col := range []string{"placedAt", "liftedAt"} {
+		if _, ok := rows[0][col]; !ok {
+			t.Fatalf("%s missing: %v", col, rows[0])
+		}
+	}
+
+	for _, hidden := range []string{"placedBy", "liftedBy"} {
+		if _, ok := rows[0][hidden]; ok {
+			t.Fatalf("%s must not be exported", hidden)
+		}
+	}
+
+	if all := z.all(); strings.Contains(all, "REF-OTHER") || (su != nil && strings.Contains(all, su.Id)) {
+		t.Fatal("another person's hold or the staff member's id is in the export")
+	}
+}

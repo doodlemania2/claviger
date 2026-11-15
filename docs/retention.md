@@ -94,7 +94,7 @@ POST /api/gdpr/holds/{id}/lift                                                  
 
 Placing and lifting need a **fresh passkey step-up** and write one audit entry each: `gdpr_hold` and `gdpr_hold_lift` (webhooks `gdpr.hold`, `gdpr.hold_lift`), with the hold id, the scope and the ids. **Never the reason or the reference**: a hold can be part of a legal matter. A lifted hold stays in the table as evidence; there is no delete.
 
-The person's own data export lists that a hold existed and when, never its reason. Whether to tell a person about a hold at all is a legal question (spec section 12): ask your lawyer before you change the export.
+**The person's own data export includes their legal holds**, with `scope`, `reason`, `reference`, `placedAt` and `liftedAt`. `placedBy` and `liftedBy` are left out: they name staff, who are third parties. This was an **owner decision on 2026-11-14**. The audit entries and webhooks still never carry the reason or the reference; only the subject's export does. Whether a given matter allows telling the person is a legal question for your lawyer, and a hold you must not disclose is a reason to raise it before the export runs.
 
 ## Suggested starting points (not shipped, not legal advice)
 
