@@ -347,6 +347,7 @@
   "oidc.err.cannotResume": "Cette connexion n'a pas pu être reprise. Retournez dans l'application et recommencez.",
   "oidc.err.tooManyRequests": "Trop de demandes de connexion. Patientez une minute et réessayez.",
   "oidc.err.invalidRequest": "Demande invalide.",
+  "oidc.err.invalidAuthorize": "Ce lien de connexion n'est pas valide. Retournez dans l'application et réessayez.",
   "oidc.err.signInExpired": "Cette connexion a expiré. Retournez dans l'application et réessayez.",
   "oidc.err.signInOtherBrowser": "Cette connexion a été lancée dans un autre navigateur.",
   "oidc.err.wrongAccountType": "Connectez-vous avec un compte du bon type.",

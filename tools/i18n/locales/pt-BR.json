@@ -347,6 +347,7 @@
   "oidc.err.cannotResume": "Não foi possível retomar este login. Volte ao aplicativo e comece de novo.",
   "oidc.err.tooManyRequests": "Muitas solicitações de login. Aguarde um minuto e tente novamente.",
   "oidc.err.invalidRequest": "Solicitação inválida.",
+  "oidc.err.invalidAuthorize": "Este link de login não é válido. Volte ao aplicativo e tente novamente.",
   "oidc.err.signInExpired": "Este login expirou. Volte ao aplicativo e tente novamente.",
   "oidc.err.signInOtherBrowser": "Este login foi iniciado em outro navegador.",
   "oidc.err.wrongAccountType": "Entre com uma conta do tipo correto.",

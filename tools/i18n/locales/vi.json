@@ -347,6 +347,7 @@
   "oidc.err.cannotResume": "Không thể tiếp tục lần đăng nhập này. Hãy quay lại ứng dụng và bắt đầu lại.",
   "oidc.err.tooManyRequests": "Quá nhiều yêu cầu đăng nhập. Hãy đợi một phút rồi thử lại.",
   "oidc.err.invalidRequest": "Yêu cầu không hợp lệ.",
+  "oidc.err.invalidAuthorize": "Liên kết đăng nhập này không hợp lệ. Hãy quay lại ứng dụng và thử lại.",
   "oidc.err.signInExpired": "Lần đăng nhập này đã hết hạn. Hãy quay lại ứng dụng và thử lại.",
   "oidc.err.signInOtherBrowser": "Lần đăng nhập này được bắt đầu trong một trình duyệt khác.",
   "oidc.err.wrongAccountType": "Hãy đăng nhập bằng tài khoản đúng loại.",

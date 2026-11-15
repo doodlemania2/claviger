@@ -347,6 +347,7 @@
   "oidc.err.cannotResume": "Hindi maipagpatuloy ang pag-sign in na ito. Bumalik sa app at magsimulang muli.",
   "oidc.err.tooManyRequests": "Masyadong maraming kahilingan sa pag-sign in. Maghintay ng isang minuto at subukan muli.",
   "oidc.err.invalidRequest": "Hindi balidong kahilingan.",
+  "oidc.err.invalidAuthorize": "Hindi balido ang sign-in link na ito. Bumalik sa app at subukan muli.",
   "oidc.err.signInExpired": "Nag-expire na ang pag-sign in na ito. Bumalik sa app at subukan muli.",
   "oidc.err.signInOtherBrowser": "Sinimulan ang pag-sign in na ito sa ibang browser.",
   "oidc.err.wrongAccountType": "Mag-sign in gamit ang account na tamang uri.",
