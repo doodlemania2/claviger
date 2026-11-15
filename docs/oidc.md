@@ -366,7 +366,7 @@ account, so every account of the browser signs out, and the redirect happens.
   pages only).
 - The device flow has no notification of the device when the person cancels (it polls and reads `access_denied`),
   and a confidential client must authenticate with HTTP Basic when it polls.
-- The hosted pages are English only (#97). Email OTP and the OAuth2 "sign in with" providers are not offered
+- The hosted pages are localized like the other hosted pages ([localization.md](localization.md)). Email OTP and the OAuth2 "sign in with" providers are not offered
   on the hosted page.
 - The library logs through the process-global `slog` default (it ignores its `WithLogger` option), and the only
   way to route that into the application logger is to replace the global default, which would also capture every

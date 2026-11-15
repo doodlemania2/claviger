@@ -63,7 +63,7 @@ JavaScript hooks. Every feature below is off, or has no effect, until you config
 | OpenTelemetry and metrics | OTLP/HTTP logs, traces and metrics; Prometheus text at `/api/metrics`. See [Telemetry](#telemetry) |
 | SQLite-safe rollouts | `entrypoint.sh` hands the database from the outgoing to the incoming container |
 | Container packaging | Multi-stage `Dockerfile`, `docker-compose.yml`, optional Litestream replication |
-| PostgreSQL (experimental) | Opt-in data store; several replicas only on PostgreSQL: [docs/datastores.md](docs/datastores.md) |
+| PostgreSQL | Supported, opt-in data store (16 and 17); several replicas only on PostgreSQL; no zip backups: [docs/datastores.md](docs/datastores.md) |
 
 ### Congregations
 
