@@ -46,6 +46,7 @@ export async function registerScene(browser: Browser, world: World, index: numbe
             await a.page.locator("#regSelect").selectOption("baptisms");
         };
         await openRegisters(maren, p.maren);
+        await skip(world, "register", "keying a new entry on screen", "no screen creates register entries yet: they arrive through the records API, so this draft was entered beforehand", maren);
         await maren.say("The parish keeps a baptism register. Maren, a registrar, opens the entry that was keyed in", 3800);
         await beat(maren.page, 800);
         await press(maren.page.locator(`tr[data-entry='${id}']`).getByRole("button", { name: /Open/ }), maren.page, 1000);
@@ -198,6 +199,7 @@ export async function transferScene(browser: Browser, world: World, index: numbe
         await open(tobias.page, `${rig.url}/mail?to=${encodeURIComponent(p.tobias.email)}`);
         await tobias.say("Tobias is a member of Holy Wayfarer. Nothing happens to him without his consent");
 
+        await skip(world, "transfer", "transfer screens", "an organization transfer has routes and an email but no page yet; the calls are shown with their answers", maren);
         const start = await asUser(p.maren, "POST", `/api/orgs/${world.ids.parish}/transfers`, { user: p.tobias.id, to: SECOND_PARISH.slug, outcome: "suspend" });
         if (start.status >= 300) throw new Error(`transfer: ${start.status} ${start.text}`);
         await apiCard(maren, "Maren starts the transfer", `POST /api/orgs/<holy-wayfarer>/transfers   {user: <Tobias>, to: "${SECOND_PARISH.slug}", outcome: "suspend"}`, start.status, start.json);
@@ -279,6 +281,7 @@ export async function dataProtectionScene(browser: Browser, world: World, index:
         }
 
         // the export
+        await skip(world, "data-protection", "requesting and downloading an export on screen", "the Data requests screen lists exports but starts and downloads none: that is the export routes", a);
         const exp = await api("POST", `/api/gdpr/subjects/${p.rosa.id}/export`, {});
         await open(page, `${world.base}/_/#/gdpr/requests`);
         await say("A data request: Rosa asks for a copy of her data. It is listed with its type, state and due date");

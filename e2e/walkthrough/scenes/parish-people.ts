@@ -3,7 +3,7 @@ import { ensureHousehold, ensureParishBase, ensurePasskey, prepParish } from "..
 import { SceneRun } from "../lib/scene";
 import { api, asUser } from "../lib/stack";
 import { PARISH_ORG } from "../lib/story";
-import { apiCard, beat, hostedSignIn, open, press, typeIn } from "../lib/ui";
+import { apiCard, beat, hostedSignIn, open, press, skip, typeIn } from "../lib/ui";
 import type { World } from "../lib/world";
 
 /** Scene 5: staff-assisted recovery. A greeter vouches for an older member, who sets up a new passkey with a short code. */
@@ -102,6 +102,7 @@ export async function consentScene(browser: Browser, world: World, index: number
 
         await hostedSignIn(rosa.page, p.rosa);
         await expect(rosa.page.getByRole("heading", { name: "Vasquez-Hale family", level: 2 })).toBeVisible();
+        await skip(world, "consent", "a guardian's consent screen", "the consent grant has routes (/api/me/consents) but no hosted page yet; the calls are shown with their answers", rosa);
         const list = await asUser(p.rosa, "GET", "/api/me/consents");
         const teoRow = JSON.stringify(list.json).includes(hh.teo);
         await apiCard(rosa, "What is Rosa asked about?", "GET /api/me/consents", list.status, { purposes_for_her_and_for_Teo: teoRow ? "listed, status none" : list.json });
