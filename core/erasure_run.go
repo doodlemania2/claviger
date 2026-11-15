@@ -405,6 +405,10 @@ func (rc *erasureRun) refuse(ee *ErasureError) error {
 }
 
 func (rc *erasureRun) stepInit() error {
+	if err := EnsureErasureSecret(rc.app); err != nil {
+		return err
+	}
+
 	s, err := erasureLoadSubject(rc.app, rc.subj)
 	if err != nil {
 		return err
@@ -425,7 +429,7 @@ func (rc *erasureRun) stepInit() error {
 	rc.prog.Language = RecordLanguage(rc.app, rc.subj)
 
 	rc.prog.Result.Subject.Collection = rc.subj.Collection().Name
-	rc.prog.Result.Subject.Pseudonym = ErasurePseudonym(rc.subj.Id)
+	rc.prog.Result.Subject.Pseudonym = ErasurePseudonym(rc.app, rc.subj.Id)
 
 	return nil
 }
@@ -758,7 +762,7 @@ func (rc *erasureRun) anonymizeRows(col *Collection, rows []*Record) error {
 // touched until it finishes.
 func (rc *erasureRun) stepDataRequests(col *Collection, rows []*Record) error {
 	res := rc.result()
-	p := ErasurePseudonym(rc.subj.Id)
+	p := ErasurePseudonym(rc.app, rc.subj.Id)
 
 	for _, r := range rows {
 		if r.Id == rc.req.Id {
@@ -788,7 +792,7 @@ func (rc *erasureRun) stepDataRequests(col *Collection, rows []*Record) error {
 		r.Set("recordRef", p)
 
 		if containsString(rc.prog.Ids, r.GetString("requestedBy")) {
-			r.Set("requestedBy", ErasurePseudonym(r.GetString("requestedBy")))
+			r.Set("requestedBy", ErasurePseudonym(rc.app, r.GetString("requestedBy")))
 		}
 
 		if err := rc.app.UnsafeWithoutHooks().SaveNoValidate(r); err != nil {
@@ -984,7 +988,7 @@ func (rc *erasureRun) stepBreakGlass(col *Collection, rows []*Record) error {
 
 		for _, f := range []string{"grantee", "approvedBy", "revokedBy"} {
 			if v := r.GetString(f); v != "" && containsString(rc.prog.Ids, v) {
-				r.Set(f, ErasurePseudonym(v))
+				r.Set(f, ErasurePseudonym(rc.app, v))
 
 				changed = true
 			}
@@ -1021,7 +1025,7 @@ func (rc *erasureRun) stepLegalHolds(col *Collection, rows []*Record) error {
 		}
 
 		if v := h.GetString("subject"); v != "" && containsString(rc.prog.Ids, v) {
-			h.Set("subject", ErasurePseudonym(v))
+			h.Set("subject", ErasurePseudonym(rc.app, v))
 			rc.touch(col.Name, h.Id)
 
 			if err := rc.app.SaveNoValidateWithContext(legalHoldWriteContext(rc.ctx), h); err != nil {
@@ -1340,7 +1344,7 @@ func (rc *erasureRun) finish() error {
 	}
 
 	requester := dataRequestActor(rc.app, rc.req)
-	pseudo := ErasurePseudonym(rc.subj.Id)
+	pseudo := ErasurePseudonym(rc.app, rc.subj.Id)
 
 	// the actor of an entry about the person's own request is the person
 	actorId := ""

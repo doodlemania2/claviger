@@ -195,7 +195,7 @@ func scrubAuditRow(app App, ctx context.Context, r *Record, ids []string) (bool,
 
 	for _, f := range []string{"actorId", "targetId"} {
 		if v := r.GetString(f); v != "" && slices.Contains(ids, v) {
-			set(f, ErasurePseudonym(v))
+			set(f, ErasurePseudonym(app, v))
 		}
 	}
 

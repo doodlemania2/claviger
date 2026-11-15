@@ -2,8 +2,13 @@ package core
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
@@ -164,15 +169,126 @@ func erasureHash(s string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// ErasureSubjectHash is the value stored in _erasureLog: a one-way hash of the
-// collection name and the id of the subject.
-func ErasureSubjectHash(collection, id string) string {
-	return erasureHash("claviger-erasure-log:" + collection + ":" + id)
+// erasureSecretKey is the _params key of the per-install secret.
+const erasureSecretKey = "erasureSecret"
+
+const erasureSecretStoreKey = "__clvErasureSecret__"
+
+var erasureSecretMu sync.Mutex
+
+// ErrErasureSecretMissing is returned when the secret does not exist and may
+// not be created (the replay).
+var ErrErasureSecretMissing = errors.New("the erasure secret does not exist")
+
+// erasureSecret returns the secret that keys the pseudonyms and the erasure
+// log hashes: 32 random bytes, generated once per install and kept in the
+// _params table of data.db (a hidden, server-written row: no collection, no
+// route, no export and no settings response ever returns it, and it is not
+// derived from PB_ENCRYPTION_KEY or the KEK, which are optional). It travels
+// with the database through a backup and a restore, which the replay needs.
+// With create it makes the secret when it is missing; without, a missing
+// secret is ErrErasureSecretMissing.
+func erasureSecret(app App, create bool) ([]byte, error) {
+	if v, ok := app.Store().Get(erasureSecretStoreKey).([]byte); ok && len(v) > 0 {
+		return v, nil
+	}
+
+	erasureSecretMu.Lock()
+	defer erasureSecretMu.Unlock()
+
+	if v, ok := app.Store().Get(erasureSecretStoreKey).([]byte); ok && len(v) > 0 {
+		return v, nil
+	}
+
+	param := &Param{}
+
+	err := app.ModelQuery(param).Model(erasureSecretKey, param)
+	if err == nil && param.Id != "" {
+		var enc string
+		if json.Unmarshal(param.Value, &enc) == nil {
+			if raw, derr := base64.StdEncoding.DecodeString(enc); derr == nil && len(raw) >= 32 {
+				app.Store().Set(erasureSecretStoreKey, raw)
+
+				return raw, nil
+			}
+		}
+
+		return nil, errors.New("the erasure secret is stored but unreadable")
+	}
+
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	if !create {
+		return nil, ErrErasureSecretMissing
+	}
+
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return nil, err
+	}
+
+	value, _ := json.Marshal(base64.StdEncoding.EncodeToString(raw))
+
+	param = &Param{Value: types.JSONRaw(value)}
+	param.Id = erasureSecretKey
+	param.MarkAsNew()
+
+	// without hooks: nothing may audit, broadcast or log the value
+	if err := app.UnsafeWithoutHooks().Save(param); err != nil {
+		// another replica may have made it first
+		if again := app.ModelQuery(&Param{}).Model(erasureSecretKey, &Param{}); again == nil {
+			erasureSecretMu.Unlock()
+			defer erasureSecretMu.Lock()
+
+			return erasureSecret(app, false)
+		}
+
+		return nil, err
+	}
+
+	app.Store().Set(erasureSecretStoreKey, raw)
+
+	return raw, nil
+}
+
+// EnsureErasureSecret creates the secret when it is missing.
+func EnsureErasureSecret(app App) error {
+	_, err := erasureSecret(app, true)
+
+	return err
+}
+
+func erasureHMAC(app App, label string) string {
+	key, err := erasureSecret(app, true)
+	if err != nil {
+		// callers make sure of the secret first (EnsureErasureSecret); a
+		// pseudonym made with another key would silently break the replay
+		panic("erasure secret unavailable: " + err.Error())
+	}
+
+	m := hmac.New(sha256.New, key)
+	m.Write([]byte(label))
+
+	return hex.EncodeToString(m.Sum(nil))
+}
+
+// ErasureSubjectHash is the value stored in _erasureLog: HMAC-SHA-256, under
+// the per-install secret, of the collection name and the id of the subject.
+// Without the secret it cannot be recomputed from an id.
+func ErasureSubjectHash(app App, collection, id string) string {
+	return erasureHMAC(app, "claviger-erasure-log:"+collection+":"+id)
 }
 
 // ErasurePseudonym is the stand-in for the id of an erased person in the
-// evidence that stays (audit entries, consents, break-glass grants, ...).
-func ErasurePseudonym(id string) string { return ConsentPseudonym(id) }
+// evidence that stays (audit entries, consents, break-glass grants, ...):
+// "erased-" and 24 hex characters of an HMAC-SHA-256 of the id under the
+// per-install secret. Whoever holds an old id (a webhook receiver, a relying
+// party) cannot compute it.
+func ErasurePseudonym(app App, id string) string {
+	return "erased-" + erasureHMAC(app, "claviger-pseudonym:"+id)[:24]
+}
 
 // IsErasedAccount reports whether the auth record is an erased stub.
 func IsErasedAccount(r *Record) bool {

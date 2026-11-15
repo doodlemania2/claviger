@@ -388,7 +388,7 @@ func TestErasureAdultAcrossTheDataMap(t *testing.T) {
 	}
 
 	// retain, pseudonymized: consents and events
-	pseudo := core.ErasurePseudonym(nedId)
+	pseudo := core.ErasurePseudonym(app, nedId)
 
 	if n := w.count(t, core.CollectionNameConsents, "subject = {:p}", dbx.Params{"p": pseudo}); n != 1 {
 		t.Errorf("consent states under the pseudonym: %d", n)
@@ -471,7 +471,7 @@ func TestErasureAdultAcrossTheDataMap(t *testing.T) {
 
 	// the erasure log: a hash, nothing reversible
 	logs, _ := app.FindAllRecords(core.CollectionNameErasureLog)
-	if len(logs) != 1 || logs[0].GetString("subjectHash") != core.ErasureSubjectHash("users", nedId) {
+	if len(logs) != 1 || logs[0].GetString("subjectHash") != core.ErasureSubjectHash(app, "users", nedId) {
 		t.Fatalf("erasure log: %v", logs)
 	}
 

@@ -440,7 +440,7 @@ func TestConsentPseudonymizeKeepsEvidence(t *testing.T) {
 		t.Fatalf("pseudonymize: %d %v", n, err)
 	}
 
-	p := core.ConsentPseudonym(w.kid1.Id)
+	p := core.ConsentPseudonym(w.f.app, w.kid1.Id)
 	if !strings.HasPrefix(p, "erased-") || strings.Contains(p, w.kid1.Id) {
 		t.Fatalf("pseudonym %q", p)
 	}

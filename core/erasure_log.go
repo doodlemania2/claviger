@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 
 	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/doodlemania2/claviger/tools/types"
@@ -29,7 +30,7 @@ func writeErasureLog(app App, collection, id string, collections []string) error
 		return err
 	}
 
-	hash := ErasureSubjectHash(collection, id)
+	hash := ErasureSubjectHash(app, collection, id)
 
 	rec, err := app.FindFirstRecordByData(col, "subjectHash", hash)
 	if err != nil {
@@ -52,7 +53,7 @@ func writeErasureLog(app App, collection, id string, collections []string) error
 }
 
 func markErasureReplayed(app App, collection, id string) error {
-	rec, err := app.FindFirstRecordByData(CollectionNameErasureLog, "subjectHash", ErasureSubjectHash(collection, id))
+	rec, err := app.FindFirstRecordByData(CollectionNameErasureLog, "subjectHash", ErasureSubjectHash(app, collection, id))
 	if err != nil {
 		return err
 	}
@@ -73,6 +74,18 @@ func ReplayErasureLog(app App) (int, error) {
 
 	logRows, err := app.FindAllRecords(CollectionNameErasureLog)
 	if err != nil || len(logRows) == 0 {
+		return 0, err
+	}
+
+	// the hashes are keyed: without the install's secret nothing can be
+	// matched, and a different key would erase the wrong people or nobody
+	if _, err := erasureSecret(app, false); err != nil {
+		if errors.Is(err, ErrErasureSecretMissing) {
+			app.Logger().Warn("The erasure log has rows but the erasure secret is missing; the replay is skipped. Restore the _params row \"erasureSecret\" from the backup of this database.")
+
+			return 0, nil
+		}
+
 		return 0, err
 	}
 
@@ -100,7 +113,7 @@ func ReplayErasureLog(app App) (int, error) {
 		}
 
 		for _, id := range ids {
-			if !logged[ErasureSubjectHash(c.Name, id)] {
+			if !logged[ErasureSubjectHash(app, c.Name, id)] {
 				continue
 			}
 
@@ -121,7 +134,7 @@ func ReplayErasureLog(app App) (int, error) {
 		}
 
 		for _, id := range ids {
-			if !logged[ErasureSubjectHash(mc.Name, id)] {
+			if !logged[ErasureSubjectHash(app, mc.Name, id)] {
 				continue
 			}
 

@@ -289,7 +289,7 @@ func TestErasureScrubIsTheOnlyWayToChangeTheAuditLog(t *testing.T) {
 		t.Fatalf("second scrub: %d %v", n, err)
 	}
 
-	after, _ := app.FindRecordsByFilter(core.CollectionNameAuditLog, "targetId = {:p}", "", 0, 0, dbx.Params{"p": core.ErasurePseudonym(target.Id)})
+	after, _ := app.FindRecordsByFilter(core.CollectionNameAuditLog, "targetId = {:p}", "", 0, 0, dbx.Params{"p": core.ErasurePseudonym(app, target.Id)})
 	if len(after) != before {
 		t.Fatalf("%d entries under the pseudonym, want %d", len(after), before)
 	}
@@ -854,7 +854,7 @@ func TestErasureGuardianForAChildAndTheMinorCannotAskForThemselves(t *testing.T)
 	}
 
 	// the consent given for the child is kept as evidence, under the pseudonym
-	p := core.ErasurePseudonym(kidId)
+	p := core.ErasurePseudonym(app, kidId)
 	if w.count(t, core.CollectionNameConsentEvents, "subject = {:p}", dbx.Params{"p": p}) != 1 || w.count(t, core.CollectionNameConsents, "subject = {:id}", dbx.Params{"id": kidId}) != 0 {
 		t.Error("the child's consent evidence must be pseudonymized")
 	}
@@ -869,7 +869,7 @@ func TestErasureGuardianForAChildAndTheMinorCannotAskForThemselves(t *testing.T)
 	}
 
 	// the log has the child's hash
-	if w.count(t, core.CollectionNameErasureLog, "subjectHash = {:h}", dbx.Params{"h": core.ErasureSubjectHash(core.CollectionNameHouseholdMembers, kidId)}) != 1 {
+	if w.count(t, core.CollectionNameErasureLog, "subjectHash = {:h}", dbx.Params{"h": core.ErasureSubjectHash(app, core.CollectionNameHouseholdMembers, kidId)}) != 1 {
 		t.Error("the erasure log must have the child")
 	}
 }
@@ -1061,7 +1061,7 @@ func TestErasureEntryIsDeliveredAsAWebhookWithIdsAndCountsOnly(t *testing.T) {
 		}
 	}
 
-	if !strings.Contains(payload, core.ErasurePseudonym(gwen.Id)) {
+	if !strings.Contains(payload, core.ErasurePseudonym(app, gwen.Id)) {
 		t.Errorf("the payload should carry the pseudonym: %s", payload)
 	}
 }

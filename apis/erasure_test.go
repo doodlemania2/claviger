@@ -438,3 +438,37 @@ func TestErasurePasskeySignInCancelsTheErasureOfALockedAccount(t *testing.T) {
 		t.Errorf("state %s", r.GetString("state"))
 	}
 }
+
+func TestErasureSecretNeverLeavesThroughTheAPI(t *testing.T) {
+	env := newErasureEnv(t)
+
+	code, body := env.do(http.MethodPost, "/api/gdpr/subjects/"+env.user.Id+"/erase", `{"identityCheck":"id","graceDays":0}`, env.adminFresh)
+	if code != http.StatusAccepted {
+		t.Fatalf("%d %s", code, body)
+	}
+
+	var v map[string]any
+	_ = json.Unmarshal([]byte(body), &v)
+	env.wait(v["id"].(string))
+
+	var secret string
+	if err := env.app.DB().NewQuery("SELECT [[value]] FROM {{_params}} WHERE [[id]]='erasureSecret'").Row(&secret); err != nil {
+		t.Fatal(err)
+	}
+
+	secret = strings.Trim(secret, `"`)
+	if len(secret) < 40 {
+		t.Fatalf("secret %q", secret)
+	}
+
+	for _, u := range []string{
+		"/api/settings", "/api/collections?perPage=200", "/api/gdpr/erasures", "/api/gdpr/erasures/" + v["id"].(string),
+		"/api/collections/" + core.CollectionNameErasureLog + "/records", "/api/collections/" + core.CollectionNameDataRequests + "/records",
+		"/api/collections/" + core.CollectionNameAuditLog + "/records?perPage=500", "/api/collections/_params/records",
+	} {
+		_, b := env.do(http.MethodGet, u, "", env.adminTok)
+		if strings.Contains(b, secret) {
+			t.Errorf("%s returns the secret", u)
+		}
+	}
+}

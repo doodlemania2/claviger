@@ -2,8 +2,6 @@ package core
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -1003,12 +1001,9 @@ func ConsentHistory(app App, subjectIds ...string) (states, events []*Record, er
 
 // ---- pseudonymization (for erasure, 88-4) ------------------------------------------
 
-// ConsentPseudonym is the stand-in for a subject id in kept evidence.
-func ConsentPseudonym(id string) string {
-	sum := sha256.Sum256([]byte("claviger-consent:" + id))
-
-	return "erased-" + hex.EncodeToString(sum[:])[:24]
-}
+// ConsentPseudonym is the stand-in for a subject id in kept evidence: the
+// keyed pseudonym of erasure (ErasurePseudonym).
+func ConsentPseudonym(app App, id string) string { return ErasurePseudonym(app, id) }
 
 // PseudonymizeConsents replaces the ids of the given people (a member id or a
 // user id) in the consent rows with a pseudonym, and clears the evidence
@@ -1028,6 +1023,10 @@ func pseudonymizeConsents(app App, ctx context.Context, ids ...string) (events, 
 		ctx = context.Background()
 	}
 
+	if err = EnsureErasureSecret(app); err != nil {
+		return 0, 0, err
+	}
+
 	changed, stateRows := 0, 0
 	rewrite := context.WithValue(ctx, consentEventRewriteCtxKey{}, true)
 
@@ -1037,7 +1036,7 @@ func pseudonymizeConsents(app App, ctx context.Context, ids ...string) (events, 
 				continue
 			}
 
-			p := ConsentPseudonym(id)
+			p := ConsentPseudonym(txApp, id)
 
 			for _, name := range []string{CollectionNameConsentEvents, CollectionNameConsents} {
 				filter := "subject={:i} || givenBy={:i}"
