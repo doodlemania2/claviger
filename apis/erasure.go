@@ -435,6 +435,13 @@ var erasurePageTemplates = template.Must(template.Must(orgsPageTemplates.Clone()
 </body></html>{{end}}
 `))
 
+// the catalog keys of the two link pages, spelled out so the catalog test can
+// see that they are used
+var erasurePageKeys = map[string]struct{ title, intro, button, done string }{
+	"confirm": {"orgs.erasure.confirm.title", "orgs.erasure.confirm.intro", "orgs.erasure.confirm.button", "orgs.erasure.confirm.done"},
+	"cancel":  {"orgs.erasure.cancel.title", "orgs.erasure.cancel.intro", "orgs.erasure.cancel.button", "orgs.erasure.cancel.done"},
+}
+
 // erasurePage renders the link page. kind is "confirm" or "cancel". With a
 // token the page offers the button; "done" and "invalid" show the outcome. A GET
 // never changes anything: a mail scanner that opens the link does nothing.
@@ -442,22 +449,23 @@ func erasurePage(e *core.RequestEvent, kind, token, outcome string, status int) 
 	orgsPageHeaders(e)
 
 	text := NewPageText(e, "")
-	title := text.T("erasure." + kind + ".title")
+	keys := erasurePageKeys[kind]
+	title := text.T(keys.title)
 
 	d := erasurePageData{Text: text, Title: title, Heading: title}
 
 	switch outcome {
 	case "done":
-		d.Message, d.OK = text.T("erasure."+kind+".done"), true
+		d.Message, d.OK = text.T(keys.done), true
 	case "invalid":
-		d.Message = text.T("erasure.invalid")
+		d.Message = text.T("orgs.erasure.invalid")
 	default:
 		if token == "" {
-			d.Message = text.T("erasure.invalid")
+			d.Message = text.T("orgs.erasure.invalid")
 		} else {
 			d.Token = token
-			d.Intro = text.T("erasure." + kind + ".intro")
-			d.Button = text.T("erasure." + kind + ".button")
+			d.Intro = text.T(keys.intro)
+			d.Button = text.T(keys.button)
 			d.Action = "/erasure/" + kind
 		}
 	}
