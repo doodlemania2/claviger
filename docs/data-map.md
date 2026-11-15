@@ -57,6 +57,10 @@ The test is `TestDataMapCoversSystemCollections` in `core/data_map_test.go`. It 
 
 3. Add the export allowlist line in `core/data_export_fields.go` (see [data-export.md](data-export.md)): the columns that may leave the system when the person asks for their data. `TestDataExportBuiltinAllowlistIsComplete` fails until it exists.
 
+## The erasure job reads the map
+
+Erasure (`docs/erasure.md`) works through the entries of the map. `erase` deletes the rows, `anonymize` blanks the `personalFields` (an entry without personal fields cannot be anonymized: the rows are kept and listed), `retain` keeps the rows with the `retainReason`, `export` and `none` leave them. The built-in entries `_householdMembers` (anonymize: the row stays, other records point at it) and `_orgTransfers` (reached through `person` and `member`) follow what the job does. A row under a legal hold is skipped. The household rows are processed last, because other entries reach rows through their login.
+
 ## The retention engine reads the map
 
 An `anonymize` retention policy (`docs/retention.md`) blanks the `personalFields` of the collection's entry. A collection with no entry, or no personal fields, cannot have an anonymize policy enabled. A legal hold on a person reaches the rows the entry's `subjectPaths` tie to them. `_retentionPolicies` is mapped as `none` (not about a person) and `_legalHolds` as `retain` (evidence). The export of a person includes their holds with reason and reference (owner decision 2026-11-14), but not who placed or lifted them.

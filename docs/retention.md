@@ -83,7 +83,7 @@ and `reason` (required), `reference` (a case number), `placedBy`, `placedAt`, `l
 While a hold is active:
 
 - The retention job skips the rows (`held`).
-- **Nothing can delete a held record.** A guard on the model delete refuses it with 409: the records API, a cascade, a hook, the job. Erasure (88-4) must also call `core.LegalHeldAmong` before it anonymizes or erases, because an update is not guarded.
+- **Nothing can delete a held record.** A guard on the model delete refuses it with 409: the records API, a cascade, a hook, the job. Erasure (88-4) calls `core.LegalHeldAmong` before it anonymizes or erases (an update is not guarded by the delete guard), skips held rows and lists them in the result as `legal_hold`, without the hold's reason (`docs/erasure.md`). A subject hold can only be placed on an account; to freeze a child without a login, hold their `_householdMembers` row.
 
 ```
 GET  /api/gdpr/holds[?active=1]

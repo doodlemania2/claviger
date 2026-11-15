@@ -6,6 +6,10 @@ import { pageOrgs } from "@/orgs/pageOrgs";
 import { pageHouseholds } from "@/households/pageHouseholds"; // fork-local (#80)
 import { pageCredentials } from "@/credentials/pageCredentials"; // fork-local (#81)
 import { pageConsents } from "@/consents/pageConsents"; // fork-local (#88, 88-2)
+import { pageGdprDataMap } from "@/gdpr/pageGdprDataMap"; // fork-local (#88, 88-5)
+import { pageGdprHolds } from "@/gdpr/pageGdprHolds";
+import { pageGdprRequests } from "@/gdpr/pageGdprRequests";
+import { pageGdprRetention } from "@/gdpr/pageGdprRetention";
 import { pageRegisters } from "@/registers/pageRegisters"; // fork-local (#87, 87-5)
 import { pageOidc } from "@/oidc/pageOidc";
 import { pageLogs } from "@/logs/pageLogs";
@@ -188,6 +192,11 @@ app.routes.superuserOnly("#/orgs", pageOrgs);
 app.routes.superuserOnly("#/households", pageHouseholds); // fork-local (#80)
 app.routes.superuserOnly("#/credentials", pageCredentials); // fork-local (#81)
 app.routes.superuserOnly("#/consents", pageConsents); // fork-local (#88, 88-2)
+app.routes.superuserOnly("#/gdpr", pageGdprDataMap); // fork-local (#88, 88-5)
+app.routes.superuserOnly("#/gdpr/data-map", pageGdprDataMap);
+app.routes.superuserOnly("#/gdpr/requests", pageGdprRequests);
+app.routes.superuserOnly("#/gdpr/holds", pageGdprHolds);
+app.routes.superuserOnly("#/gdpr/retention", pageGdprRetention);
 app.routes.superuserOnly("#/registers", pageRegisters); // fork-local (#87, 87-5)
 app.routes.superuserOnly("#/oidc", pageOidc);
 app.routes.superuserOnly("#/settings", pageApplicationSettings);

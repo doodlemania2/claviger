@@ -50,6 +50,12 @@ func recordAuthResponse(e *core.RequestEvent, authRecord *core.Record, token str
 		}
 	}
 
+	// fork-local (#88, 88-4): a passkey sign-in of an account locked for a
+	// pending erasure cancels the erasure, then signs in
+	if authMethod == core.MFAMethodWebAuthn {
+		core.CancelPendingErasureForAccount(e.App, e.Request.Context(), authRecord, e.RealIP())
+	}
+
 	// fork-local (#93)
 	if err := checkNotBanned(e, authRecord); err != nil {
 		return err
