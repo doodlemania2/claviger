@@ -2,8 +2,6 @@ package core
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -1003,12 +1001,9 @@ func ConsentHistory(app App, subjectIds ...string) (states, events []*Record, er
 
 // ---- pseudonymization (for erasure, 88-4) ------------------------------------------
 
-// ConsentPseudonym is the stand-in for a subject id in kept evidence.
-func ConsentPseudonym(id string) string {
-	sum := sha256.Sum256([]byte("claviger-consent:" + id))
-
-	return "erased-" + hex.EncodeToString(sum[:])[:24]
-}
+// ConsentPseudonym is the stand-in for a subject id in kept evidence: the
+// keyed pseudonym of erasure (ErasurePseudonym).
+func ConsentPseudonym(app App, id string) string { return ErasurePseudonym(app, id) }
 
 // PseudonymizeConsents replaces the ids of the given people (a member id or a
 // user id) in the consent rows with a pseudonym, and clears the evidence
@@ -1017,20 +1012,31 @@ func ConsentPseudonym(id string) string {
 // agreed. It returns the number of events changed. Erasure (88-4) calls it;
 // nothing else does.
 func PseudonymizeConsents(app App, ctx context.Context, ids ...string) (int, error) {
+	events, _, err := pseudonymizeConsents(app, ctx, ids...)
+
+	return events, err
+}
+
+// pseudonymizeConsents is PseudonymizeConsents that also counts the state rows.
+func pseudonymizeConsents(app App, ctx context.Context, ids ...string) (events, states int, err error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	changed := 0
+	if err = EnsureErasureSecret(app); err != nil {
+		return 0, 0, err
+	}
+
+	changed, stateRows := 0, 0
 	rewrite := context.WithValue(ctx, consentEventRewriteCtxKey{}, true)
 
-	err := app.RunInTransaction(func(txApp App) error {
+	err = app.RunInTransaction(func(txApp App) error {
 		for _, id := range ids {
 			if id == "" {
 				continue
 			}
 
-			p := ConsentPseudonym(id)
+			p := ConsentPseudonym(txApp, id)
 
 			for _, name := range []string{CollectionNameConsentEvents, CollectionNameConsents} {
 				filter := "subject={:i} || givenBy={:i}"
@@ -1067,6 +1073,8 @@ func PseudonymizeConsents(app App, ctx context.Context, ids ...string) (int, err
 
 					if name == CollectionNameConsentEvents {
 						changed++
+					} else {
+						stateRows++
 					}
 				}
 			}
@@ -1075,10 +1083,10 @@ func PseudonymizeConsents(app App, ctx context.Context, ids ...string) (int, err
 		return nil
 	})
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	return changed, nil
+	return changed, stateRows, nil
 }
 
 // ---- hooks --------------------------------------------------------------------

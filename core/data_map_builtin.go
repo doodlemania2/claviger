@@ -70,9 +70,9 @@ var builtinDataMap = []DataMapEntry{
 		Note: "Credential type definitions (#81). Not about a person."},
 
 	// ---- households (#80) ----
-	{Collection: CollectionNameHouseholdMembers, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"user"},
+	{Collection: CollectionNameHouseholdMembers, Treatment: DataMapTreatmentAnonymize, SubjectPaths: []string{"user"},
 		PersonalFields: []string{"name", "birthDate", "photo", "allergies", "medical"},
-		Note:           "A person of a household (#80). Export: the person's own row only, never another member's details. A minor has no login, so a minor's row is not reached through a user."},
+		Note:           "A person of a household (#80). Export: the person's own row only, never another member's details. A minor has no login, so a minor's row is not reached through a user. Erasure (88-4) anonymizes the row (name, birth date, photo, health notes and the login are blanked, the status becomes left) and never deletes it: other records point at it, and the household keeps its shape. Erasing the only active guardian of a household with a minor is refused."},
 	{Collection: CollectionNameHouseholds, Treatment: DataMapTreatmentExport, SubjectPaths: []string{CollectionNameHouseholdMembers + "_via_household.user"},
 		PersonalFields: []string{"address", "homePhone"},
 		Note:           "The shared contact data of the household (#80), exported to each member with a login. Kept on erasure of one member: it belongs to the others too."},
@@ -82,7 +82,7 @@ var builtinDataMap = []DataMapEntry{
 		Note: "Staff-vouched recovery codes (#83). Export: who vouched, how, when. Never the reference or the hash. Rows are deleted 30 days after they expire."},
 
 	// ---- member transfers between orgs (#84) ----
-	{Collection: CollectionNameOrgTransfers, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"person"},
+	{Collection: CollectionNameOrgTransfers, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"person", "member"},
 		PersonalFields: []string{"startedBy", "decidedBy"},
 		Note:           "Consent records of a move between orgs (#84). Export: both orgs, state, who started and decided. Pending rows expire after the transfer lifetime. A transfer of a member without a login (a minor) is about the household member row and goes with it."},
 	// ---- pastoral confidentiality (#86) ----
@@ -150,6 +150,9 @@ var builtinDataMap = []DataMapEntry{
 
 	{Collection: CollectionNameDataRequests, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"recordRef"},
 		Note: "Export: the request, its state and dates (never the export file). The export ZIP is deleted with the row."},
+
+	{Collection: CollectionNameErasureLog, Treatment: DataMapTreatmentNone,
+		Note: "Log of erasures (88-4): a one-way hash of the subject id, the date and the collections touched. Nothing in it identifies a person. Replayed after a restore."},
 
 	// The auxiliary database table _logs (request logs, IP and user id) is
 	// not a collection. It is covered by the log retention setting
