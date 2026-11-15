@@ -98,6 +98,13 @@ window.app.store = store({
             label: "Consents",
         },
         {
+            // fork-local (#88, 88-5)
+            href: "#/gdpr/data-map",
+            icon: "ri-shield-keyhole-line",
+            label: "Data protection",
+            isActive: () => app.utils.isActivePath("#/gdpr"),
+        },
+        {
             href: "#/registers",
             icon: "ri-book-2-line",
             label: "Registers",
