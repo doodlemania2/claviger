@@ -3,7 +3,7 @@ import { ensureParishBase, prepParish } from "../lib/parish";
 import { SceneRun } from "../lib/scene";
 import { api, asUser, stack } from "../lib/stack";
 import { PARISH_ORG } from "../lib/story";
-import { apiCard, beat, ensureAdmin, hostedSignIn, open, press, typeIn } from "../lib/ui";
+import { apiCard, expectStatus, beat, ensureAdmin, hostedSignIn, open, press, typeIn } from "../lib/ui";
 import { saveWorld, type World } from "../lib/world";
 
 const modalOf = (page: import("@playwright/test").Page) => page.locator(".org-form-modal").last();
@@ -130,6 +130,7 @@ export async function safeguardingScene(browser: Browser, world: World, index: n
         await expect(ellis.page.locator("body")).toContainText("Nothing recorded yet").catch(() => undefined);
         await ellis.say("Ellis Fenner wants to help with the youth group. His page shows what he holds: so far, nothing");
         const roster = await asUser(p.ellis, "GET", "/api/collections/youth_roster/records");
+        expect(roster.json.totalItems ?? 0).toBe(0);
         await apiCard(ellis, "The youth roster, asked for by Ellis", "GET /api/collections/youth_roster/records", roster.status, { items: roster.json.items, totalItems: roster.json.totalItems });
         await ellis.say("The roster rule reads credentials: no current credential, no rows. No code decides this, only a rule", 4200);
 
@@ -157,6 +158,7 @@ export async function safeguardingScene(browser: Browser, world: World, index: n
         await expect(ellis.page.locator("li.cred", { hasText: "Safe environment" })).toContainText("Current");
         await ellis.say("Ellis sees it: current, with its end date");
         const after = await asUser(p.ellis, "GET", "/api/collections/youth_roster/records");
+        expect(after.json.totalItems).toBe(1);
         await apiCard(ellis, "The same request, now", "GET /api/collections/youth_roster/records", after.status, { totalItems: after.json.totalItems, items: after.json.items.map((i: any) => ({ child: i.child, pickup: i.pickup })) });
         await ellis.say("The rule found a current credential: the roster opens. When it expires, or a coordinator revokes it, it closes by itself", 5000);
         await beat(it.page, 500);

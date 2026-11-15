@@ -3,7 +3,7 @@ import { ensureHousehold, ensureParishBase, ensurePasskey, prepParish } from "..
 import { SceneRun } from "../lib/scene";
 import { api, asUser, rawCall, stack } from "../lib/stack";
 import { PARISH_ORG, SECOND_PARISH } from "../lib/story";
-import { apiCard, beat, ensureAdmin, hostedSignIn, open, openMail, press, skip, stepUpCall, typeIn } from "../lib/ui";
+import { apiCard, expectStatus, beat, ensureAdmin, hostedSignIn, open, openMail, press, skip, stepUpCall, typeIn } from "../lib/ui";
 import { saveWorld, type World } from "../lib/world";
 
 /** Scene 7: a sacramental register entry with two signers, an annotation and a certificate. */
@@ -132,6 +132,7 @@ export async function pastoralScene(browser: Browser, world: World, index: numbe
         }
         await basil.say("Dora Quill wrote a sealed pastoral note. Sealed means: its author only. The pastor is the org's owner");
         const before = await asUser(p.basil, "GET", `/api/collections/pastoral_notes/records/${note}`);
+        expectStatus("the owner reading a sealed note", before.status, [404, 403]);
         await apiCard(basil, "The pastor asks for the note", `GET /api/collections/pastoral_notes/records/${note}`, before.status, before.json);
         await basil.say("An owner has no automatic right to pastoral notes. The body is encrypted, and no rule names the owner", 4500);
 
@@ -143,26 +144,30 @@ export async function pastoralScene(browser: Browser, world: World, index: numbe
             basis: "safety",
             hours: 2,
         });
+        expectStatus("break-glass request", ask.status, [200, 201]);
         await apiCard(basil, "Fr. Basil asks, with a fresh passkey", "POST /api/breakglass   {basis: safety, hours: 2, reason: ...}", ask.status, ask.body);
         await basil.say("A request only records the need. Nothing is open yet, and he cannot approve his own", 3800);
 
         const grantId = ask.body.id;
         await ign.say("Fr. Ignatius, a second holder of the breakglass tag, reviews the request");
         const approve = await stepUpCall(ign.page, "users", "POST", `/api/breakglass/${grantId}/approve`, {});
+        expectStatus("break-glass approval", approve.status);
         await apiCard(ign, "Fr. Ignatius approves, with his own passkey", `POST /api/breakglass/${grantId}/approve`, approve.status, approve.body);
         await ign.say("Before the grant opens Claviger emails the author and the owners. That notice cannot be turned off", 4500);
 
-        await openMail(basil.page, p.basil.email);
+        await openMail(basil.page, p.basil.email, /emergency|break|access|note/i);
         await basil.say("The pastor's notice: who asked, who approved, why, and when the access ends");
         await beat(basil.page, 2500);
 
         await open(basil.page, `${world.base}/orgs/${PARISH_ORG.slug}`);
         await hostedSignIn(basil.page, p.basil);
         const read = await asUser(p.basil, "GET", `/api/collections/pastoral_notes/records/${note}`);
+        expectStatus("reading under the grant", read.status);
         await apiCard(basil, "While the grant is live, he can read it", `GET /api/collections/pastoral_notes/records/${note}`, read.status, { body: read.json.body, sealed: read.json.sealed }, 5500);
         await basil.say("Every read is logged and counted. The grant ends by the clock, within 24 hours at most", 4200);
 
         const audit = await api("GET", `/api/collections/_auditLog/records?perPage=10&sort=-created&filter=${encodeURIComponent('action ~ "breakglass" || action = "read"')}`);
+        expect(audit.items.map((i: any) => i.action)).toContain("breakglass_open");
         await apiCard(ign, "The audit trail", "GET /api/collections/_auditLog/records  (breakglass_request, breakglass_open, read)", 200, audit.items.map((i: any) => i.action), 5500);
         await skip(world, "pastoral", "a dedicated break-glass screen", "break-glass has routes and emails but no page; the steps are shown as API calls with their answers", ign);
         void stack;

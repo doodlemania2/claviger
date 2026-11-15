@@ -30,8 +30,16 @@ export async function ensureOrg(slug: string, body: Record<string, unknown>): Pr
 }
 
 export async function ensureMember(orgId: string, email: string, role: string, tags: string[]): Promise<void> {
-    const r = await rawCall("POST", `/api/orgs/${orgId}/members`, { user: email, role, tags }, await (await import("./stack")).adminToken());
-    if (r.status >= 300 && r.status !== 409) throw new Error(`member ${email}: ${r.status} ${r.text}`);
+    const token = await (await import("./stack")).adminToken();
+    const r = await rawCall("POST", `/api/orgs/${orgId}/members`, { user: email, role, tags }, token);
+    if (r.status < 300) return;
+    if (r.status !== 409) throw new Error(`member ${email}: ${r.status} ${r.text}`);
+    // already a member (made by an earlier scene): bring the role and tags to what the story says
+    const list = await api("GET", `/api/orgs/${orgId}/members?perPage=100`);
+    const mine = list.items.find((m: any) => m.email === email);
+    if (!mine) throw new Error(`member ${email} not found`);
+    const same = mine.role === role && [...(mine.tags ?? [])].sort().join() === [...tags].sort().join();
+    if (!same) await api("PATCH", `/api/orgs/${orgId}/members/${mine.id}`, { role, tags });
 }
 
 /** The users every parish scene needs, the users collection with passkeys on, and the mail settings. */

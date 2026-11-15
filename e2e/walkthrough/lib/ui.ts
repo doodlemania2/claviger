@@ -1,6 +1,8 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import type { Actor } from "./scene";
 import { PACE } from "./scene";
+import type { Mail } from "../../smtp";
+import { parseMail } from "./rig";
 import { stack } from "./stack";
 import { totp } from "./totp";
 import { saveWorld, type Person, type World } from "./world";
@@ -113,8 +115,16 @@ export async function ensureAdmin(page: Page, who: { email: string; password: st
 /** Open the newest mail to an address in the mailbox viewer, as the person would in their mail app. */
 export async function openMail(page: Page, to: string, subject?: RegExp): Promise<void> {
     const s = stack();
-    await s.smtp.waitFor((m) => m.to.includes(to) && (!subject || subject.test(m.text.slice(0, 4000)) || subject.test(m.raw)));
-    await open(page, `${s.rig.url}/mail?to=${encodeURIComponent(to)}`);
+    const hit = (m: Mail) => m.to.includes(to) && (!subject || subject.test(parseMail(m, 0).subject));
+    await s.smtp.waitFor(hit);
+    // the newest mail that matches, by its place in the sink
+    const idx = s.smtp.mails.map((m, i) => (hit(m) ? i : -1)).filter((i) => i >= 0).pop();
+    await open(page, `${s.rig.url}/mail?to=${encodeURIComponent(to)}&n=${idx}`);
+}
+
+/** A card shows an answer: refuse to film one that is not the answer the caption is about to describe. */
+export function expectStatus(what: string, status: number, ok: number[] = [200, 201, 204]): void {
+    if (!ok.includes(status)) throw new Error(`${what}: unexpected status ${status}`);
 }
 
 /** Runs a request from inside the page with the session token of a hosted page, and a passkey step-up when asked. */

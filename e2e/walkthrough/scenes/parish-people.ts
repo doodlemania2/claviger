@@ -3,7 +3,7 @@ import { ensureHousehold, ensureParishBase, ensurePasskey, prepParish } from "..
 import { SceneRun } from "../lib/scene";
 import { api, asUser } from "../lib/stack";
 import { PARISH_ORG } from "../lib/story";
-import { apiCard, beat, hostedSignIn, open, press, skip, typeIn } from "../lib/ui";
+import { apiCard, expectStatus, beat, hostedSignIn, open, press, skip, typeIn } from "../lib/ui";
 import type { World } from "../lib/world";
 
 /** Scene 5: staff-assisted recovery. A greeter vouches for an older member, who sets up a new passkey with a short code. */
@@ -108,10 +108,13 @@ export async function consentScene(browser: Browser, world: World, index: number
         await apiCard(rosa, "What is Rosa asked about?", "GET /api/me/consents", list.status, { purposes_for_her_and_for_Teo: teoRow ? "listed, status none" : list.json });
         await rosa.say("The consent request lists the purpose for her and for her child. Nothing is pre-ticked");
         const grant = await asUser(p.rosa, "POST", "/api/me/consents/parish-photos/grant", { member: hh.teo });
+        expectStatus("consent grant", grant.status);
         await apiCard(rosa, "Rosa agrees for Teo", "POST /api/me/consents/parish-photos/grant   {member: <Teo>}", grant.status, grant.json);
         await rosa.say("As his guardian she grants it for Teo. A minor has no login of his own", 3500);
 
         const hist = await asUser(p.maren, "GET", `/api/orgs/${world.ids.parish}/consents?member=${hh.teo}`);
+        expectStatus("consent history", hist.status);
+        expect(JSON.stringify(hist.json)).toContain("granted");
         await apiCard(maren, "What the office can show", `GET /api/orgs/<parish>/consents?member=<Teo>`, hist.status, hist.json, 5500);
         await maren.say("The office sees the grant, who gave it, the text version and the time. Withdrawing is as easy as granting", 4500);
         void api;

@@ -2,7 +2,7 @@ import { expect, type Browser } from "@playwright/test";
 import { SceneRun } from "../lib/scene";
 import { saveWorld, type World } from "../lib/world";
 import { totp } from "../lib/totp";
-import { adminSignIn, apiCard, beat, ensureAdmin, open, press, typeIn } from "../lib/ui";
+import { adminSignIn, apiCard, expectStatus, beat, ensureAdmin, open, press, typeIn } from "../lib/ui";
 import { rawCall } from "../lib/stack";
 
 /** Scene 4: the superuser enrols an authenticator app, signs in with a code, then with a backup code. */
@@ -80,10 +80,13 @@ export async function apiKeyScene(browser: Browser, world: World, index: number)
 
         const shown = key.slice(0, 12) + "...";
         const read = await rawCall("GET", "/api/collections/users/records?perPage=1", undefined, `Bearer ${key}`);
+        expectStatus("scoped read", read.status);
         await apiCard(a, "The billing service reads users", `GET /api/collections/users/records   Authorization: Bearer ${shown}`, read.status, { page: 1, totalItems: read.json.totalItems });
         const write = await rawCall("POST", "/api/collections/users/records", { email: "x@example.org", password: "x-pass-12345", passwordConfirm: "x-pass-12345" }, `Bearer ${key}`);
+        expectStatus("scoped write", write.status, [401, 403]);
         await apiCard(a, "Writing is outside the key's scope", `POST /api/collections/users/records   Authorization: Bearer ${shown}`, write.status, write.json);
         const other = await rawCall("GET", "/api/collections/_superusers/records", undefined, `Bearer ${key}`);
+        expectStatus("other collection", other.status, [401, 403]);
         await apiCard(a, "So is every other collection", `GET /api/collections/_superusers/records   Authorization: Bearer ${shown}`, other.status, other.json);
 
         await say("Done with it: revoke");
@@ -91,6 +94,7 @@ export async function apiKeyScene(browser: Browser, world: World, index: number)
         await page.locator(".modal.popup.manual").getByRole("button", { name: "Yes" }).click();
         await expect(page.getByRole("row", { name: /billing-sync/ })).toContainText("Revoked");
         const after = await rawCall("GET", "/api/collections/users/records?perPage=1", undefined, `Bearer ${key}`);
+        expectStatus("revoked key", after.status, [401, 403]);
         await apiCard(a, "The revoked key is refused", `GET /api/collections/users/records   Authorization: Bearer ${shown}`, after.status, after.json);
     } finally {
         await scene.end();
