@@ -417,6 +417,12 @@ func (app *BaseApp) registerLegalHoldHooks() {
 				return me.Next()
 			}
 
+			// the lock the erasure itself put on an account (a ban) is lifted by
+			// the erasure; it is not personal data being erased
+			if me.Context != nil && me.Context.Value(erasureLockCtxKey{}) != nil && re.Record.Collection().Name == CollectionNameBans {
+				return me.Next()
+			}
+
 			held, err := IsRecordLegallyHeld(me.App, re.Record)
 			if err != nil {
 				return fmt.Errorf("failed to check the legal holds: %w", err)

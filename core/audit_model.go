@@ -72,6 +72,7 @@ var auditExcludedCollections = []string{
 	CollectionNameBreakGlass,        // #86: explicit breakglass_* entries (a read raises readCount)
 	CollectionNamePastoralHolds,     // #86: explicit pastoral_* entries
 	CollectionNameLegalHolds,        // #88: explicit gdpr_hold* entries (the reason stays out of the log)
+	CollectionNameErasureLog,        // #88: written by the erasure job; the gdpr_erase entry describes it
 }
 
 // auditNoiseFields are fields whose changes alone do not warrant an entry
@@ -292,6 +293,12 @@ func (app *BaseApp) registerAuditHooks() {
 		}
 
 		if me.Type == ModelEventTypeCreate && me.Context != nil && me.Context.Value(auditWriterCtxKey{}) != nil {
+			return me.Next()
+		}
+
+		// the one documented exception (#88, 88-4): ScrubAuditForErasure may
+		// null the personal columns of an entry, and nothing else
+		if me.Type == ModelEventTypeUpdate && me.Context != nil && me.Context.Value(auditScrubCtxKey{}) != nil && auditScrubAllowed(re.Record) {
 			return me.Next()
 		}
 

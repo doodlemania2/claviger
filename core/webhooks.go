@@ -106,6 +106,10 @@ var webhookEntryEventTypes = map[string]string{
 	AuditActionLegalHold:     "gdpr.hold",
 	AuditActionLegalHoldLift: "gdpr.hold_lift",
 
+	// #88 88-4: an erasure ended; the payload is the entry's meta (the
+	// pseudonymous id and counts)
+	AuditActionErase: "gdpr.erase",
+
 	// #86: break-glass access to pastoral notes; the reason is left out of the payload
 	AuditActionBreakGlassRequest: "breakglass.request",
 	AuditActionBreakGlassOpen:    "breakglass.open",

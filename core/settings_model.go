@@ -136,6 +136,7 @@ type settings struct {
 	SMS          SMSConfig          `form:"sms" json:"sms"` // fork-local (#83)
 	Audit        AuditConfig        `form:"audit" json:"audit"`
 	DataExport   DataExportConfig   `form:"dataExport" json:"dataExport"` // fork-local (#88)
+	Erasure      ErasureConfig      `form:"erasure" json:"erasure"`       // fork-local (#88, 88-4)
 }
 
 // Settings defines the PocketBase app settings.
@@ -303,6 +304,7 @@ func (s *Settings) PostValidate(ctx context.Context, app App) error {
 		validation.Field(&s.Captcha),
 		validation.Field(&s.SMS),
 		validation.Field(&s.DataExport),
+		validation.Field(&s.Erasure),
 		validation.Field(&s.Audit),
 	); err != nil {
 		return err

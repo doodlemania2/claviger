@@ -1017,14 +1017,21 @@ func ConsentPseudonym(id string) string {
 // agreed. It returns the number of events changed. Erasure (88-4) calls it;
 // nothing else does.
 func PseudonymizeConsents(app App, ctx context.Context, ids ...string) (int, error) {
+	events, _, err := pseudonymizeConsents(app, ctx, ids...)
+
+	return events, err
+}
+
+// pseudonymizeConsents is PseudonymizeConsents that also counts the state rows.
+func pseudonymizeConsents(app App, ctx context.Context, ids ...string) (events, states int, err error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	changed := 0
+	changed, stateRows := 0, 0
 	rewrite := context.WithValue(ctx, consentEventRewriteCtxKey{}, true)
 
-	err := app.RunInTransaction(func(txApp App) error {
+	err = app.RunInTransaction(func(txApp App) error {
 		for _, id := range ids {
 			if id == "" {
 				continue
@@ -1067,6 +1074,8 @@ func PseudonymizeConsents(app App, ctx context.Context, ids ...string) (int, err
 
 					if name == CollectionNameConsentEvents {
 						changed++
+					} else {
+						stateRows++
 					}
 				}
 			}
@@ -1075,10 +1084,10 @@ func PseudonymizeConsents(app App, ctx context.Context, ids ...string) (int, err
 		return nil
 	})
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	return changed, nil
+	return changed, stateRows, nil
 }
 
 // ---- hooks --------------------------------------------------------------------
