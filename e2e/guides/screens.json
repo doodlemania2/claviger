@@ -33,6 +33,23 @@
      ]
     },
     {
+     "name": "record-passkeys",
+     "steps": [
+      {
+       "click": "tbody tr:has-text(\"tomas.brennan@example.org\")"
+      },
+      {
+       "wait": ".modal"
+      },
+      {
+       "click": ".modal >> text=Passkeys"
+      },
+      {
+       "pause": 600
+      }
+     ]
+    },
+    {
      "name": "record-more-options",
      "steps": [
       {
@@ -1418,6 +1435,36 @@
        "wait": ".modal"
       }
      ]
+    },
+    {
+     "name": "key-created",
+     "steps": [
+      {
+       "click": "role=button[name=\"New API key\"]"
+      },
+      {
+       "wait": ".api-key-create-modal"
+      },
+      {
+       "fill": [
+        ".api-key-create-modal input[id$=\"_name\"]",
+        "Rota planner (new)"
+       ]
+      },
+      {
+       "click": ".api-key-create-modal label:has-text(\"All access\")"
+      },
+      {
+       "click": ".api-key-create-modal >> role=button[name=\"Create key\"]"
+      },
+      {
+       "wait": ".api-key-create-modal code"
+      }
+     ],
+     "mutates": true,
+     "mask": [
+      ".api-key-create-modal code"
+     ]
     }
    ]
   },
@@ -1754,6 +1801,67 @@
      "steps": [
       {
        "goto": "/oidc/device"
+      }
+     ]
+    }
+   ],
+   "anon": true
+  },
+  {
+   "id": "hosted-oidc-error",
+   "area": "hosted",
+   "route": "{oidcError}",
+   "audience": "members",
+   "title": "OpenID Connect error page",
+   "states": [
+    {
+     "name": "default"
+    },
+    {
+     "name": "bad-redirect-uri",
+     "steps": [
+      {
+       "goto": "{oidcBadRedirect}"
+      }
+     ]
+    }
+   ],
+   "anon": true,
+   "allowStatus": true
+  },
+  {
+   "id": "hosted-oidc-device-approve",
+   "area": "hosted",
+   "route": "/oidc/device?user_code={deviceUserCode}",
+   "audience": "members",
+   "title": "Approve a device",
+   "states": [
+    {
+     "name": "default",
+     "steps": [
+      {
+       "click": "button:has-text(\"Continue\")"
+      },
+      {
+       "wait": "label:has-text(\"Email or username\") input"
+      },
+      {
+       "fill": [
+        "label:has-text(\"Email or username\") input",
+        "{guardianEmail}"
+       ]
+      },
+      {
+       "fill": [
+        "label:has-text(\"Password\") input",
+        "{demoPassword}"
+       ]
+      },
+      {
+       "click": "form#pw button[type=submit], button:has-text(\"Sign in\")"
+      },
+      {
+       "wait": "button:has-text(\"Approve\"), button:has-text(\"Allow\")"
       }
      ]
     }

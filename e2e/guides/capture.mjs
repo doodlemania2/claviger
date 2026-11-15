@@ -97,7 +97,7 @@ export function checkManifest(screens) {
         if (!s.area || !/^[a-z0-9-]+$/.test(s.area)) problems.push(`${where}: area must be a kebab-case folder name`);
         if (!s.route || !(s.route.startsWith("/") || /^\{\w+\}$/.test(s.route))) problems.push(`${where}: route must start with / (or be one placeholder)`);
         else if (s.route.startsWith("{")) {
-            if (isHosted(s.route) && !["oidcLogin", "oidcConsent", "oidcChooser"].includes(s.route.slice(1, -1))) problems.push(`${where}: unknown route placeholder ${s.route}`);
+            if (isHosted(s.route) && !["oidcLogin", "oidcConsent", "oidcChooser", "oidcError", "oidcBadRedirect"].includes(s.route.slice(1, -1))) problems.push(`${where}: unknown route placeholder ${s.route}`);
         }
         else if (isHosted(s.route) && !s.route.startsWith("{")) {
             if (!HOSTED_PREFIXES.some((p) => s.route.startsWith(p))) problems.push(`${where}: hosted route ${s.route} is not a known hosted page`);
@@ -199,6 +199,7 @@ async function normalize(page, origin) {
                 })
                 // a node that holds only a time (the second line of a created column) is a stamp too
                 .replace(/^(\s*)\d{2}:\d{2}:\d{2}(\.\d+)?(Z?\s*)$/, (m, a, f, z) => a + (f ? "09:30:00.000" : "09:30:00") + z)
+                .replace(/clv_[a-z0-9]{8}/g, "clv_a1b2c3d4")
                 .replace(/\b(?=[a-z0-9]*\d)(?=[a-z0-9]*[a-z])[a-z0-9]{15}\b/g, pseudo);
         const shown = "https://claviger.example.org";
         const rewriteAll = (s) => rewrite(s.split(origin).join(shown).replace(/localhost:\d+/g, "claviger.example.org"));
@@ -250,6 +251,7 @@ async function runStep(page, step, world) {
 
 // ---- contexts ----------------------------------------------------------------------------
 
+let signSeq = 10_000;
 const authCache = new Map();
 async function authFor(world, persona) {
     if (authCache.has(persona)) return authCache.get(persona);
@@ -305,8 +307,12 @@ async function newContext(browser, world, { persona, passkey, dark, mobile, host
         const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
             options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
         });
-        for (const credential of await world.passkeys[passkey].credentials()) await cdp.send("WebAuthn.addCredential", { authenticatorId, credential });
-        await page.close();
+        // a server refuses an assertion whose counter did not grow, so every context starts higher than the last
+        for (const credential of await world.passkeys[passkey].credentials()) {
+            await cdp.send("WebAuthn.addCredential", { authenticatorId, credential: { ...credential, signCount: (signSeq += 100) } });
+        }
+        // keep this page: the virtual authenticator lives and dies with its CDP session
+        ctx.__page = page;
     }
     return ctx;
 }
@@ -321,7 +327,7 @@ async function shoot(browser, world, job, variant) {
     const passkey = state.passkey ?? screen.passkey ?? (persona && world.passkeys[persona] ? persona : undefined);
     const ctx = await newContext(browser, world, { persona, passkey, dark: variant === "dark", mobile: variant === "mobile", hosted });
     try {
-        const page = await ctx.newPage();
+        const page = ctx.__page ?? (await ctx.newPage());
         const route = await fill(job.route, world);
         const res = await page.goto(world.base + route, { waitUntil: "load" });
         if (hosted && res && res.status() >= 400 && !(state.allowStatus ?? screen.allowStatus)) throw new Error(`${route} answered ${res.status()}`);
@@ -483,7 +489,7 @@ async function main() {
     return 0;
 }
 
-const PERSONAS = ["org-owner", "coordinator", "registrar", "greeter", "member", "guardian", "clergy", "care-team"];
+const PERSONAS = ["org-owner", "org-admin", "invitee", "coordinator", "registrar", "greeter", "member", "guardian", "clergy", "care-team"];
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
     main().then(

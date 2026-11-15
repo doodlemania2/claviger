@@ -75,6 +75,8 @@ shots:
 | `org-owner` | Maeve Okafor | owner of St. Brendan's Parish, tag `safeguarding` |
 | `coordinator` | Brigid Halloran | org admin, credentials coordinator |
 | `registrar` | Tomas Brennan | tag `registrar`. Holds a passkey, so finalizing works. |
+| `org-admin` | Brigid Halloran | alias of `coordinator` |
+| `invitee` | Ciaran Doyle | has a pending invitation to St. Brendan's, no account yet (the invite page) |
 | `greeter` | Aoife Rourke | tag `greeter`, no household |
 | `clergy` | Fr. Anselm Whitcombe | tags `clergy`, `breakglass`. Holds a passkey. |
 | `care-team` | Priya Ellington | tags `care-team`, `breakglass`; holds credentials |

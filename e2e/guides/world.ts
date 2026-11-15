@@ -256,7 +256,10 @@ async function seed(c: Ctx): Promise<World> {
     await person("lapsed", "Lowell Pennington", "lowell.pennington@example.com"); // erased by staff
     await person("banned", "Corwin Ashby", "corwin.ashby@example.com"); // the sessions and ban screen
     await person("visitor", "Seren Doyle", "seren.doyle@example.com");
+    personas["org-admin"] = personas.coordinator; // the same person under the name the docs use
     vars.guardianEmail = personas.guardian.email;
+    // the person with an open invitation has no account yet: the persona names the invitation page's visitor
+    personas.invitee = { key: "invitee", name: "Ciaran Doyle", email: "ciaran.doyle@example.com", password: DEMO_PASSWORD, id: "", collection: "users" };
     vars.guardianId = personas.guardian.id;
     // the confirm pages of the admin UI read the e-mail and collection from the token's payload
     // before they show a form; this one is unsigned, so the server would refuse it, but the page renders
@@ -684,6 +687,8 @@ export function makeLazy(base: string, vars: Record<string, string>): Record<str
     return {
         oidcLogin: async () => authorize(vars.oidcClientId, vars.oidcRedirect),
         oidcConsent: async () => authorize(vars.oidcThirdPartyId, "https://rota.example.com/callback", {}, "rota"),
+        oidcError: async () => authorize("unknown-client-id", vars.oidcRedirect),
+        oidcBadRedirect: async () => authorize(vars.oidcClientId, "https://elsewhere.example.net/callback"),
         oidcChooser: async () => authorize(vars.oidcClientId, vars.oidcRedirect, { prompt: "select_account" }),
         deviceUserCode: async () => {
             const r = await fetch(base + "/oidc/device_authorization", {
