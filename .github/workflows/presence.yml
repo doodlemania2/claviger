@@ -1,0 +1,27 @@
+# Fleet presence (#134): on every push to master, tell the Claviger site which features the push touched
+# (presence/features.json `sources`), so the marketing and docs pages rebuild. Push to master only: this repo is
+# public, so this never runs for a pull request or a fork. Without FLEET_DISPATCH_TOKEN the shared workflow warns
+# and exits 0.
+name: presence
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: presence
+  cancel-in-progress: false
+
+jobs:
+  presence:
+    if: github.repository == 'doodlemania2/claviger'
+    uses: doodlemania2/fleet-presence-dispatch/.github/workflows/presence-dispatch.yml@main
+    with:
+      property: claviger
+      targets: '["doodlemania2/claviger-site"]'
+      runner: tdp-k3s-claviger
+    secrets:
+      dispatch_token: ${{ secrets.FLEET_DISPATCH_TOKEN }}
