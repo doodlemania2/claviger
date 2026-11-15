@@ -106,6 +106,14 @@ var builtinDataMap = []DataMapEntry{
 		PersonalFields: []string{"subject", "givenBy", "actor", "evidenceRef"}, AgeOutBasis: "created",
 		RetainReason: "Evidence that consent was given or withdrawn, with the text shown. Append-only; kept for the limitation period and pseudonymized on erasure (PseudonymizeConsents).",
 		Note:         "Append-only consent history (88-2). Export: every grant and withdrawal with the text version and the text shown."},
+	// ---- retention and legal holds (#88, 88-3) ----
+	{Collection: CollectionNameRetentionPolicies, Treatment: DataMapTreatmentNone,
+		Note: "Retention policies (88-3): which collection, which date, how long, which action. Not about a person."},
+	{Collection: CollectionNameLegalHolds, Treatment: DataMapTreatmentRetain,
+		SubjectPaths:   []string{"subject"},
+		PersonalFields: []string{"subject", "reason", "reference", "placedBy", "liftedBy"}, AgeOutBasis: "liftedAt",
+		RetainReason: "Evidence that a person's data was frozen for a legal matter, and why. Kept after the hold is lifted so that the log of what was kept can be explained.",
+		Note:         "Legal holds (88-3). Export (owner decision 2026-11-14): scope, reason, reference, placed and lifted dates; never who placed or lifted it (a member of staff, a third party)."},
 	// ---- permanent registers (#87) ----
 	{Collection: CollectionNamePermanentCollections, Treatment: DataMapTreatmentNone,
 		Note: "The list of permanent registers (#87). Configuration, not about a person."},

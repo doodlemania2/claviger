@@ -836,6 +836,15 @@ func populateForkDB(t *testing.T, app core.App) {
 		t.Fatal(err)
 	}
 
+	// the same for a filler retention policy that looks mid-run: the resume
+	// hook would continue it on each side and change lastRunAt and the audit log
+	if _, err := app.DB().Update(core.CollectionNameRetentionPolicies,
+		dbx.Params{"runStatus": ""},
+		dbx.NewExp("[[runStatus]] != ''"),
+	).Execute(); err != nil {
+		t.Fatal(err)
+	}
+
 	// every fork table must now hold data
 	for _, name := range []string{
 		core.CollectionNameAuditLog, core.CollectionNameSessions, core.CollectionNameFieldKeys,
