@@ -346,6 +346,7 @@
   "oidc.err.cannotResume": "This sign-in could not be resumed. Return to the app and start again.",
   "oidc.err.tooManyRequests": "Too many sign-in requests. Wait a minute and try again.",
   "oidc.err.invalidRequest": "Invalid request.",
+  "oidc.err.invalidAuthorize": "This sign-in link is not valid. Return to the app and try again.",
   "oidc.err.signInExpired": "This sign-in has expired. Return to the app and try again.",
   "oidc.err.signInOtherBrowser": "This sign-in was started in another browser.",
   "oidc.err.wrongAccountType": "Sign in with an account of the right type.",

@@ -347,6 +347,7 @@
   "oidc.err.cannotResume": "No se pudo reanudar este inicio de sesión. Vuelva a la aplicación y comience de nuevo.",
   "oidc.err.tooManyRequests": "Demasiadas solicitudes de inicio de sesión. Espere un minuto e inténtelo de nuevo.",
   "oidc.err.invalidRequest": "Solicitud no válida.",
+  "oidc.err.invalidAuthorize": "Este enlace de inicio de sesión no es válido. Vuelva a la aplicación e inténtelo de nuevo.",
   "oidc.err.signInExpired": "Este inicio de sesión ha vencido. Vuelva a la aplicación e inténtelo de nuevo.",
   "oidc.err.signInOtherBrowser": "Este inicio de sesión se inició en otro navegador.",
   "oidc.err.wrongAccountType": "Inicie sesión con una cuenta del tipo correcto.",
