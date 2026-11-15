@@ -30,6 +30,7 @@ export interface Actor {
     /** Show a card (a title and monospace lines) for something that has no screen. An empty title clears it. */
     card: (title: string | null, lines?: string[]) => Promise<void>;
     passkeys?: { count: () => Promise<number> };
+    viewport?: { width: number; height: number };
 }
 
 export type Layout = "sequence" | "row";
@@ -43,8 +44,7 @@ export interface Cue {
     text: string;
 }
 
-/** The overlay hides a caption by itself after this long (see overlay.ts). */
-const CAPTION_MS = 9000;
+
 
 export interface Clip {
     actor: string;
@@ -83,7 +83,8 @@ export class SceneRun {
     }
 
     private async addActor(browser: Browser, spec: ActorSpec): Promise<void> {
-        const profile = PROFILES[spec.device];
+        // Two desktops side by side get a squarer window, so each half of the video is used well.
+        const profile = spec.device === "desktop" && this.layout === "row" ? { viewport: { width: 1000, height: 1000 } } : PROFILES[spec.device];
         const viewport = (profile["viewport"] ?? { width: 1280, height: 800 }) as { width: number; height: number };
         const auth = join(this.world.dir, "auth", `${spec.name}.json`);
         const ctx = await browser.newContext({
@@ -99,13 +100,15 @@ export class SceneRun {
         const secs = () => (Date.now() - t0) / 1000;
         // the cue that is on screen now, closed when it is replaced, cleared or times out
         let live: Cue | null = null;
+        let liveMs = 0;
         const close = (): void => {
-            if (live) live.end = Math.min(secs(), live.start + CAPTION_MS / 1000);
+            if (live) live.end = Math.min(secs(), live.start + liveMs / 1000);
             live = null;
         };
-        const open = (text: string): void => {
+        const open = (text: string, showMs: number): void => {
             close();
-            live = { actor: spec.name, label: spec.label ?? spec.name, start: secs(), end: secs() + 2, text };
+            liveMs = showMs;
+            live = { actor: spec.name, label: spec.label ?? spec.name, start: secs(), end: secs() + showMs / 1000, text };
             this.cues.push(live);
         };
         page.on("pageerror", (e) => console.log(`[${spec.name}] pageerror ${e.message.slice(0, 160)}`));
@@ -121,26 +124,29 @@ export class SceneRun {
             }
         }, label);
         const say = async (text: string, ms?: number): Promise<void> => {
+            // Reading time: about 45 ms a character, at least a second and a half. The caption then stays up
+            // a little longer, so it does not outlive the step it describes by much.
+            const hold = (ms ?? Math.max(1500, text.length * 45)) * PACE;
+            const showMs = Math.round(hold + 2000);
             close();
-            if (text) open(text);
+            if (text) open(text, showMs);
             await page
-                .evaluate((t) => {
-                    (window as unknown as { __walkCaption?: (x: string | null) => void }).__walkCaption?.(t || null);
-                }, text)
+                .evaluate(([t, d]) => {
+                    (window as unknown as { __walkCaption?: (x: string | null, ms?: number) => void }).__walkCaption?.((t as string) || null, d as number);
+                }, [text, showMs] as const)
                 .catch(() => undefined);
-            // Reading time: about 45 ms a character, at least a second and a half.
-            if (text && PACE > 0) await page.waitForTimeout((ms ?? Math.max(1500, text.length * 45)) * PACE);
+            if (text && PACE > 0) await page.waitForTimeout(hold);
         };
         const card = async (title: string | null, lines?: string[]): Promise<void> => {
             close();
-            if (title) open(title);
+            if (title) open(title, 600_000);
             await page
                 .evaluate(([t, l]) => {
                     (window as unknown as { __walkCard?: (a: string | null, b?: string[]) => void }).__walkCard?.(t as string | null, l as string[]);
                 }, [title, lines ?? []] as const)
                 .catch(() => undefined);
         };
-        const actor: Actor = { name: spec.name, page, ctx, say, card };
+        const actor: Actor = { name: spec.name, page, ctx, say, card, viewport };
         if (spec.passkey) actor.passkeys = await virtualAuthenticator(page, this.world, spec.name);
         this.actors.set(spec.name, actor);
     }
@@ -167,7 +173,7 @@ export class SceneRun {
             const raw = await video.path();
             const file = join(this.dir, `${name}.webm`);
             renameSync(raw, file);
-            const vp = (PROFILES[spec.device]["viewport"] ?? { width: 1280, height: 800 }) as { width: number; height: number };
+            const vp = (a.viewport ?? { width: 1280, height: 800 }) as { width: number; height: number };
             clips.push({ actor: name, file, width: vp.width, height: vp.height });
         }
         writeFileSync(join(this.dir, "scene.json"), JSON.stringify({ index: this.index, id: this.id, title: this.title, subtitle: this.subtitle, layout: this.layout, clips, cues: this.cues.filter((c) => c.end > c.start) }, null, 2));

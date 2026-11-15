@@ -29,7 +29,7 @@ export function overlayInit(): void {
         return el;
     };
     let timer = 0;
-    const caption = (text: string | null): void => {
+    const caption = (text: string | null, ms?: number): void => {
         try {
             if (text) sessionStorage.setItem(KEY, text);
             else sessionStorage.removeItem(KEY);
@@ -53,7 +53,7 @@ export function overlayInit(): void {
         el.textContent = text ?? "";
         clearTimeout(timer);
         // A caption stays long enough to read, then goes, so it never describes a screen that moved on.
-        if (text) timer = window.setTimeout(() => caption(null), 9000);
+        if (text) timer = window.setTimeout(() => caption(null), ms ?? 9000);
     };
     const label = (text: string | null): void => {
         try {

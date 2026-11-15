@@ -4,6 +4,7 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { createServer } from "node:net";
 import { startSmtp } from "../../smtp";
 import { Rig } from "./rig";
 import { saveWorld, type Person, type World } from "./world";
@@ -59,8 +60,34 @@ export function ensureBinary(): void {
     }
 }
 
+const isFree = (port: number): Promise<boolean> =>
+    new Promise((ok) => {
+        const srv = createServer();
+        srv.once("error", () => ok(false));
+        srv.listen(port, "127.0.0.1", () => srv.close(() => ok(true)));
+    });
+
+/**
+ * Picks a base port whose neighbours (SMTP sink +400, rig +900) are free too, so a run never collides
+ * with another run or another tool. WALK_PORT forces one (and fails if it is taken).
+ */
+async function choosePorts(world: World): Promise<void> {
+    const forced = process.env.WALK_PORT ? Number(process.env.WALK_PORT) : 0;
+    const candidates = forced ? [forced] : [world.port, ...Array.from({ length: 60 }, () => 20000 + Math.floor(Math.random() * 20000))];
+    for (const base of candidates) {
+        if ((await isFree(base)) && (await isFree(base + 400)) && (await isFree(base + 900))) {
+            world.port = base;
+            world.base = `http://localhost:${base}`;
+            saveWorld(world);
+            return;
+        }
+    }
+    throw new Error("no free port found for the walkthrough");
+}
+
 export async function startStack(world: World): Promise<Stack> {
     ensureBinary();
+    await choosePorts(world);
     const sandbox = join(world.dir, "sandbox");
     mkdirSync(sandbox, { recursive: true });
     const env = serverEnv(world);

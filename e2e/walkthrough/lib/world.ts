@@ -51,7 +51,7 @@ export function newWorld(): World {
     const dir = join(OUT_ROOT, s);
     mkdirSync(join(dir, "auth"), { recursive: true });
     mkdirSync(join(dir, "scenes"), { recursive: true });
-    const port = Number(process.env.WALK_PORT || 18190);
+    const port = Number(process.env.WALK_PORT || 18190); // a default: startStack picks a free one when it is taken
     const world: World = {
         stamp: s,
         dir,

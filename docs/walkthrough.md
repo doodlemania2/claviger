@@ -14,7 +14,7 @@ WALK_STORY=parish e2e/walkthrough/run.sh    # the parish story
 `run.sh`:
 
 1. Builds `e2e/.bin/claviger` (skipped when `E2E_SKIP_BUILD` is set and the binary exists, the same rule as `e2e/global-setup.ts`).
-2. Runs `playwright.walkthrough.config.ts`. The test process starts the binary with a temp data dir (`<run>/pb_data`), `PB_ENCRYPTION_KEY` (32 random characters, which also gives the field-encryption key by HKDF, so encrypted fields work), `CLAVIGER_WEBHOOKS_ALLOW_LOCALHOST=true` and a metrics token, on `localhost:18190`. It also starts an SMTP sink and the rig's small servers (below).
+2. Runs `playwright.walkthrough.config.ts`. The test process starts the binary with a temp data dir (`<run>/pb_data`), `PB_ENCRYPTION_KEY` (32 random characters, which also gives the field-encryption key by HKDF, so encrypted fields work), `CLAVIGER_WEBHOOKS_ALLOW_LOCALHOST=true` and a metrics token, on `localhost` at a free port. It also starts an SMTP sink and the rig's small servers (below).
 3. Stitches the scenes with `stitch.mjs` (ffmpeg at `/opt/homebrew/bin/ffmpeg`).
 
 Output is in `e2e/walkthrough/.out/<timestamp>/` (git-ignored):
@@ -40,7 +40,7 @@ Settings (environment):
 | `WALK_SLOWMO` | milliseconds between browser actions (default 200) |
 | `WALK_PACE` | multiplier for the reading pauses after captions (default 1) |
 | `WALK_RUN_DIR` | resume an earlier run: same data dir, same people, same passkeys. Scenes that need an earlier scene's data make it themselves when it is missing |
-| `WALK_PORT` | base port (default 18190; the SMTP sink uses +400 and the rig +900) |
+| `WALK_PORT` | force the base port. By default a free one is picked (the SMTP sink uses +400 and the rig +900, and all three must be free), so a run never collides with another run or tool |
 
 A single scene can be re-run on its own: `WALK_STORY=parish WALK_ONLY=7 e2e/walkthrough/run.sh`. Each scene prepares what it needs without a camera (the people, the orgs, a register) when an earlier scene did not.
 
@@ -115,5 +115,5 @@ Other limits worth knowing:
 ## Troubleshooting
 
 - A scene fails: open `scenes/NN-<scene>/last-<actor>.png` in the run directory, and `server.log`.
-- Port in use: set `WALK_PORT`.
+- Ports: a free one is chosen on every start, including a resumed run (saved browser sessions are per origin, so a resumed run signs in again).
 - To record one scene again after fixing it, resume the run: `WALK_RUN_DIR=<run dir> WALK_ONLY=<n> e2e/walkthrough/run.sh`, then stitch with `WALK_STITCH=1`.
