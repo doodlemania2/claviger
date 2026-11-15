@@ -1418,36 +1418,6 @@
        "wait": ".modal"
       }
      ]
-    },
-    {
-     "name": "key-created",
-     "steps": [
-      {
-       "click": "role=button[name=\"New API key\"]"
-      },
-      {
-       "wait": ".api-key-create-modal"
-      },
-      {
-       "fill": [
-        ".api-key-create-modal input[id$=\"_name\"]",
-        "Rota planner (new)"
-       ]
-      },
-      {
-       "check": ".api-key-create-modal input[id$=\"_all\"]"
-      },
-      {
-       "click": ".api-key-create-modal >> role=button[name=\"Create key\"]"
-      },
-      {
-       "wait": "text=shown only once"
-      }
-     ],
-     "mutates": true,
-     "mask": [
-      ".api-key-create-modal code"
-     ]
     }
    ]
   },
