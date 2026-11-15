@@ -831,10 +831,14 @@ func populateForkDB(t *testing.T, app core.App) {
 	// separately on each side of the comparison and would change state/error
 	if _, err := app.DB().Update(core.CollectionNameDataRequests,
 		dbx.Params{"state": core.DataRequestStateCancelled},
-		dbx.In("state", core.DataRequestStateQueued, core.DataRequestStateRunning),
+		dbx.In("state", core.DataRequestStateQueued, core.DataRequestStateRunning, core.DataRequestStateGrace, core.DataRequestStateAwaitingConfirmation),
 	).Execute(); err != nil {
 		t.Fatal(err)
 	}
+
+	// (erasure requests, 88-4, are in the same table: a filler one in the
+	// grace state would be promoted and run by the job; an erasure log row
+	// holds a hash no account matches, so the replay finds nothing)
 
 	// the same for a filler retention policy that looks mid-run: the resume
 	// hook would continue it on each side and change lastRunAt and the audit log

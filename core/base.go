@@ -1549,6 +1549,7 @@ func (app *BaseApp) registerBaseHooks() {
 	app.registerPastoralHooks()        // fork-local (#86)
 	app.registerPastoralExpiryHooks()  // fork-local (#86, 86-5)
 	app.registerRetentionHooks()       // fork-local (#88, 88-3)
+	app.registerErasureHooks()         // fork-local (#88, 88-4)
 }
 
 // getLoggerMinLevel returns the logger min level based on the

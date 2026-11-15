@@ -137,6 +137,7 @@ var builtinDataExport = map[string]dataExportSpec{
 
 	CollectionNameDataRequests: {Fields: []string{
 		"id", "type", "state", "selfService", "dueAt", "completedAt", "expires", "downloadedAt", "created",
+		"confirmedAt", "graceUntil", "cancelledAt", // erasure requests (88-4): dates only, never the tokens or the identity check
 	}},
 }
 

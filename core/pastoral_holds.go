@@ -51,6 +51,12 @@ var PastoralHoldNotifier func(app App, n *PastoralHoldNotice) (int, error)
 // and the holds about the person are deleted (nobody is left to export to).
 // It returns the number of notes unlinked and holds deleted.
 func UnlinkPastoralSubject(app App, ctx context.Context, userIds ...string) (notes, holds int, err error) {
+	return unlinkPastoralSubject(app, ctx, nil, userIds...)
+}
+
+// unlinkPastoralSubject is UnlinkPastoralSubject with a predicate: a row for
+// which skip returns true is left as it is (it is under a legal hold).
+func unlinkPastoralSubject(app App, ctx context.Context, skip func(col *Collection, r *Record) bool, userIds ...string) (notes, holds int, err error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -74,6 +80,10 @@ func UnlinkPastoralSubject(app App, ctx context.Context, userIds ...string) (not
 				}
 
 				for _, r := range rows {
+					if skip != nil && skip(col, r) {
+						continue
+					}
+
 					r.Set("subject", "")
 
 					if err := txApp.SaveWithContext(ctx, r); err != nil {
@@ -93,8 +103,14 @@ func UnlinkPastoralSubject(app App, ctx context.Context, userIds ...string) (not
 				return err
 			}
 
+			holdsCol, _ := txApp.FindCachedCollectionByNameOrId(CollectionNamePastoralHolds)
+
 			for _, h := range hs {
-				if err := txApp.Delete(h); err != nil {
+				if skip != nil && skip(holdsCol, h) {
+					continue
+				}
+
+				if err := txApp.DeleteWithContext(ctx, h); err != nil {
 					return err
 				}
 

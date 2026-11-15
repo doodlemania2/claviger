@@ -92,7 +92,7 @@ Every consent write also makes the usual audit entry. When the purpose or the pe
 
 ### Erasure
 
-Consent records are evidence, so the data map treats `_consents` and `_consentEvents` as `retain`. When a person is erased (88-4, not built yet) the rows stay, but the person is replaced by a pseudonym. `core.PseudonymizeConsents(app, ctx, ids...)` does that for a household member id or a user id: it replaces the id in `subject`, `givenBy` and `actor` with `erased-<hash>`, clears `evidenceRef`, and sets `pseudonymizedAt`. The action, purpose, version, text and times stay. It is the only code path allowed to change an event. Nothing calls it yet.
+Consent records are evidence, so the data map treats `_consents` and `_consentEvents` as `retain`. When a person is erased (88-4, `docs/erasure.md`) the rows stay, but the person is replaced by a pseudonym. `core.PseudonymizeConsents(app, ctx, ids...)` does that for a household member id or a user id: it replaces the id in `subject`, `givenBy` and `actor` with `erased-<hash>`, clears `evidenceRef`, and sets `pseudonymizedAt`. The action, purpose, version, text and times stay. It is the only code path allowed to change an event. The erasure job calls it, once for the person's user id and their household row ids, unless a row is under a legal hold.
 
 ## Export
 
