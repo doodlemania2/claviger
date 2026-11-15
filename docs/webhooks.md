@@ -8,8 +8,10 @@ off-the-shelf verifier libraries work.
 With no webhook configured nothing is sent and **no background work runs**:
 the delivery worker starts only while at least one enabled endpoint exists.
 
-**Single replica only.** Webhooks (like SQLite itself) assume one running
-instance. Delivery state lives in `data.db`; do not run two writers.
+**Replicas.** On SQLite, run one instance: delivery state lives in `data.db`
+and there is one writer. On PostgreSQL with several replicas, every replica
+polls and claims due deliveries with `FOR UPDATE SKIP LOCKED`, so a delivery is
+sent once while replicas live (see [datastores.md](datastores.md#several-replicas)).
 
 ## Setup
 
