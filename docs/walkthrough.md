@@ -15,7 +15,28 @@ WALK_STORY=parish e2e/walkthrough/run.sh    # the parish story
 
 1. Builds `e2e/.bin/claviger` (skipped when `E2E_SKIP_BUILD` is set and the binary exists, the same rule as `e2e/global-setup.ts`).
 2. Runs `playwright.walkthrough.config.ts`. The test process starts the binary with a temp data dir (`<run>/pb_data`), `PB_ENCRYPTION_KEY` (32 random characters, which also gives the field-encryption key by HKDF, so encrypted fields work), `CLAVIGER_WEBHOOKS_ALLOW_LOCALHOST=true` and a metrics token, on `localhost` at a free port. It also starts an SMTP sink and the rig's small servers (below).
-3. Stitches the scenes with `stitch.mjs` (ffmpeg at `/opt/homebrew/bin/ffmpeg`).
+3. Stitches the scenes with `stitch.mjs` (ffmpeg and ffprobe from `PATH`, then `/opt/homebrew/bin`; `FFMPEG` and `FFPROBE` override).
+
+It runs on Linux as well as macOS, so a CI job can record: it needs Node, the Playwright Chromium of `e2e/`, ffmpeg, and Go or a prebuilt binary at `e2e/.bin/claviger` with `E2E_SKIP_BUILD=1` (then Go is not needed).
+
+## The safety scan
+
+Every recording is scanned while it records (`lib/scan.ts`), with the rules of the screenshot kit's scan (`e2e/guides/scan.mjs`, see `e2e/guides/README.md`): an email off the `example.*` domains, a phone number outside 555-0100 to 555-0199, a production or internal hostname, the deny list (`e2e/guides/deny.json`). Like MassCast's `watchPageSafe`, it reads the page text (the whole document, so the captions and cards of the overlay too, and the input values) on every DOM change, every 500 ms and when the recording stops. Each read is one scanned frame. An address seen while it is typed (`example.o`) is let through.
+
+- A scene with a finding, or with no scanned frame, **fails**, and its recordings are deleted. `scene.json` keeps the findings (`scanFailed`) and each clip's scan (`frames`, `samples`, `failures`).
+- `stitch.mjs` refuses to stitch (exit 1) when a recording has no passing scan, or a scene title or caption breaks a rule.
+- Beside every mp4 it writes the fleet video kit's record `<file>.mp4.scan.json`: `{"passed": true, "sha256": "<of the mp4>", "frames": N}`.
+
+## A short clip
+
+A scene can name moments with `mark("name")`, and `clip.mjs` cuts the stitched scene between two of them, with the same record beside it (`frames` counts the scanned frames inside the cut):
+
+```sh
+node e2e/walkthrough/clip.mjs e2e/walkthrough/.out/<run> passkey-signin signin-start signin-done --name claviger-passkey-signin
+# -> <run>/video/clips/claviger-passkey-signin.mp4 (about 14 s) and .mp4.scan.json
+```
+
+The passkey sign-in scene (scene 3 of the developer story) marks `signin-start` and `signin-done`: sign out, sign in with the passkey and the email, then with a discoverable passkey alone. `WALK_ONLY=1,2,3 WALK_STITCH=1 e2e/walkthrough/run.sh` records the three scenes it needs.
 
 Output is in `e2e/walkthrough/.out/<timestamp>/` (git-ignored):
 
@@ -24,6 +45,8 @@ Output is in `e2e/walkthrough/.out/<timestamp>/` (git-ignored):
 | `video/walkthrough-<story>.mp4` and `.vtt` | all scenes, with a title card before each, and the captions shifted to match |
 | `video/NN-<scene>.mp4` and `.vtt` | one per scene |
 | `video/manifest.json` | story, scene number, id, title, duration, size and file names of every file, plus the skipped steps |
+| `video/*.mp4.scan.json` | the safety scan record of each mp4 (above) |
+| `video/clips/<name>.mp4` and `.scan.json` | short clips cut by `clip.mjs` |
 | `scenes/NN-<scene>/<actor>.webm` | the raw Playwright recording of each actor |
 | `scenes/NN-<scene>/last-<actor>.png` | the last screen of each actor (the first thing to look at when a scene fails) |
 | `world.json`, `server.log` | state carried between scenes, and the server's log |

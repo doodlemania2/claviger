@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { devices, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { overlayInit } from "./overlay";
 import { savePasskeys, virtualAuthenticator } from "./passkey";
+import { watchContext, type ClipScan } from "./scan";
 import { saveWorld, type World } from "./world";
 
 export type DeviceKind = "desktop" | "phone";
@@ -29,8 +30,18 @@ export interface Actor {
     say: (text: string, ms?: number) => Promise<void>;
     /** Show a card (a title and monospace lines) for something that has no screen. An empty title clears it. */
     card: (title: string | null, lines?: string[]) => Promise<void>;
+    /** Name a moment of this actor's recording, so clip.mjs can cut a short clip between two marks. */
+    mark: (name: string) => void;
     passkeys?: { count: () => Promise<number> };
     viewport?: { width: number; height: number };
+    scan?: { stop: () => Promise<ClipScan> };
+}
+
+/** A named moment, in seconds from the start of that actor's recording. */
+export interface Mark {
+    actor: string;
+    name: string;
+    t: number;
 }
 
 export type Layout = "sequence" | "row";
@@ -51,6 +62,8 @@ export interface Clip {
     file: string;
     width: number;
     height: number;
+    /** The safety scan of this recording (lib/scan.ts). stitch.mjs refuses a clip without a passing one. */
+    scan: ClipScan;
 }
 
 /** 0 turns the reading pauses off (a fast run to check that the scenes work). */
@@ -61,6 +74,7 @@ export class SceneRun {
     private readonly actors = new Map<string, Actor>();
     private readonly specs = new Map<string, ActorSpec>();
     readonly cues: Cue[] = [];
+    readonly marks: Mark[] = [];
 
     private constructor(
         readonly world: World,
@@ -95,8 +109,12 @@ export class SceneRun {
         });
         ctx.setDefaultTimeout(20_000);
         await ctx.addInitScript(overlayInit);
+        let t0 = Date.now();
+        // the safety scan watches every page of this actor from its first frame
+        const scan = await watchContext(ctx, () => t0);
         const page = await ctx.newPage();
-        const t0 = Date.now();
+        t0 = Date.now();
+        scan.attach(page);
         const secs = () => (Date.now() - t0) / 1000;
         // the cue that is on screen now, closed when it is replaced, cleared or times out
         let live: Cue | null = null;
@@ -146,7 +164,10 @@ export class SceneRun {
                 }, [title, lines ?? []] as const)
                 .catch(() => undefined);
         };
-        const actor: Actor = { name: spec.name, page, ctx, say, card, viewport };
+        const mark = (name: string): void => {
+            this.marks.push({ actor: spec.name, name, t: Math.round(secs() * 1000) / 1000 });
+        };
+        const actor: Actor = { name: spec.name, page, ctx, say, card, mark, viewport, scan };
         if (spec.passkey) actor.passkeys = await virtualAuthenticator(page, this.world, spec.name);
         this.actors.set(spec.name, actor);
     }
@@ -160,9 +181,13 @@ export class SceneRun {
     /** Close every context, keep the sign-ins for the next scene and write the manifest. */
     async end(): Promise<void> {
         const clips: Clip[] = [];
-        for (const [name, spec] of this.specs) {
+        const failed: string[] = [];
+        for (const [name] of this.specs) {
             const a = this.actors.get(name);
             if (!a) continue;
+            const scan = (await a.scan?.stop()) ?? { frames: 0, samples: [], failures: [] };
+            if (scan.frames === 0) failed.push(`${name}: no frame was scanned`);
+            for (const f of scan.failures) failed.push(`${name} at ${f.t.toFixed(1)}s: ${f.rule} "${f.match}"`);
             // the last screen of every actor: the first thing to look at when a scene fails
             await a.page.screenshot({ path: join(this.dir, `last-${name}.png`) }).catch(() => undefined);
             const video = a.page.video();
@@ -174,9 +199,15 @@ export class SceneRun {
             const file = join(this.dir, `${name}.webm`);
             renameSync(raw, file);
             const vp = (a.viewport ?? { width: 1280, height: 800 }) as { width: number; height: number };
-            clips.push({ actor: name, file, width: vp.width, height: vp.height });
+            clips.push({ actor: name, file, width: vp.width, height: vp.height, scan });
         }
-        writeFileSync(join(this.dir, "scene.json"), JSON.stringify({ index: this.index, id: this.id, title: this.title, subtitle: this.subtitle, layout: this.layout, clips, cues: this.cues.filter((c) => c.end > c.start) }, null, 2));
+        // a recording that failed its scan is never kept: delete every clip of the scene and fail it
+        if (failed.length) for (const c of clips) rmSync(c.file, { force: true });
+        writeFileSync(
+            join(this.dir, "scene.json"),
+            JSON.stringify({ index: this.index, id: this.id, title: this.title, subtitle: this.subtitle, layout: this.layout, scanFailed: failed, clips, cues: this.cues.filter((c) => c.end > c.start), marks: this.marks }, null, 2),
+        );
         saveWorld(this.world);
+        if (failed.length) throw new Error(`scene ${this.id} failed its safety scan; its recordings were deleted:\n  ${failed.join("\n  ")}`);
     }
 }

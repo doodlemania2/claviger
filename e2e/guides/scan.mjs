@@ -42,9 +42,13 @@ const PHONE = [
     /(?<![\w./:-])\+\d{8,15}\b/g,
 ];
 
-const isSafeEmailDomain = (domain) => {
+const isSafeEmailDomain = (domain, typing) => {
     const d = domain.toLowerCase().replace(/\.+$/, "");
-    return SAFE_EMAIL_DOMAINS.some((s) => d === s || d.endsWith("." + s));
+    if (SAFE_EMAIL_DOMAINS.some((s) => d === s || d.endsWith("." + s))) return true;
+    if (!typing) return false;
+    // a recording sees an address while it is typed ("example.o" on the way to "example.org")
+    const last = d.split(".").slice(-2).join(".");
+    return /^example\.[a-z]+$/.test(last) && SAFE_EMAIL_DOMAINS.some((s) => s.startsWith(last));
 };
 
 /** 555-0100 to 555-0199, whatever the country code, area code or separators. */
@@ -59,11 +63,14 @@ export function loadDenyList(file = DEFAULT_DENY_FILE) {
     return raw.substrings;
 }
 
-/** Every rule the text breaks, as [{rule, match}], each (rule, match) once. */
-export function scanText(text, deny = []) {
+/**
+ * Every rule the text breaks, as [{rule, match}], each (rule, match) once. `typing: true` (the
+ * walkthrough recorder) lets an example.* address through while it is half typed.
+ */
+export function scanText(text, deny = [], { typing = false } = {}) {
     const hits = new Map();
     const add = (rule, match) => hits.set(`${rule}\u0000${match}`, { rule, match: match.slice(0, 200) });
-    for (const m of text.matchAll(EMAIL)) if (!isSafeEmailDomain(m[1])) add("email", m[0]);
+    for (const m of text.matchAll(EMAIL)) if (!isSafeEmailDomain(m[1], typing)) add("email", m[0]);
     for (const re of PHONE) for (const m of text.matchAll(re)) if (!isSafePhone(m[0])) add("phone", m[0].trim());
     for (const re of HOSTNAMES) for (const m of text.matchAll(re)) add("hostname", m[0]);
     const lower = text.toLowerCase();

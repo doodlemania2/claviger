@@ -61,6 +61,10 @@ test("the safety scan flags real contact details, internal hostnames and the den
     expect(rules("auth.stfoafrisco.org")).toEqual(["hostname"]);
     expect(rules("box.tail1234.ts.net")).toEqual(["hostname"]);
     expect(rules("a Secret Thing here", ["secret thing"])).toEqual(["deny"]);
+    // a half-typed example address passes only for the walkthrough recorder
+    expect(rules("tomas@example.o")).toEqual(["email"]);
+    expect(scanText("tomas@example.o", [], { typing: true })).toEqual([]);
+    expect(rules("Autotomas@example.orgManage")).toEqual(["email"]);
     expect(loadDenyList()).toEqual([]);
 });
 

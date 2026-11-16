@@ -3,11 +3,18 @@
 //   NN-<scene>.mp4 + .vtt        one per scene, 1280x720 H.264, a title card first
 //   walkthrough-<story>.mp4 + .vtt   all scenes, the .vtt shifted by the title cards
 //   manifest.json                story, scene number, title, duration, file names, sizes
+//   <file>.mp4.scan.json         beside every mp4: {"passed": true, "sha256", "frames"} (the fleet video kit's clip record)
 // Captions come from the on-screen caption log kept while recording (scene.json "cues").
+//
+// The safety gate: every recording must carry a passing scan (lib/scan.ts wrote it while recording,
+// with frames > 0 and no failure), and the scene titles and captions pass the same text rules. One
+// miss and nothing is stitched (exit 1).
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "@playwright/test";
+import { loadDenyList, scanText } from "../guides/scan.mjs";
+import { writeScanRecord } from "./lib/record.mjs";
 
 const runDir = process.argv[2];
 if (!runDir) throw new Error("usage: stitch.mjs <run dir>");
@@ -16,8 +23,8 @@ const H = 1080;
 const OW = 1280;
 const OH = 720;
 const FPS = 25;
-const FFMPEG = process.env.FFMPEG ?? "/opt/homebrew/bin/ffmpeg";
-const FFPROBE = process.env.FFPROBE ?? "/opt/homebrew/bin/ffprobe";
+const FFMPEG = process.env.FFMPEG ?? "ffmpeg";
+const FFPROBE = process.env.FFPROBE ?? "ffprobe";
 const world = JSON.parse(readFileSync(join(runDir, "world.json"), "utf8"));
 const outDir = join(runDir, "video");
 mkdirSync(outDir, { recursive: true });
@@ -108,6 +115,25 @@ if (scenes.length === 0) {
     console.log("no scene recordings to stitch");
     process.exit(0);
 }
+
+// ---- the safety gate --------------------------------------------------------------------------
+const deny = loadDenyList();
+const problems = [];
+for (const s of scenes) {
+    for (const f of s.scanFailed ?? []) problems.push(`${s.id}: ${f}`);
+    for (const c of s.clips) {
+        if (!c.scan) problems.push(`${s.id}/${c.actor}: the recording has no scan record`);
+        else if (!(c.scan.frames > 0)) problems.push(`${s.id}/${c.actor}: no frame was scanned`);
+        else if (c.scan.failures.length) problems.push(`${s.id}/${c.actor}: the recording failed its scan`);
+    }
+    const texts = [s.title, s.subtitle, ...s.cues.map((c) => c.text)];
+    for (const h of texts.flatMap((t) => scanText(String(t ?? ""), deny))) problems.push(`${s.id}: title or caption: ${h.rule} "${h.match}"`);
+}
+if (problems.length) {
+    console.error(`stitch: refused, ${problems.length} problem(s):\n` + problems.map((p) => `  ${p}`).join("\n"));
+    process.exit(1);
+}
+const framesOf = (s) => s.clips.reduce((n, c) => n + c.scan.frames, 0);
 await titleCards(scenes);
 
 const manifest = { story: world.story, scenes: [] };
@@ -129,7 +155,8 @@ for (const s of scenes) {
     cues.sort((a, b) => a.start - b.start);
     writeFileSync(join(outDir, `${base}.vtt`), vtt(cues));
     const dur = duration(mp4);
-    finals.push({ mp4, cues, dur });
+    writeScanRecord(mp4, framesOf(s));
+    finals.push({ mp4, cues, dur, frames: framesOf(s) });
     manifest.scenes.push({
         story: world.story,
         scene: s.index,
@@ -140,6 +167,9 @@ for (const s of scenes) {
         bytes: statSync(mp4).size,
         mp4: `${base}.mp4`,
         vtt: `${base}.vtt`,
+        // where each actor's recording sits in this mp4 (clip.mjs cuts by the scene's marks with these)
+        titleLen,
+        offsets,
     });
 }
 
@@ -155,6 +185,7 @@ for (const f of finals) {
     at += f.dur;
 }
 writeFileSync(join(outDir, `${name}.vtt`), vtt(all));
+writeScanRecord(join(outDir, `${name}.mp4`), finals.reduce((n, f) => n + f.frames, 0));
 manifest.stitched = {
     story: world.story,
     title: world.story === "developer" ? "Claviger for developers" : "Claviger for a parish",

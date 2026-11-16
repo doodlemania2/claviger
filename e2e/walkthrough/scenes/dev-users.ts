@@ -59,7 +59,7 @@ export async function passkeySignin(browser: Browser, world: World, index: numbe
     const scene = await SceneRun.begin(browser, world, index, "passkey-signin", "A user adds a passkey and signs in", "The hosted /passkeys page: register, sign out, sign in with the passkey alone", [
         { name: "priya", device: "desktop", label: "Priya Raman (user)", passkey: true },
     ]);
-    const { page, say } = scene.actor("priya");
+    const { page, say, mark } = scene.actor("priya");
     try {
         const priya = world.people.priya;
         await open(page, `${world.base}/passkeys`);
@@ -75,6 +75,8 @@ export async function passkeySignin(browser: Browser, world: World, index: numbe
         await beat(page, 1500);
         await say("The private key stays in the device; Claviger keeps only the public key");
         await press(page.locator("#linkLogout"), page, 1000);
+        // the short passkey sign-in clip (clip.mjs ... passkey-signin signin-start signin-done) starts here
+        mark("signin-start");
         await say("Signed out. Now she types her email and uses the passkey: no password");
         await typeIn(page.locator("#identity"), priya.email);
         await press(page.locator("#btnLogin"), page, 800);
@@ -85,6 +87,7 @@ export async function passkeySignin(browser: Browser, world: World, index: numbe
         await press(page.locator("#btnLogin"), page, 800);
         await expect(page.locator("#me")).toContainText(priya.email);
         await beat(page, 1500);
+        mark("signin-done");
     } finally {
         await scene.end();
     }
