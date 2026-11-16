@@ -67,8 +67,15 @@ jobs:
   # in parallel, so the wall time is the same, and skipping 17 on PRs halves the CI minutes of
   # a PR run (the suites take about 20 minutes per leg on the k3s runners). A 17-only
   # regression therefore shows up on master, one merge late, which is the accepted trade.
+  #
+  # Each major runs as three parallel shards. The apis package alone took ~42 of the 60
+  # minutes go test allows a package, and two CI runs sharing the runner pushed it over, so
+  # its tests are split by the first letter of the top-level test name (A-F and O, then the
+  # rest: about 47/53 by time). The third shard runs every other package and the
+  # Postgres-only steps (tagged tests, several replicas, migrate-db). Each shard has its own
+  # pass minimum, set at about 80% of what it passes today.
   postgres:
-    name: postgres ${{ matrix.pg }}
+    name: postgres ${{ matrix.pg }} ${{ matrix.shard.id }}
     timeout-minutes: 100
     runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || (vars.RUNNER_LIGHT || 'tdp-k3s-claviger') }}
     needs: test
@@ -79,6 +86,11 @@ jobs:
         # image tags on Docker Hub); bump by hand: Dependabot does not scan workflow service
         # images. Keep the 16 entry at the lowest major we support.
         pg: ${{ fromJSON(github.event_name == 'pull_request' && '["16.15"]' || '["16.15", "17.11"]') }}
+        # The two apis regexes are complements: every top-level test runs in exactly one.
+        shard:
+          - { id: apis-a, packages: "./tests ./apis", run: "^Test([A-F]|O)", min: 850 }
+          - { id: apis-b, packages: "./tests ./apis", run: "^Test[^A-FO]", min: 1000 }
+          - { id: rest, packages: "./tests ./core ./oidc ./cmd ./forms ./mails ./plugins/jsvm ./plugins/migratecmd", run: "", min: 2400 }
     services:
       postgres:
         image: postgres:${{ matrix.pg }}
@@ -110,6 +122,7 @@ jobs:
       # reason. Any other skip fails the job, and so does a run that passes too few
       # tests (the suite has ~420 passing cases; a green that ran nothing is a failure).
       - name: Run Postgres tests
+        if: matrix.shard.id == 'rest'
         run: |
           set -o pipefail
           go test -tags postgres -count=1 -v ./tests/pgtests/... | tee pg-test.log
@@ -126,7 +139,11 @@ jobs:
       # is a clone of it. The tests in tests/postgres_skip.txt (SQLite specific expectations,
       # each with its reason) are the only ones skipped, any other skip fails the job, and so
       # does a run that passes too few tests or one that ran on SQLite.
-      - name: Run the regular suites on Postgres
+      - name: Run the regular suites on Postgres (${{ matrix.shard.id }})
+        env:
+          PG_SUITES_PACKAGES: ${{ matrix.shard.packages }}
+          PG_SUITES_RUN: ${{ matrix.shard.run }}
+          PG_SUITES_MIN_PASS: ${{ matrix.shard.min }}
         run: scripts/test_postgres_suites.sh
 
       # Several replicas on one database (#106, M7): the bus, the advisory-lock cron guard, the
@@ -134,6 +151,7 @@ jobs:
       # invalidation, shared auth rate limits, concurrent start). Every test runs against this
       # server; a skipped test fails the step, and so does a run that ran nothing.
       - name: Run the multi-replica suite
+        if: matrix.shard.id == 'rest'
         run: |
           set -o pipefail
           go test -tags postgres -count=1 -v -run 'MultiReplica|TestBus|TestRunExclusive|TestRateHit|TestCeremony|TestEnsureSchema' \
@@ -149,6 +167,7 @@ jobs:
       # server that runs on CLAVIGER_DB_URL. The package tests of migrate-db (fixture, every fork
       # feature, resume, refusals) already ran in the suites above.
       - name: migrate-db smoke test
+        if: matrix.shard.id == 'rest'
         run: scripts/test_migrate_db_smoke.sh
 
   # Browser end-to-end tests (e2e/): the admin UI and the hosted pages (/passkeys, /oidc/*,
