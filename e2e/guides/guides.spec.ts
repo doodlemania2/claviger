@@ -64,6 +64,17 @@ test("the safety scan flags real contact details, internal hostnames and the den
     expect(loadDenyList()).toEqual([]);
 });
 
+test("the safety scan flags error states", async () => {
+    const { scanErrorState } = await import(join(__dirname, "scan.mjs"));
+    const rules = (prose: string, panels: string[] = []) => scanErrorState({ prose, panels }).map((h: { match: string }) => h.match);
+    expect(rules("Retention policies Archive old newsletter drafts", [])).toEqual([]);
+    expect(rules("Something went wrong")).toEqual(["Something went wrong"]);
+    expect(rules("Please try again later.")).toEqual(["try again"]);
+    expect(rules("Failed to load record.")).toEqual(["Failed to load"]);
+    expect(rules("Orgs", [""])).toEqual(["(empty error panel)"]);
+    expect(rules("Orgs", ["Name is required."])).toEqual(["Name is required."]);
+});
+
 test("a shot that fails the safety scan is not written and the run fails", () => {
     const dir = mkdtempSync(join(tmpdir(), "claviger-guides-scan-"));
     try {

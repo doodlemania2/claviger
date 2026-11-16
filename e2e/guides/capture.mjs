@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { parse as parseYaml } from "yaml";
 import { attachWorld, startWorld, repoRoot } from "./world.ts";
-import { DEFAULT_DENY_FILE, ScanError, loadDenyList, pageText, scanText } from "./scan.mjs";
+import { DEFAULT_DENY_FILE, ScanError, errorView, loadDenyList, pageText, scanErrorState, scanText } from "./scan.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const AUDIENCES = ["developers", "superusers", "staff", "members"];
@@ -111,6 +111,9 @@ export function checkManifest(screens) {
         } else {
             const path = s.route.slice(SPA_PREFIX.length).split("?")[0] || "/";
             if (!spa.some((re) => re.test(path))) problems.push(`${where}: ${s.route} is not a route of ui/src/router.js`);
+        }
+        for (const x of [s, ...(s.states ?? [])]) {
+            if ("showsError" in x && !(typeof x.showsError === "string" && x.showsError.trim())) problems.push(`${where}: showsError must say why the shot shows an error`);
         }
         const names = new Set();
         for (const st of s.states ?? [{ name: "default" }]) {
@@ -352,6 +355,7 @@ async function shoot(browser, world, job, variant, deny) {
         // the safety scan: a shot that shows anything real is never written
         job.scanned?.();
         const hits = scanText(await pageText(page), deny);
+        if (!(state.showsError ?? screen.showsError)) hits.push(...scanErrorState(await errorView(page)));
         if (hits.length) throw new ScanError(hits);
         const masks = [...(screen.mask ?? []), ...(state.mask ?? [])].map((sel) => page.locator(sel));
         const file = job.file(variant);

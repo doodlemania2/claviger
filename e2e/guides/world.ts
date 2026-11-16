@@ -269,6 +269,13 @@ async function seed(c: Ctx): Promise<World> {
     const usersId = (await api("GET", "/api/collections/users")).id;
     vars.demoToken = `${b64({ alg: "HS256", typ: "JWT" })}.${b64({ email: personas.guardian.email, newEmail: "dara.calloway@example.net", collectionId: usersId, exp: 4102444800 })}.demo`;
     vars.demoPassword = DEMO_PASSWORD;
+    // a newcomer who has not confirmed their address yet: the confirm-verification page gets a real
+    // token from the mail, so it shows the success state (confirming twice still succeeds)
+    await api("POST", "/api/collections/users/records", { email: "tamsin.rowe@example.com", name: "Tamsin Rowe", password: DEMO_PASSWORD, passwordConfirm: DEMO_PASSWORD });
+    await api("POST", "/api/collections/users/request-verification", { email: "tamsin.rowe@example.com" });
+    const verifyMail = await c.smtp.waitFor((m) => m.to.includes("tamsin.rowe@example.com") && /confirm-verification\//.test(m.text));
+    vars.verificationToken = verifyMail.text.match(/confirm-verification\/([A-Za-z0-9_.-]+)/)?.[1] ?? "";
+    if (!vars.verificationToken) throw new Error("no verification link in the mail");
 
     // ---- organizations ----------------------------------------------------------------------
     log("organizations");

@@ -8,6 +8,10 @@
 //   phone     a phone number that is not in 555-0100 to 555-0199
 //   hostname  a production or internal name (HOSTNAMES below)
 //   deny      a substring from the deny list (deny.json next to screens.json), case-insensitive
+//   error     an error state: error wording in the page's prose ("Something went wrong", "Try again",
+//             "unexpected error", "failed to load"; code samples are not prose) or a visible error
+//             panel, empty or not. A screen that shows an error on purpose (an expired link page)
+//             says so with "showsError": "<why>" in screens.json, and this rule is skipped for it.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -79,6 +83,33 @@ export async function pageText(page) {
             if (el.value) parts.push(el.value);
         }
         return parts.join("\n");
+    });
+}
+
+const ERROR_WORDS = [/something went wrong/gi, /\btry again\b/gi, /unexpected error/gi, /failed to load/gi];
+
+/** The error-state rule over a page view from errorView(). */
+export function scanErrorState(view) {
+    const hits = new Map();
+    for (const re of ERROR_WORDS) for (const m of view.prose.matchAll(re)) hits.set(m[0].toLowerCase(), { rule: "error", match: m[0] });
+    for (const t of view.panels) {
+        const match = t ? t.slice(0, 200) : "(empty error panel)";
+        hits.set("panel\u0000" + match, { rule: "error", match });
+    }
+    return [...hits.values()];
+}
+
+/** The page's prose (visible text without code samples) and the text of every visible error panel. */
+export async function errorView(page) {
+    return page.evaluate(() => {
+        const visible = (el) => !el.closest("[hidden]") && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
+        const panels = [...document.querySelectorAll('[role="alert"], .msg.err, .alert.danger, .toast.error')]
+            .filter(visible)
+            .map((el) => (el.innerText ?? "").trim());
+        const clone = document.body.cloneNode(true);
+        for (const el of clone.querySelectorAll("pre, code, script, style, [hidden]")) el.remove();
+        // a detached clone has no layout, so textContent stands in for innerText
+        return { prose: clone.textContent ?? "", panels };
     });
 }
 
