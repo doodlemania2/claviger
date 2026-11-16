@@ -10,7 +10,12 @@
 //   --specs <dir>          read the guide specs under <dir> (<area>/*.md) and capture their `shots:` instead
 //   --jobs <n>             pages captured at the same time (default 4)
 //   --attach <world.json>  reuse a world that `node world.ts --keep` left running (a dev aid)
+//   --deny <file>          the safety scan's deny list (default: deny.json next to screens.json)
 //   --no-dark / --no-mobile
+//
+// Every shot passes the safety scan (scan.mjs) before it is written; a shot that fails is not
+// written, and the run exits non-zero. Each capture run writes <out>/scan-report.json:
+// {"checked": <shots scanned>, "failures": [{"screen", "variant", "rule", "match"}]}.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -18,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { parse as parseYaml } from "yaml";
 import { attachWorld, startWorld, repoRoot } from "./world.ts";
+import { DEFAULT_DENY_FILE, ScanError, loadDenyList, pageText, scanText } from "./scan.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const AUDIENCES = ["developers", "superusers", "staff", "members"];
@@ -40,6 +46,7 @@ function parseArgs(argv) {
         else if (k === "--specs") a.specs = argv[++i];
         else if (k === "--jobs") a.jobs = Number(argv[++i]);
         else if (k === "--attach") a.attach = argv[++i];
+        else if (k === "--deny") a.deny = argv[++i];
         else if (k === "--no-dark") a.dark = false;
         else if (k === "--no-mobile") a.mobile = false;
         else throw new Error(`unknown flag ${k}`);
@@ -321,7 +328,7 @@ async function newContext(browser, world, { persona, passkey, dark, mobile, host
 
 // ---- one shot ----------------------------------------------------------------------------
 
-async function shoot(browser, world, job, variant) {
+async function shoot(browser, world, job, variant, deny) {
     const { screen, state } = job;
     const hosted = isHosted(job.route);
     const persona = job.persona ?? (state.anon || (screen.anon && !state.persona) ? undefined : (state.persona ?? screen.persona ?? (hosted ? undefined : "superuser")));
@@ -342,6 +349,10 @@ async function shoot(browser, world, job, variant) {
         }
         await page.waitForTimeout(state.settle ?? 450);
         await normalize(page, world.base);
+        // the safety scan: a shot that shows anything real is never written
+        job.scanned?.();
+        const hits = scanText(await pageText(page), deny);
+        if (hits.length) throw new ScanError(hits);
         const masks = [...(screen.mask ?? []), ...(state.mask ?? [])].map((sel) => page.locator(sel));
         const file = job.file(variant);
         mkdirSync(dirname(file), { recursive: true });
@@ -450,11 +461,14 @@ async function main() {
         jobs = selectStems(screens, args.only).map((x) => ({ ...x, route: x.screen.route, file: (v) => join(outRoot, x.screen.area, "img", x.stem + (v === "dark" ? "-dark" : v === "mobile" ? "-mobile" : "") + ".png") }));
     }
 
+    const deny = loadDenyList(args.deny ? resolve(args.deny) : DEFAULT_DENY_FILE);
     const started = Date.now();
     const world = args.attach ? await attachWorld(args.attach) : await startWorld({ quiet: true });
     const browser = await chromium.launch();
     const failures = [];
+    const scanFailures = [];
     let written = 0;
+    let checked = 0;
     try {
         const variantsOf = (job) => {
             const v = ["light"];
@@ -472,9 +486,12 @@ async function main() {
                 const q = list.shift();
                 if (!q) return;
                 try {
-                    await shoot(browser, world, q.job, q.v);
+                    await shoot(browser, world, { ...q.job, scanned: () => checked++ }, q.v, deny);
                     written++;
                 } catch (e) {
+                    if (e instanceof ScanError) {
+                        for (const h of e.hits) scanFailures.push({ screen: q.job.stem, variant: q.v, rule: h.rule, match: h.match });
+                    }
                     failures.push(`${q.job.stem} (${q.v}): ${String(e.message).split("\n")[0]}`);
                 }
             }
@@ -486,7 +503,11 @@ async function main() {
         await world.stop();
     }
     const secs = Math.round((Date.now() - started) / 1000);
+    mkdirSync(outRoot, { recursive: true });
+    writeFileSync(join(outRoot, "scan-report.json"), JSON.stringify({ checked, failures: scanFailures }, null, 2) + "\n");
     console.log(`capture: ${written} images in ${secs}s -> ${outRoot}`);
+    console.log(`scan: ${checked} shots checked, ${scanFailures.length} failure(s)`);
+    for (const f of scanFailures) console.error(`  scan: ${f.screen} (${f.variant}): ${f.rule} "${f.match}"`);
     if (failures.length) {
         console.error(`capture: ${failures.length} failure(s)\n` + failures.map((f) => `  ${f}`).join("\n"));
         return 1;

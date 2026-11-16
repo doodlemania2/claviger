@@ -44,6 +44,31 @@ prints the URL and the operator sign-in (`operator@example.org`, every demo pass
 
 The runner picks free ports, so it never meets the e2e suite (port 18090) or another session.
 
+**A prebuilt binary.** `CLAVIGER_GUIDES_BIN=<path>` runs that binary and skips the build (a CI job that already built one).
+
+## The safety scan
+
+Every shot is scanned before it is written (`scan.mjs`, the fleet presence standard's requirement 2). The kit reads the
+visible text of the page and the values of its inputs (never a password field), and a shot fails when it holds:
+
+| Rule | Fails on |
+|---|---|
+| `email` | an address whose domain is not `example.org`, `example.com` or `example.net` (or a subdomain of one) |
+| `phone` | a phone number outside 555-0100 to 555-0199 (any country or area code, any separators) |
+| `hostname` | a production or internal name: `claviger.app` and its subdomains, `thedoodleproject.com`, `stfoa`, `doodlessd`, `doodlemanage`, `*.ts.net`, `tailscale`, `derekmartin` |
+| `deny` | a substring of `deny.json` (`{"substrings": [...]}`, case-insensitive; `--deny <file>` reads another) |
+
+A shot that fails is **not written**. The run lists each failure and exits 1. Every capture run writes
+`<out>/scan-report.json`:
+
+```json
+{ "checked": 350, "failures": [{ "screen": "admin-webhooks", "variant": "light", "rule": "deny", "match": "Webhooks" }] }
+```
+
+`checked` counts the shots that reached the scan. The docs site uses recaptured pictures only when that file exists,
+`failures` is empty and `checked` is above 0. So the world's data stays invented: emails on the `example.*` domains and
+phone numbers in 555-01xx.
+
 ## How a docs-site spec references a screen
 
 A spec lists its shots in the front matter (Antiphona's `shots:` block, with no click steps):

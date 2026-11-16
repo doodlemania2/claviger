@@ -340,7 +340,7 @@ async function seed(c: Ctx): Promise<World> {
         org: orgId,
         name: "Calloway family",
         address: { line1: "14 Tanner's Row", city: "Harrowmere", region: "Wessex", postalCode: "HM3 4QP", country: "GB" },
-        homePhone: "+44 20 7946 0100",
+        homePhone: "+1 214 555 0142",
         first: { name: "Dara Calloway", role: "head", guardian: true, user: personas.guardian.id },
     });
     vars.householdId = calloway.id;
