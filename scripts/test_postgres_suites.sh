@@ -4,6 +4,12 @@
 #   CLAVIGER_TEST_PG_URL=postgres://user:pass@host:5432/postgres?sslmode=disable \
 #     scripts/test_postgres_suites.sh [go test args...]
 #
+# CI runs it in shards (see the postgres job in .github/workflows/test.yml):
+#   PG_SUITES_PACKAGES  the packages of this shard (default: all of them)
+#   PG_SUITES_RUN       an optional -run regex over top-level test names; the
+#                       harness check TestPostgresHarness is always added to it
+#   PG_SUITES_MIN_PASS  the least number of passing tests this shard must report
+#
 # The fixture (tests/data) is converted to a Postgres template database once per
 # package (see tests/app_postgres.go). Tests listed in tests/postgres_skip.txt are
 # skipped, each with its reason printed. Any other skipped test fails the run, and
@@ -18,6 +24,10 @@ export CLAVIGER_TEST_DB=postgres
 MIN_PASS="${PG_SUITES_MIN_PASS:-4000}"
 PACKAGES="${PG_SUITES_PACKAGES:-./tests ./core ./apis ./oidc ./cmd ./forms ./mails ./plugins/jsvm ./plugins/migratecmd}"
 SKIP_FILE=tests/postgres_skip.txt
+RUN="${PG_SUITES_RUN:-}"
+if [ -n "$RUN" ]; then
+  RUN="^TestPostgresHarness\$|$RUN"
+fi
 
 skip_regex="$(grep -v '^[[:space:]]*#' "$SKIP_FILE" | awk -F'\t' 'NF>=2 {printf "%s%s", sep, $1; sep="|"}')"
 skip_regex="^($skip_regex)\$"
@@ -37,7 +47,7 @@ show_failures() {
 }
 
 # shellcheck disable=SC2086
-go test -count=1 -v -p 2 -timeout 60m -skip "$skip_regex" "$@" $PACKAGES 2>&1 | tee "$log" | grep -E '^(--- FAIL|FAIL|ok|panic:)' || true
+go test -count=1 -v -p 2 -timeout 60m -skip "$skip_regex" ${RUN:+-run "$RUN"} "$@" $PACKAGES 2>&1 | tee "$log" | grep -E '^(--- FAIL|FAIL|ok|panic:)' || true
 
 if grep -q -- '^--- FAIL\|^FAIL\|^panic:' "$log"; then
   # A panic or timeout is never retried.
