@@ -67,7 +67,7 @@ An `anonymize` retention policy (`docs/retention.md`) blanks the `personalFields
 
 ## App collections
 
-Superusers register their own collections as normal records of `_dataMap` (records API, or the admin UI once it is built). A registration is checked: the collection must exist, `retain` needs a reason, and any treatment except `none` needs a subject path.
+Superusers register their own collections as normal records of `_dataMap` (records API, or the admin UI under **Data protection > Data map**, `#/gdpr/data-map`). A registration is checked: the collection must exist, `retain` needs a reason, and any treatment except `none` needs a subject path.
 
 To see what is still missing:
 
@@ -81,4 +81,4 @@ It returns the stored collections (not views) with no entry, system collections 
 {"totalItems": 1, "items": [{"name": "prayers", "type": "base", "system": false}]}
 ```
 
-This is an API route and not a CLI command because it is read-only and the admin UI will call the same route.
+This is an API route and not a CLI command because it is read-only. The admin UI Data map page calls the same route and lists the collections that still have no entry.

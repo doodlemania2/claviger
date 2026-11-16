@@ -247,6 +247,12 @@ func (m *module) serveLibrary(e *core.RequestEvent) error {
 		w = &pruneWriter{ResponseWriter: w, prune: func() { m.pruneSSOCookie(e.Response, r) }}
 	}
 
+	if p := strings.TrimSuffix(r.URL.Path, "/"); p == mountPath+"/authorize" || p == mountPath+"/authorize/callback" {
+		// the library answers an authorize request it must not redirect (unknown
+		// client, redirect_uri that is not registered) with a plain-text body
+		w = &authorizeErrorWriter{ResponseWriter: w, render: m.errorPage, event: e}
+	}
+
 	if after == nil {
 		handler.ServeHTTP(w, r)
 
@@ -356,3 +362,40 @@ func (m *module) serveDiscovery(e *core.RequestEvent) error {
 
 	return e.JSON(http.StatusOK, doc)
 }
+
+// authorizeErrorWriter swaps the library's plain-text refusals of the
+// authorize endpoint (http.Error: status 4xx, text/plain, no redirect) for the
+// hosted error page. The library's text can carry what the caller sent, so it
+// is dropped and the page shows a fixed, localized message. The status the
+// library chose is kept, and a response that redirects is never touched.
+type authorizeErrorWriter struct {
+	http.ResponseWriter
+	render func(e *core.RequestEvent, status int, message string) error
+	event  *core.RequestEvent
+	swap   bool
+}
+
+func (a *authorizeErrorWriter) WriteHeader(code int) {
+	h := a.Header()
+
+	if code >= 400 && strings.HasPrefix(h.Get("Content-Type"), "text/plain") && h.Get("Location") == "" {
+		a.swap = true
+		h.Del("Content-Length")
+
+		_ = a.render(a.event, code, "oidc.err.invalidAuthorize")
+
+		return
+	}
+
+	a.ResponseWriter.WriteHeader(code)
+}
+
+func (a *authorizeErrorWriter) Write(p []byte) (int, error) {
+	if a.swap {
+		return len(p), nil // the library's text is not shown
+	}
+
+	return a.ResponseWriter.Write(p)
+}
+
+func (a *authorizeErrorWriter) Unwrap() http.ResponseWriter { return a.ResponseWriter }

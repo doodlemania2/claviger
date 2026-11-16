@@ -347,6 +347,7 @@
   "oidc.err.cannotResume": "이 로그인을 다시 시작할 수 없습니다. 앱으로 돌아가 처음부터 다시 시작해 주세요.",
   "oidc.err.tooManyRequests": "로그인 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
   "oidc.err.invalidRequest": "잘못된 요청입니다.",
+  "oidc.err.invalidAuthorize": "이 로그인 링크가 올바르지 않습니다. 앱으로 돌아가 다시 시도해 주세요.",
   "oidc.err.signInExpired": "이 로그인이 만료되었습니다. 앱으로 돌아가 다시 시도해 주세요.",
   "oidc.err.signInOtherBrowser": "이 로그인은 다른 브라우저에서 시작되었습니다.",
   "oidc.err.wrongAccountType": "올바른 유형의 계정으로 로그인해 주세요.",
