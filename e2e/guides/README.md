@@ -57,7 +57,7 @@ visible text of the page and the values of its inputs (never a password field), 
 | `phone` | a phone number outside 555-0100 to 555-0199 (any country or area code, any separators) |
 | `hostname` | a production or internal name: `claviger.app` and its subdomains, `thedoodleproject.com`, `stfoa`, `doodlessd`, `doodlemanage`, `*.ts.net`, `tailscale`, `derekmartin` |
 | `deny` | a substring of `deny.json` (`{"substrings": [...]}`, case-insensitive; `--deny <file>` reads another) |
-| `error` | an error state: "Something went wrong", "Try again", "unexpected error" or "failed to load" in the page's prose (code samples are not prose), or any visible error panel (`[role=alert]`, `.msg.err`, `.alert.danger`, an error toast), empty or not |
+| `error` | an error state: "Something went wrong", "Try again", "unexpected error", "failed to load", "No access", "not a member of this organization", "N consecutive failures" or "no such host" in the page's prose (code samples are not prose), or any visible error panel (`[role=alert]`, `.msg.err`, `.alert.danger`, an error toast), empty or not |
 
 A screen or state that shows an error on purpose (the sign-in error page, an expired invitation) says why with
 `"showsError": "<reason>"` in `screens.json`, and the `error` rule skips it; `--check` refuses an empty reason. Every

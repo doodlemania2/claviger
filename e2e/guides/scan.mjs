@@ -9,7 +9,8 @@
 //   hostname  a production or internal name (HOSTNAMES below)
 //   deny      a substring from the deny list (deny.json next to screens.json), case-insensitive
 //   error     an error state: error wording in the page's prose ("Something went wrong", "Try again",
-//             "unexpected error", "failed to load"; code samples are not prose) or a visible error
+//             "unexpected error", "failed to load", "No access", "not a member of this organization",
+//             "N consecutive failures", "no such host"; code samples are not prose) or a visible error
 //             panel, empty or not. A screen that shows an error on purpose (an expired link page)
 //             says so with "showsError": "<why>" in screens.json, and this rule is skipped for it.
 import { readFileSync } from "node:fs";
@@ -93,7 +94,18 @@ export async function pageText(page) {
     });
 }
 
-const ERROR_WORDS = [/something went wrong/gi, /\btry again\b/gi, /unexpected error/gi, /failed to load/gi];
+const ERROR_WORDS = [
+    /something went wrong/gi,
+    /\btry again\b/gi,
+    /unexpected error/gi,
+    /failed to load/gi,
+    // the hosted pages' refusal card: the shot signed in as someone the page turned away
+    /\bno access\b/gi,
+    /not a member of this organi[sz]ation/gi,
+    // a webhook endpoint in a failure streak, or a delivery that could not reach its host
+    /\bconsecutive failures?\b/gi,
+    /\bno such host\b/gi,
+];
 
 /** The error-state rule over a page view from errorView(). */
 export function scanErrorState(view) {
