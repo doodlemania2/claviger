@@ -176,6 +176,18 @@ even for the right password; a success clears the count. The count is kept per c
 submitted identity whether or not the account exists, so the answer reveals nothing about who is
 registered, and it survives restarts. Someone who knows an identity can lock it for one window.
 
+## Provisioning keys
+
+An API key can never write an auth collection, except with the scope `provision:<auth collection>`
+(the API key scope list otherwise holds `*` and `collection:<name>:read|write`). It lets a backend
+create accounts and choose their passwords without holding a superuser token, and nothing more: only
+`POST /api/collections/<c>/records` (not `verified`, `tokenKey` or `id`) and
+`PATCH /api/collections/<c>/records/<id>` with a JSON body of just `password` and
+`passwordConfirm`. It cannot change an email, delete, or touch another collection, and `*` does not
+grant it. Collection rules still run as the key's owner afterwards, so a user owner needs rules that
+allow those two writes. A collection whose auth rule requires `verified` will refuse accounts made
+this way, because a key cannot set it.
+
 ## Telemetry
 
 Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export logs, traces and metrics over OTLP/HTTP. Without

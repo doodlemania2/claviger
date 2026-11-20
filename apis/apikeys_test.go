@@ -590,3 +590,86 @@ func TestAPIKeyFilterSortOracle(t *testing.T) {
 		}
 	}
 }
+
+// #141: the provisioning scope.
+func TestAPIKeyProvision(t *testing.T) {
+	t.Parallel()
+	env := newAPIKeyEnv(t)
+
+	prov, _ := env.mint("_superusers", akSuperuserId, "provision:clients")
+	all, _ := env.mint("_superusers", akSuperuserId, "*")
+	readOnly, _ := env.mint("_superusers", akSuperuserId, "collection:clients:read")
+
+	// (the fixture collection's auth rule wants a verified account, which a key cannot set,
+	// so the password is checked on the record rather than by signing in)
+	passwordIs := func(email, password string) bool {
+		r, err := env.app.FindAuthRecordByEmail("clients", email)
+		return err == nil && r.ValidatePassword(password)
+	}
+
+	create := `{"email":"kid1@example.com","password":"1234567890","passwordConfirm":"1234567890"}`
+
+	// the scope can create a record, and the new account can sign in
+	status, body := env.do("POST", "/api/collections/clients/records", create, prov)
+	if status != 200 {
+		t.Fatalf("create with provision scope: %d %s", status, body)
+	}
+	var created struct {
+		Id string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(body), &created); err != nil || created.Id == "" {
+		t.Fatalf("bad create response %s", body)
+	}
+	if !passwordIs("kid1@example.com", "1234567890") {
+		t.Fatal("the created account has the wrong password")
+	}
+
+	// and set its password (a PIN)
+	if s, b := env.do("PATCH", "/api/collections/clients/records/"+created.Id, `{"password":"0987654321","passwordConfirm":"0987654321"}`, prov); s != 200 {
+		t.Fatalf("set password with provision scope: %d %s", s, b)
+	}
+	if !passwordIs("kid1@example.com", "0987654321") {
+		t.Fatal("the new password does not work")
+	}
+
+	denied := []struct{ name, method, url, body, key string }{
+		{"no scope: create", "POST", "/api/collections/clients/records", `{"email":"kid2@example.com","password":"1234567890","passwordConfirm":"1234567890"}`, readOnly},
+		{"* does not provision: create", "POST", "/api/collections/clients/records", `{"email":"kid2@example.com","password":"1234567890","passwordConfirm":"1234567890"}`, all},
+		{"* does not provision: password", "PATCH", "/api/collections/clients/records/" + created.Id, `{"password":"0987654321","passwordConfirm":"0987654321"}`, all},
+		{"change email", "PATCH", "/api/collections/clients/records/" + created.Id, `{"email":"x@example.com"}`, prov},
+		{"password and name", "PATCH", "/api/collections/clients/records/" + created.Id, `{"password":"0987654321","passwordConfirm":"0987654321","name":"x"}`, prov},
+		{"no password", "PATCH", "/api/collections/clients/records/" + created.Id, `{}`, prov},
+		{"mark verified on create", "POST", "/api/collections/clients/records", `{"email":"kid3@example.com","password":"1234567890","passwordConfirm":"1234567890","verified":true}`, prov},
+		{"set token key on create", "POST", "/api/collections/clients/records", `{"email":"kid3@example.com","password":"1234567890","passwordConfirm":"1234567890","tokenKey":"x"}`, prov},
+		{"set id on create", "POST", "/api/collections/clients/records", `{"id":"aaaaaaaaaaaaaaa","email":"kid3@example.com","password":"1234567890","passwordConfirm":"1234567890"}`, prov},
+		{"delete", "DELETE", "/api/collections/clients/records/" + created.Id, ``, prov},
+		{"put", "PUT", "/api/collections/clients/records/" + created.Id, `{"password":"0987654321","passwordConfirm":"0987654321"}`, prov},
+		{"other collection", "POST", "/api/collections/users/records", `{"email":"kid4@example.com","password":"1234567890","passwordConfirm":"1234567890"}`, prov},
+		{"superusers", "POST", "/api/collections/_superusers/records", `{"email":"su2@example.com","password":"1234567890","passwordConfirm":"1234567890"}`, prov},
+		{"not an object", "POST", "/api/collections/clients/records", `[]`, prov},
+		{"non-auth collection", "POST", "/api/collections/demo2/records", `{"title":"x"}`, prov},
+		{"auth flow", "POST", "/api/collections/clients/auth-with-password", `{"identity":"kid1@example.com","password":"0987654321"}`, prov},
+		{"reads other users", "GET", "/api/collections/clients/records", ``, prov},
+	}
+	for _, c := range denied {
+		if s, b := env.do(c.method, c.url, c.body, c.key); s != 403 {
+			t.Errorf("%s: expected 403, got %d %s", c.name, s, b)
+		}
+	}
+
+	// the provisioned password was not changed by any denied request
+	if !passwordIs("kid1@example.com", "0987654321") {
+		t.Error("a denied request changed the account")
+	}
+
+	// scope validation: a superuser owner cannot mint a key for the superusers
+	// collection or for a collection that is not an auth collection
+	for _, scope := range []string{"provision:_superusers", "provision:demo2", "provision:nope", "provision:_apiKeys", "provision:"} {
+		if _, err := core.ValidateAPIKeyScopes(env.app, []string{scope}); err == nil {
+			t.Errorf("scope %q should be refused", scope)
+		}
+	}
+	if _, err := core.ValidateAPIKeyScopes(env.app, []string{"provision:clients"}); err != nil {
+		t.Errorf("provision:clients should be valid: %v", err)
+	}
+}
