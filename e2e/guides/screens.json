@@ -495,7 +495,7 @@
       {
        "fill": [
         "role=textbox[name=\"Events (one per line)\"]",
-        "users:update"
+        "volunteer_rota:update"
        ]
       },
       {

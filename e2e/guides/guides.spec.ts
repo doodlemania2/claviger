@@ -75,6 +75,8 @@ test("the safety scan flags error states", async () => {
     expect(rules("Something went wrong")).toEqual(["Something went wrong"]);
     expect(rules("Please try again later.")).toEqual(["try again"]);
     expect(rules("Failed to load record.")).toEqual(["Failed to load"]);
+    expect(rules("No access You are not a member of this organization.")).toEqual(["No access", "not a member of this organization"]);
+    expect(rules("6 consecutive failures lookup rota.example.com on 8.8.8.8:53: no such host")).toEqual(["consecutive failures", "no such host"]);
     expect(rules("Orgs", [""])).toEqual(["(empty error panel)"]);
     expect(rules("Orgs", ["Name is required."])).toEqual(["Name is required."]);
 });

@@ -27,6 +27,8 @@ import { DEFAULT_DENY_FILE, ScanError, errorView, loadDenyList, pageText, scanEr
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const AUDIENCES = ["developers", "superusers", "staff", "members"];
+// the hosted pages' refusal card, the one scan hit worth a second look in a fresh context
+const TURNED_AWAY = /^(?:no access|not a member of this organi[sz]ation)$/i;
 const HOSTED_PREFIXES = ["/passkeys", "/oidc/", "/orgs/", "/erasure/", "/recovery", "/credentials/mine", "/households/mine"];
 const SPA_PREFIX = "/_/#";
 const DESKTOP = { width: 1440, height: 900 };
@@ -490,7 +492,19 @@ async function main() {
                 const q = list.shift();
                 if (!q) return;
                 try {
-                    await shoot(browser, world, { ...q.job, scanned: () => checked++ }, q.v, deny);
+                    // A hosted page can turn a signed-in persona away once (a refresh that lost a race on a
+                    // busy runner): that card is retried in a fresh context. Any other hit fails at once,
+                    // and a persona that really has no access fails after the last attempt.
+                    let counted = false;
+                    for (let attempt = 1; ; attempt++) {
+                        try {
+                            await shoot(browser, world, { ...q.job, scanned: () => (counted ? 0 : (counted = true, checked++)) }, q.v, deny);
+                            break;
+                        } catch (e) {
+                            const turnedAway = e instanceof ScanError && e.hits.every((h) => TURNED_AWAY.test(h.match));
+                            if (!turnedAway || attempt >= 3) throw e;
+                        }
+                    }
                     written++;
                 } catch (e) {
                     if (e instanceof ScanError) {

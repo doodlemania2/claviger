@@ -519,17 +519,6 @@ async function seed(c: Ctx): Promise<World> {
     vars.oidcRedirect = redirect;
     Object.assign(lazy, makeLazy(base, vars));
 
-    // ---- webhooks, with a delivery -----------------------------------------------------------
-    log("webhooks");
-    const hook = await api("POST", "/api/webhooks", {
-        url: "https://hooks.example.org/claviger",
-        events: ["users:create", "orgs:*"],
-        description: "Directory sync",
-    });
-    vars.webhookId = hook.endpoint.id;
-    await api("POST", "/api/webhooks", { url: "https://rota.example.com/hooks/claviger", events: ["users:update"], description: "Rota planner" });
-    await api("POST", `/api/webhooks/${hook.endpoint.id}/test`, {}).catch((e) => log(`webhook test: ${String(e).slice(0, 120)}`));
-
     // ---- API key ----------------------------------------------------------------------------
     log("API key");
     const key = await api("POST", "/api/apikeys", { name: "Rota planner sync", scopes: ["users:read", "volunteer_rota:read"] }).catch(async () =>
@@ -591,6 +580,20 @@ async function seed(c: Ctx): Promise<World> {
     vars.dummy = "";
 
     suToken = (await rawSignIn("_superusers", c.superEmail, DEMO_PASSWORD)).token;
+
+    // ---- webhooks ------------------------------------------------------------------------------
+    // Created last, and never sent a test event: the endpoints are invented hosts, so any delivery
+    // ends in a DNS error ("lookup ... no such host") and a failure streak, which the webhooks page
+    // shows as an error state (and which differs by resolver: CI retried, a laptop did not). With
+    // nothing firing at them (the Rota planner listens to volunteer_rota:update, a collection no capture edits, where a users:update subscription would be hit by every later state that edits a person), the page shows two healthy endpoints and no failures.
+    log("webhooks");
+    const hook = await api("POST", "/api/webhooks", {
+        url: "https://hooks.example.org/claviger",
+        events: ["users:create", "orgs:*"],
+        description: "Directory sync",
+    });
+    vars.webhookId = hook.endpoint.id;
+    await api("POST", "/api/webhooks", { url: "https://rota.example.com/hooks/claviger", events: ["volunteer_rota:update"], description: "Rota planner" });
 
     const mails = c.smtp.mails;
     return {
