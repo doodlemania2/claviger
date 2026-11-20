@@ -105,6 +105,18 @@ func (l *FixedWindowLimiter) Blocked(key string) (bool, time.Duration) {
 	return true, time.Duration(client.start+client.interval-now) * time.Second
 }
 
+// Reset forgets the key's counter (a success clears a failure streak). The
+// counters shared by several replicas are not reset: they expire with their window.
+func (l *FixedWindowLimiter) Reset(key string) {
+	l.rt.Lock()
+	delete(l.rt.clients, key)
+	l.rt.Unlock()
+
+	if l.rt.persist != nil {
+		l.rt.persist.drop(rateLimitRecordId(l.rt.name, key))
+	}
+}
+
 func (l *FixedWindowLimiter) retryAfter(key string) time.Duration {
 	if blocked, d := l.Blocked(key); blocked {
 		return d

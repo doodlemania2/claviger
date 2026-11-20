@@ -34,6 +34,16 @@ func recordAuthWithPassword(e *core.RequestEvent) error {
 
 	e.Set(core.RequestEventKeyInfoContext, core.RequestInfoContextPasswordAuth)
 
+	// fork (#139): per-account lockout (off unless Settings.AccountLockout.MaxFailures > 0)
+	lockout := accountLockoutFor(e.App)
+	var lockoutKey string
+	if lockout != nil {
+		lockoutKey = accountLockoutKey(collection, form.Identity)
+		if err = lockout.check(e, lockoutKey); err != nil {
+			return err
+		}
+	}
+
 	var foundRecord *core.Record
 	var foundErr error
 
@@ -90,7 +100,15 @@ func recordAuthWithPassword(e *core.RequestEvent) error {
 				dummyPasswordCheck(e.App, e.Collection)
 			}
 
+			if lockout != nil {
+				lockout.failed(lockoutKey)
+			}
+
 			return e.BadRequestError("Failed to authenticate.", errors.New("invalid login credentials"))
+		}
+
+		if lockout != nil {
+			lockout.succeeded(lockoutKey)
 		}
 
 		return RecordAuthResponse(e.RequestEvent, e.Record, core.MFAMethodPassword, nil)

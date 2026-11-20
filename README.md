@@ -168,6 +168,14 @@ token is a `400` with `data.captchaToken.code` of `captcha_failed`. If the provi
 unreachable, requests pass by default so an outage cannot lock people out; set `failClosed` to
 refuse them. Rate limit counters are kept in `auxiliary.db`, so a restart does not reset them.
 
+**Account lockout** protects short secrets such as numeric PINs, which a per-IP limit does not:
+set `accountLockout.maxFailures` (0 = off, up to 100) and `accountLockout.windowSeconds` (default
+900, up to 86400) through the settings API. After that many failed `auth-with-password` calls for
+one identity inside the window, the identity gets `429` with `Retry-After` until the window ends,
+even for the right password; a success clears the count. The count is kept per collection and
+submitted identity whether or not the account exists, so the answer reveals nothing about who is
+registered, and it survives restarts. Someone who knows an identity can lock it for one window.
+
 ## Telemetry
 
 Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export logs, traces and metrics over OTLP/HTTP. Without
