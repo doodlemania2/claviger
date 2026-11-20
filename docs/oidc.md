@@ -57,6 +57,19 @@ only a hash is stored. `POST /api/oidc/clients/{id}/secret` replaces it.
 Clients are the `_oauthClients` system collection (superusers only). Changes are audited; the secret hash is
 redacted from the audit log and never returned by the records API.
 
+## Sign in with an OAuth2 provider
+
+When the client's auth collection has OAuth2 enabled, the hosted sign-in page shows one "Continue with
+<provider>" button per configured provider (Microsoft, Google, a generic OpenID Connect provider, and the
+rest), next to the password form and the passkey button. The button opens the provider's sign-in in a pop-up
+and exchanges the result for the same Claviger token as the other methods, so second factors, bans, org
+membership and consent behave exactly as for a password sign-in.
+
+Set it up on the auth collection (Collections, Options, OAuth2) and register
+`<application URL>/api/oauth2-redirect` as the redirect URI at the provider. Nothing is shown when OAuth2 is
+off or no provider is configured. If the browser blocks the pop-up, the page says so; it must be opened
+from the click, so allow pop-ups for the site.
+
 ## Endpoints
 
 All under the issuer `https://<host>/oidc`:
@@ -366,8 +379,7 @@ account, so every account of the browser signs out, and the redirect happens.
   pages only).
 - The device flow has no notification of the device when the person cancels (it polls and reads `access_denied`),
   and a confidential client must authenticate with HTTP Basic when it polls.
-- The hosted pages are localized like the other hosted pages ([localization.md](localization.md)). Email OTP and the OAuth2 "sign in with" providers are not offered
-  on the hosted page.
+- The hosted pages are localized like the other hosted pages ([localization.md](localization.md)). Email OTP is not offered on the hosted page.
 - The library logs through the process-global `slog` default (it ignores its `WithLogger` option), and the only
   way to route that into the application logger is to replace the global default, which would also capture every
   other package's `slog` output. Claviger does not do that: the library's lines (protocol errors such as a bad

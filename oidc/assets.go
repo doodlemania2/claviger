@@ -53,6 +53,8 @@ const captchaBox = root.querySelector("#captchaBox");
 const pw = root.querySelector("#pw");
 const totp = root.querySelector("#totp");
 const passkeyBox = root.querySelector("#passkeyBox");
+const oauthBox = root.querySelector("#oauthBox");
+const oauthList = root.querySelector("#oauthList");
 const passkeyBtn = root.querySelector("#passkey");
 const statusEl = root.querySelector("#status");
 
@@ -170,6 +172,108 @@ function secondFactor(body) {
   return false;
 }
 
+// ---- sign in with an OAuth2 provider (Microsoft, Google, ...) ---------------
+// The same flow as the JavaScript SDK's authWithOAuth2: a realtime connection
+// gives the page an id, the provider's sign-in window carries it as the state,
+// /api/oauth2-redirect sends the code back over the connection, and the code is
+// exchanged for the ordinary Claviger token at auth-with-oauth2. The window is
+// opened in the click itself, so a pop-up blocker lets it through.
+const OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
+
+function fmt(key, vars) {
+  return t(key).replace(/\{(\w+)\}/g, (m, k) => (Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : m));
+}
+
+function renderOAuth(methods) {
+  const o = methods && methods.oauth2;
+  if (!o || !o.enabled || !Array.isArray(o.providers) || !o.providers.length) return false;
+  for (const p of o.providers) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "secondary";
+    b.dataset.provider = p.name;
+    b.textContent = fmt("js.oidc.continueWith", { provider: p.displayName || p.name });
+    b.addEventListener("click", () => oauthSignIn(p.name, p.displayName || p.name));
+    oauthList.appendChild(b);
+  }
+  oauthBox.hidden = false;
+  return true;
+}
+
+function oauthEvents() {
+  const es = new EventSource("/api/realtime");
+  const ready = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("connect")), 15000);
+    es.addEventListener("PB_CONNECT", (ev) => {
+      clearTimeout(timer);
+      try { resolve(JSON.parse(ev.data).clientId); } catch (e) { reject(e); }
+    });
+    es.onerror = () => { clearTimeout(timer); reject(new Error("connect")); };
+  });
+  return { es, ready };
+}
+
+async function oauthSignIn(name, label) {
+  fail("");
+  const popup = window.open("", "claviger-oauth", "popup,width=520,height=720");
+  if (!popup) return fail(t("js.oidc.popupBlocked"));
+  const buttons = oauthList.querySelectorAll("button");
+  buttons.forEach((b) => { b.disabled = true; });
+  let es = null;
+  let watcher = 0;
+  try {
+    // a fresh list: its state and code verifier belong to this attempt
+    const methods = await new PasskeysClient({ baseUrl: window.location.origin, collection }).methods();
+    const provider = ((methods.oauth2 && methods.oauth2.providers) || []).find((p) => p.name === name);
+    if (!provider) throw new Error("provider");
+
+    const ev = oauthEvents();
+    es = ev.es;
+    const clientId = await ev.ready;
+    const redirectURL = window.location.origin + "/api/oauth2-redirect";
+
+    const result = new Promise((resolve, reject) => {
+      es.addEventListener("@oauth2", (m) => {
+        try { resolve(JSON.parse(m.data)); } catch (e) { reject(e); }
+      });
+      setTimeout(() => reject(new Error("timeout")), OAUTH_TIMEOUT_MS);
+      // the person closed the window without finishing: give a late message a moment, then stop
+      watcher = setInterval(() => {
+        if (popup.closed) { clearInterval(watcher); setTimeout(() => reject(new Error("closed")), 1500); }
+      }, 500);
+    });
+
+    const sub = await fetch("/api/realtime", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId, subscriptions: ["@oauth2"] }),
+    });
+    if (!sub.ok) throw new Error("subscribe");
+
+    popup.location.href = provider.authURL.replace(/([?&])state=[^&]*/, "$1state=" + encodeURIComponent(clientId)) + encodeURIComponent(redirectURL);
+
+    const data = await result;
+    if (data.state !== clientId || data.error || !data.code) throw new Error("denied");
+
+    const r = await post("/auth-with-oauth2", {
+      provider: provider.name,
+      code: data.code,
+      codeVerifier: provider.codeVerifier,
+      redirectURL,
+    });
+    if (r.status === 200 && r.body.token) return await finish(r.body.token);
+    if (r.status === 401 && secondFactor(r.body)) return;
+    fail(r.status === 429 ? t("js.tooMany") : fmt("js.oidc.oauthFailed", { provider: label }));
+  } catch (err) {
+    fail(fmt("js.oidc.oauthFailed", { provider: label }));
+  } finally {
+    clearInterval(watcher);
+    if (es) es.close();
+    try { popup.close(); } catch (e) { /* already closed */ }
+    buttons.forEach((b) => { b.disabled = false; });
+  }
+}
+
 pw.addEventListener("submit", async (ev) => {
   ev.preventDefault();
   fail("");
@@ -232,6 +336,7 @@ passkeyBtn.addEventListener("click", async () => {
     captchaCfg = methods.captcha || null;
     const passwordOn = !methods.password || methods.password.enabled !== false;
     pw.hidden = !passwordOn;
+    const oauthOn = renderOAuth(methods);
     if (window.PublicKeyCredential && methods.webauthn && methods.webauthn.enabled) {
       passkeyBox.hidden = false;
       if (!passwordOn) {
@@ -241,7 +346,7 @@ passkeyBtn.addEventListener("click", async () => {
         pw.querySelector("button").hidden = true;
       }
     }
-    if (pw.hidden && passkeyBox.hidden) fail(t("js.oidc.noMethod"));
+    if (pw.hidden && passkeyBox.hidden && !oauthOn) fail(t("js.oidc.noMethod"));
   } catch (err) {
     pw.hidden = false;
   }
