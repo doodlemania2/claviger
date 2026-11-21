@@ -184,7 +184,9 @@ create accounts and choose their passwords without holding a superuser token, an
 `POST /api/collections/<c>/records` (not `verified`, `tokenKey` or `id`) and
 `PATCH /api/collections/<c>/records/<id>` with a JSON body of just `password` and
 `passwordConfirm`. It cannot change an email, delete, or touch another collection, and `*` does not
-grant it. Collection rules still run as the key's owner afterwards, so a user owner needs rules that
+grant it. The companion scope `manage:<auth collection>` allows `PATCH` with a JSON body of just `email`
+and `DELETE` of a record, nothing else. A key-made email change clears `verified`, rotates the token key
+and removes the record's OAuth2 links, so the new address must be proven again. Collection rules still run as the key's owner afterwards, so a user owner needs rules that
 allow those two writes. A collection whose auth rule requires `verified` will refuse accounts made
 this way, because a key cannot set it.
 
