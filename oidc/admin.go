@@ -90,6 +90,7 @@ type clientBody struct {
 	SigningAlg      string   `json:"signingAlg"`
 	Org             string   `json:"org"`
 	AllowDeviceFlow bool     `json:"allowDeviceFlow"`
+	IDTokenSeconds  int      `json:"idTokenSeconds"`
 }
 
 // createClient registers a client and returns its secret, once. The secret is
@@ -125,6 +126,7 @@ func (m *module) createClient(e *core.RequestEvent) error {
 	rec.Set("signingAlg", body.SigningAlg)
 	rec.Set("org", body.Org)
 	rec.Set("allowDeviceFlow", body.AllowDeviceFlow)
+	rec.Set("idTokenSeconds", body.IDTokenSeconds)
 
 	secret := ""
 	if !body.Public {

@@ -54,6 +54,11 @@ const (
 	// auth collection, and only to create a record or set its password.
 	APIKeyScopeProvisionPrefix = "provision:"
 
+	// APIKeyScopeManagePrefix starts the narrower account-management scope
+	// "manage:<auth collection>": set or replace a record's email, and delete
+	// a record. Nothing else (no verified, no token key, no password).
+	APIKeyScopeManagePrefix = "manage:"
+
 	// APIKeyLastUsedInterval is the minimum gap between lastUsed writes.
 	APIKeyLastUsedInterval = time.Minute
 
@@ -74,7 +79,7 @@ var (
 	apiKeyEncoding   = base32.StdEncoding.WithPadding(base32.NoPadding)
 	apiKeyScopeRegex = regexp.MustCompile(`^collection:([^:\s]+):(read|write)$`)
 
-	apiKeyProvisionScopeRegex = regexp.MustCompile(`^provision:([^:\s]+)$`)
+	apiKeyProvisionScopeRegex = regexp.MustCompile(`^(?:provision|manage):([^:\s]+)$`)
 	apiKeyPartRegex           = regexp.MustCompile(`^[a-z2-7]+$`)
 )
 
@@ -144,6 +149,16 @@ func (k *APIKeyInfo) CanProvision(collectionName string) bool {
 	return slices.Contains(k.Scopes, APIKeyScopeProvisionPrefix+collectionName)
 }
 
+// CanManage reports whether the key may set the email of, and delete, records
+// of the named auth collection (the "manage:<name>" scope; "*" does not grant it).
+func (k *APIKeyInfo) CanManage(collectionName string) bool {
+	if collectionName == CollectionNameSuperusers || slices.Contains(APIKeyForbiddenCollections, collectionName) {
+		return false
+	}
+
+	return slices.Contains(k.Scopes, APIKeyScopeManagePrefix+collectionName)
+}
+
 // GenerateAPIKey returns a new full key together with its prefix and the
 // hash to store.
 func GenerateAPIKey() (key, prefix, secretHash string, err error) {
@@ -193,7 +208,7 @@ func ParseAPIKey(token string) (prefix, secret string, ok bool) {
 
 // ValidateAPIKeyScopes checks and normalizes (de-duplicates) a scope list:
 // "*", "collection:<name>:read|write" for an existing, reachable collection, or
-// "provision:<name>" for an auth collection (#141).
+// "provision:<name>" or "manage:<name>" for an auth collection (#141).
 func ValidateAPIKeyScopes(app App, scopes []string) ([]string, error) {
 	if len(scopes) == 0 {
 		return nil, errors.New("at least one scope is required")

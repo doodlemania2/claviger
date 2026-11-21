@@ -673,3 +673,92 @@ func TestAPIKeyProvision(t *testing.T) {
 		t.Errorf("provision:clients should be valid: %v", err)
 	}
 }
+
+func TestAPIKeyManage(t *testing.T) {
+	t.Parallel()
+	env := newAPIKeyEnv(t)
+
+	prov, _ := env.mint("_superusers", akSuperuserId, "provision:clients")
+	manage, _ := env.mint("_superusers", akSuperuserId, "manage:clients")
+	all, _ := env.mint("_superusers", akSuperuserId, "*")
+
+	s, b := env.do("POST", "/api/collections/clients/records", `{"email":"kid1@example.com","password":"1234567890","passwordConfirm":"1234567890"}`, prov)
+	if s != 200 {
+		t.Fatalf("create: %d %s", s, b)
+	}
+	var created struct {
+		Id string `json:"id"`
+	}
+	_ = json.Unmarshal([]byte(b), &created)
+	url := "/api/collections/clients/records/" + created.Id
+
+	// give the record a verified state, a token key to compare and an OAuth2 link
+	rec, err := env.app.FindRecordById("clients", created.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.SetVerified(true)
+	if err := env.app.Save(rec); err != nil {
+		t.Fatal(err)
+	}
+	oldKey := rec.TokenKey()
+	link := core.NewExternalAuth(env.app)
+	link.SetCollectionRef(rec.Collection().Id)
+	link.SetRecordRef(rec.Id)
+	link.SetProvider("microsoft")
+	link.SetProviderId("abc")
+	if err := env.app.Save(link); err != nil {
+		t.Fatal(err)
+	}
+
+	denied := []struct{ name, method, body, key string }{
+		{"provision cannot change email", "PATCH", `{"email":"x@example.com"}`, prov},
+		{"provision cannot delete", "DELETE", ``, prov},
+		{"* cannot change email", "PATCH", `{"email":"x@example.com"}`, all},
+		{"* cannot delete", "DELETE", ``, all},
+		{"manage cannot set password", "PATCH", `{"password":"0987654321","passwordConfirm":"0987654321"}`, manage},
+		{"manage cannot create", "POST", `{"email":"k2@example.com","password":"1234567890","passwordConfirm":"1234567890"}`, manage},
+		{"manage email and verified", "PATCH", `{"email":"x@example.com","verified":true}`, manage},
+		{"manage verified only", "PATCH", `{"verified":true}`, manage},
+		{"manage empty email", "PATCH", `{"email":""}`, manage},
+		{"manage put", "PUT", `{"email":"x@example.com"}`, manage},
+	}
+	for _, c := range denied {
+		u := url
+		if c.method == "POST" {
+			u = "/api/collections/clients/records"
+		}
+		if s, b := env.do(c.method, u, c.body, c.key); s != 403 {
+			t.Errorf("%s: expected 403, got %d %s", c.name, s, b)
+		}
+	}
+
+	// the email change: allowed, and it clears verified, rotates the token key and drops the link
+	if s, b := env.do("PATCH", url, `{"email":"kid1b@example.com"}`, manage); s != 200 {
+		t.Fatalf("manage email: %d %s", s, b)
+	}
+	after, err := env.app.FindRecordById("clients", created.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Email() != "kid1b@example.com" || after.Verified() || after.TokenKey() == oldKey {
+		t.Errorf("email %q verified %v key rotated %v", after.Email(), after.Verified(), after.TokenKey() != oldKey)
+	}
+	if links, _ := env.app.FindAllExternalAuthsByRecord(after); len(links) != 0 {
+		t.Errorf("the OAuth2 link must be removed, %d left", len(links))
+	}
+
+	// delete
+	if s, b := env.do("DELETE", url, ``, manage); s != 204 {
+		t.Fatalf("manage delete: %d %s", s, b)
+	}
+	if _, err := env.app.FindRecordById("clients", created.Id); err == nil {
+		t.Error("the record should be deleted")
+	}
+
+	for _, scope := range []string{"manage:_superusers", "manage:demo2", "manage:nope", "manage:"} {
+		if _, err := core.ValidateAPIKeyScopes(env.app, []string{scope}); err == nil {
+			t.Errorf("scope %q should be refused", scope)
+		}
+	}
+}

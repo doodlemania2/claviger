@@ -52,6 +52,7 @@ only a hash is stored. `POST /api/oidc/clients/{id}/secret` replaces it.
 | `accessTokenType` | `jwt` (default, 5 minutes) or `opaque` (use introspection). |
 | `signingAlg` | `RS256` (default) or `ES256`: the algorithm of the ID and access tokens issued to the client. |
 | `allowDeviceFlow` | Off by default. Lets the client use the [device authorization grant](#device-authorization-grant) (RFC 8628). |
+| `idTokenSeconds` | Lifetime of the ID token, 60 to 3600 seconds (empty or 0: 3600). For a relying party that sends the ID token as its API bearer token. A refresh returns a new ID token each time, so a short value costs the client one refresh per period. |
 | `disabled` | Refuses the client everywhere without deleting it. |
 
 Clients are the `_oauthClients` system collection (superusers only). Changes are audited; the secret hash is

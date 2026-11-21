@@ -23,7 +23,9 @@ import (
 
 var apiKeyCreateRateRule = core.RateLimitRule{MaxRequests: 10, Duration: 3600}
 
-func bindAPIKeysApi(_ core.App, rg *router.RouterGroup[*core.RequestEvent]) {
+func bindAPIKeysApi(app core.App, rg *router.RouterGroup[*core.RequestEvent]) {
+	bindKeyEmailChange(app)
+
 	sub := rg.Group("/apikeys")
 	sub.GET("", apiKeysList).Bind(RequireAuth())
 	sub.POST("", apiKeyCreate).Bind(RequireAuth())
