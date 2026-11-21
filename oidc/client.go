@@ -81,8 +81,9 @@ type Client struct {
 	Scopes          []string
 	Opaque          bool
 	Alg             string
-	OrgID           string // optional org binding (#79a)
-	AllowDeviceFlow bool   // the device authorization grant (RFC 8628, #96)
+	OrgID           string        // optional org binding (#79a)
+	AllowDeviceFlow bool          // the device authorization grant (RFC 8628, #96)
+	IDTokenTTL      time.Duration // per-client ID token lifetime; 0 = IDTokenLifetime
 	devMode         bool
 }
 
@@ -102,6 +103,7 @@ func (s *Store) clientFromRecord(rec *core.Record) *Client {
 		Alg:             rec.GetString("signingAlg"),
 		OrgID:           rec.GetString("org"),
 		AllowDeviceFlow: rec.GetBool("allowDeviceFlow"),
+		IDTokenTTL:      time.Duration(rec.GetInt("idTokenSeconds")) * time.Second,
 		devMode:         s.app.IsDev(),
 	}
 
@@ -214,7 +216,13 @@ func (c *Client) AccessTokenType() op.AccessTokenType {
 	return op.AccessTokenTypeJWT
 }
 
-func (c *Client) IDTokenLifetime() time.Duration { return IDTokenLifetime }
+func (c *Client) IDTokenLifetime() time.Duration {
+	if c.IDTokenTTL > 0 && c.IDTokenTTL <= IDTokenLifetime {
+		return c.IDTokenTTL
+	}
+
+	return IDTokenLifetime
+}
 
 // DevMode allows http redirect URIs for web clients. Only dev mode does.
 func (c *Client) DevMode() bool { return c.devMode }
