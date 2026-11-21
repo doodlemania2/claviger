@@ -137,6 +137,8 @@ type settings struct {
 	Audit        AuditConfig        `form:"audit" json:"audit"`
 	DataExport   DataExportConfig   `form:"dataExport" json:"dataExport"` // fork-local (#88)
 	Erasure      ErasureConfig      `form:"erasure" json:"erasure"`       // fork-local (#88, 88-4)
+
+	AccountLockout AccountLockoutConfig `form:"accountLockout" json:"accountLockout"` // fork-local (#139)
 }
 
 // Settings defines the PocketBase app settings.
@@ -306,6 +308,7 @@ func (s *Settings) PostValidate(ctx context.Context, app App) error {
 		validation.Field(&s.DataExport),
 		validation.Field(&s.Erasure),
 		validation.Field(&s.Audit),
+		validation.Field(&s.AccountLockout),
 	); err != nil {
 		return err
 	}

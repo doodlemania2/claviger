@@ -89,6 +89,10 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
 <button type="submit">{{.Text.T "js.verify"}}</button>
 </form>
 <div id="captchaBox" hidden></div>
+<div id="oauthBox" hidden>
+<div class="or"><span>{{.Text.T "js.or"}}</span></div>
+<div id="oauthList"></div>
+</div>
 <div id="passkeyBox" hidden>
 <div class="or"><span>{{.Text.T "js.or"}}</span></div>
 <button id="passkey" type="button" class="secondary">{{.Text.T "js.passkeySignIn"}}</button>

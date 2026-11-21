@@ -196,6 +196,17 @@ func (s *rateLimitStore) record(id, rule string, start int64, used int, expires 
 	s.mu.Unlock()
 }
 
+// drop removes one record (and schedules its deletion).
+func (s *rateLimitStore) drop(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.recs, id)
+	delete(s.dirty, id)
+	s.deleted[id] = struct{}{}
+	s.scheduleLocked()
+}
+
 // forget drops (and schedules the deletion of) all records whose rule matches.
 func (s *rateLimitStore) forget(match func(rule string) bool) {
 	s.mu.Lock()

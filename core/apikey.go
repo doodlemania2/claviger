@@ -49,6 +49,11 @@ const (
 	APIKeyScopeRead  = "read"
 	APIKeyScopeWrite = "write"
 
+	// APIKeyScopeProvisionPrefix starts the provisioning scope
+	// "provision:<auth collection>" (#141): the only way a key can write an
+	// auth collection, and only to create a record or set its password.
+	APIKeyScopeProvisionPrefix = "provision:"
+
 	// APIKeyLastUsedInterval is the minimum gap between lastUsed writes.
 	APIKeyLastUsedInterval = time.Minute
 
@@ -68,7 +73,9 @@ var ErrInvalidAPIKey = errors.New("invalid api key")
 var (
 	apiKeyEncoding   = base32.StdEncoding.WithPadding(base32.NoPadding)
 	apiKeyScopeRegex = regexp.MustCompile(`^collection:([^:\s]+):(read|write)$`)
-	apiKeyPartRegex  = regexp.MustCompile(`^[a-z2-7]+$`)
+
+	apiKeyProvisionScopeRegex = regexp.MustCompile(`^provision:([^:\s]+)$`)
+	apiKeyPartRegex           = regexp.MustCompile(`^[a-z2-7]+$`)
 )
 
 // APIKeyForbiddenCollections can never be reached with an API key, whatever
@@ -127,6 +134,16 @@ func (k *APIKeyInfo) Allows(collectionName string, access string) bool {
 	return slices.Contains(k.Scopes, "collection:"+collectionName+":"+access)
 }
 
+// CanProvision reports whether the key may create records and set passwords in
+// the named auth collection (the "provision:<name>" scope; "*" does not grant it).
+func (k *APIKeyInfo) CanProvision(collectionName string) bool {
+	if collectionName == CollectionNameSuperusers || slices.Contains(APIKeyForbiddenCollections, collectionName) {
+		return false
+	}
+
+	return slices.Contains(k.Scopes, APIKeyScopeProvisionPrefix+collectionName)
+}
+
 // GenerateAPIKey returns a new full key together with its prefix and the
 // hash to store.
 func GenerateAPIKey() (key, prefix, secretHash string, err error) {
@@ -175,7 +192,8 @@ func ParseAPIKey(token string) (prefix, secret string, ok bool) {
 }
 
 // ValidateAPIKeyScopes checks and normalizes (de-duplicates) a scope list:
-// "*" or "collection:<name>:read|write" for an existing, reachable collection.
+// "*", "collection:<name>:read|write" for an existing, reachable collection, or
+// "provision:<name>" for an auth collection (#141).
 func ValidateAPIKeyScopes(app App, scopes []string) ([]string, error) {
 	if len(scopes) == 0 {
 		return nil, errors.New("at least one scope is required")
@@ -188,7 +206,18 @@ func ValidateAPIKeyScopes(app App, scopes []string) ([]string, error) {
 	for _, scope := range scopes {
 		scope = strings.TrimSpace(scope)
 
-		if scope != APIKeyScopeAll {
+		if m := apiKeyProvisionScopeRegex.FindStringSubmatch(scope); m != nil {
+			if m[1] == CollectionNameSuperusers || slices.Contains(APIKeyForbiddenCollections, m[1]) {
+				return nil, fmt.Errorf("the collection %q cannot be provisioned with an API key", m[1])
+			}
+			c, err := app.FindCachedCollectionByNameOrId(m[1])
+			if err != nil {
+				return nil, fmt.Errorf("unknown collection in scope %q", scope)
+			}
+			if !c.IsAuth() {
+				return nil, fmt.Errorf("the scope %q needs an auth collection", scope)
+			}
+		} else if scope != APIKeyScopeAll {
 			m := apiKeyScopeRegex.FindStringSubmatch(scope)
 			if m == nil {
 				return nil, fmt.Errorf("invalid scope %q", scope)

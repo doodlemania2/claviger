@@ -78,6 +78,8 @@ func apiKeyForbidden(e *core.RequestEvent) error {
 //     GET/HEAD and collection:<c>:write otherwise. Writes to auth
 //     collections are denied outright (that is how passwords and emails
 //     change). Expanded relations need read on their collections too.
+//   - the one write to an auth collection is the "provision:<c>" scope: POST to
+//     create a record, or PATCH a record with nothing but its password (#141).
 //   - /api/files/{c}/...: collection read. /api/files/token is denied.
 //   - /api/health: always allowed.
 //   - API key management, field key maintenance, the personal data export
@@ -122,7 +124,7 @@ func enforceAPIKeyScopes(e *core.RequestEvent, key *core.APIKeyInfo) error {
 				if len(segs) > 4 {
 					return apiKeyForbidden(e) // sub-resources of a record
 				}
-				return enforceKeyRecordsRoute(e, key, segs[1], read)
+				return enforceKeyRecordsRoute(e, key, segs[1], read, len(segs) == 4)
 			case strings.HasPrefix(sub, "auth-"),
 				strings.HasPrefix(sub, "request-"),
 				strings.HasPrefix(sub, "confirm-"),
@@ -149,7 +151,7 @@ func requireKeyCollectionAccess(e *core.RequestEvent, key *core.APIKeyInfo, coll
 	return nil
 }
 
-func enforceKeyRecordsRoute(e *core.RequestEvent, key *core.APIKeyInfo, collectionNameOrId string, read bool) error {
+func enforceKeyRecordsRoute(e *core.RequestEvent, key *core.APIKeyInfo, collectionNameOrId string, read, hasRecordId bool) error {
 	collection, err := e.App.FindCachedCollectionByNameOrId(collectionNameOrId)
 	if err != nil {
 		return apiKeyForbidden(e)
@@ -160,9 +162,9 @@ func enforceKeyRecordsRoute(e *core.RequestEvent, key *core.APIKeyInfo, collecti
 		access = core.APIKeyScopeWrite
 
 		// auth records carry the password, email and token key: never writable
-		// with a key
+		// with a key, except the narrow provisioning scope (#141)
 		if collection.IsAuth() {
-			return apiKeyForbidden(e)
+			return enforceKeyProvisioning(e, key, collection, hasRecordId)
 		}
 	}
 
