@@ -1068,10 +1068,10 @@ const utils = {
         return new Promise((resolve) => {
             let reader = new FileReader();
 
-            reader.onload = function(e) {
+            reader.onload = function (e) {
                 let img = new Image();
 
-                img.onload = function() {
+                img.onload = function () {
                     let canvas = document.createElement("canvas");
                     let ctx = canvas.getContext("2d");
                     let imgWidth = img.width;
@@ -1155,7 +1155,7 @@ const utils = {
         },
     },
     logDataFormatters: {
-        execTime: function(log) {
+        execTime: function (log) {
             if (typeof log?.data?.execTime == "undefined") {
                 return "N/A";
             }
@@ -1293,8 +1293,9 @@ const utils = {
     },
 
     // ---------------------------------------------------------------
-    imageExtensions: [".jpg", ".jpeg", ".png", ".svg", ".gif", ".jfif", ".webp", ".avif"],
-    videoExtensions: [".mp4", ".avi", ".mov", ".3gp", ".wmv"],
+
+    imageExtensions: [".png", ".svg", ".jpg", ".jpeg", ".jfif", ".jxl", ".gif", ".webp", ".avif"],
+    videoExtensions: [".mp4", ".avi", ".mov", ".3gp", ".wmv", ".webm"],
     audioExtensions: [".aa", ".aac", ".m4v", ".mp3", ".ogg", ".oga", ".mogg", ".amr"],
     documentExtensions: [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odp", ".odt", ".ods", ".txt"],
     archiveExtensions: [".zip", ".gz", ".tar", ".rar", ".7z"],
