@@ -27,6 +27,7 @@
 @import "./webhooks.css";
 @import "./orgs.css";
 @import "./oidc.css";
+@import "./forkPages.css";
 @import "./map.css";
 @import "./recordSummary.css";
 @import "./recordFilePicker.css";

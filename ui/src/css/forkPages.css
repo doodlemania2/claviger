@@ -1,0 +1,9 @@
+/* Fork-local: the hosted-feature admin pages (organizations, households, registers, credentials, consents,
+   webhooks, audit, OpenID Connect). `.page-table-wrapper` is full bleed so its tables reach the edges; anything
+   else a page puts in it (section titles, helper text, filters, buttons) must keep the page gutter, or it sits
+   flush against the window edge while the table headers are indented. Tables and the blocks that hold one stay
+   full bleed. */
+:is(.page-oidc, .page-orgs, .page-households, .page-registers, .page-credentials, .page-consents, .page-webhooks, .page-audit)
+    .page-table-wrapper > :not(table, .responsive-table, :has(table)) {
+    padding-inline: var(--spacing);
+}

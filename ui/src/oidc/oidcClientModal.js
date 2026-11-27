@@ -37,6 +37,9 @@ function oidcClientModal(client, settings) {
         scopes: (client?.scopes || []).join(" "),
         accessTokenType: client?.accessTokenType || "jwt",
         signingAlg: client?.signingAlg || "RS256",
+        idTokenSeconds: client?.idTokenSeconds ? String(client.idTokenSeconds) : "",
+        logoUri: client?.logoUri || "",
+        accentColor: client?.accentColor || "",
         clientId: "",
         secret: "",
         createdClientId: "",
@@ -67,6 +70,9 @@ function oidcClientModal(client, settings) {
             scopes: lines(data.scopes),
             accessTokenType: data.accessTokenType,
             signingAlg: data.signingAlg,
+            idTokenSeconds: Number.parseInt(data.idTokenSeconds, 10) || 0,
+            logoUri: data.logoUri.trim(),
+            accentColor: data.accentColor.trim(),
         };
 
         try {
@@ -269,6 +275,47 @@ function oidcClientModal(client, settings) {
                         t.option({ value: "RS256" }, "RS256 (default)"),
                         t.option({ value: "ES256" }, "ES256"),
                     ),
+                ),
+                field(
+                    "idTokenSeconds",
+                    "ID token lifetime (seconds)",
+                    t.input({
+                        type: "number",
+                        id: "oidc_idTokenSeconds",
+                        min: 0,
+                        max: 3600,
+                        step: 1,
+                        placeholder: "3600",
+                        value: () => data.idTokenSeconds,
+                        oninput: (e) => data.idTokenSeconds = e.target.value,
+                    }),
+                    "Empty uses the default of one hour. Shorter only, up to 3600.",
+                ),
+                field(
+                    "logoUri",
+                    "Logo URL",
+                    t.input({
+                        type: "url",
+                        id: "oidc_logoUri",
+                        placeholder: "https://app.example.com/logo.svg",
+                        value: () => data.logoUri,
+                        oninput: (e) => data.logoUri = e.target.value,
+                    }),
+                    "Shown on the sign-in pages next to the Claviger mark. https only; an image (SVG, PNG).",
+                ),
+                field(
+                    "accentColor",
+                    "Accent color",
+                    t.input({
+                        type: "text",
+                        id: "oidc_accentColor",
+                        maxLength: 7,
+                        pattern: "#[0-9a-fA-F]{6}",
+                        placeholder: "#FFB627",
+                        value: () => data.accentColor,
+                        oninput: (e) => data.accentColor = e.target.value,
+                    }),
+                    "Buttons and links on the sign-in pages, as #rrggbb. Empty keeps the Claviger color.",
                 ),
                 isNew
                     ? field(
