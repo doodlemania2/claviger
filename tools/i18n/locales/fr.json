@@ -329,6 +329,8 @@
   "oidc.signedOut.message": "Vous pouvez fermer cette fenêtre.",
   "oidc.login.continueToHtml": "pour continuer vers <strong>{client}</strong>",
   "oidc.consent.title": "Autoriser l'accès",
+  "oidc.oauth2Done.success": "Vous pouvez fermer cette fenêtre.",
+  "oidc.oauth2Done.failure": "La connexion n'a pas abouti. Vous pouvez fermer cette fenêtre et réessayer.",
   "oidc.consent.heading": "Autoriser l'accès ?",
   "oidc.consent.wantsHtml": "<strong>{client}</strong> souhaite accéder à votre compte{account}.",
   "oidc.consent.allow": "Autoriser",

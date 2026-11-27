@@ -329,6 +329,8 @@
   "oidc.signedOut.message": "이 창을 닫으셔도 됩니다.",
   "oidc.login.continueToHtml": "<strong>{client}</strong>(으)로 계속하려면",
   "oidc.consent.title": "접근 허용",
+  "oidc.oauth2Done.success": "이 창을 닫아도 됩니다.",
+  "oidc.oauth2Done.failure": "로그인이 완료되지 않았습니다. 이 창을 닫고 다시 시도하세요.",
   "oidc.consent.heading": "접근을 허용하시겠습니까?",
   "oidc.consent.wantsHtml": "<strong>{client}</strong>이(가) 회원님의 계정{account}에 접근하려고 합니다.",
   "oidc.consent.allow": "허용",
