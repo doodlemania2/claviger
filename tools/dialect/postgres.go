@@ -714,3 +714,5 @@ func (d postgresDialect) DropIndexIfExists(db dbx.Builder, table, name string) e
 	_, err := db.NewQuery("DROP INDEX IF EXISTS [[" + name + "]]").Execute()
 	return err
 }
+
+func (postgresDialect) TextCastType() string { return "TEXT" }

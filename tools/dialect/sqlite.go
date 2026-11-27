@@ -267,3 +267,5 @@ func (sqliteDialect) DropIndexIfExists(db dbx.Builder, table, name string) error
 }
 
 func (sqliteDialect) FinishIndexDrops(db dbx.Builder) error { return nil }
+
+func (sqliteDialect) TextCastType() string { return "TEXT" }

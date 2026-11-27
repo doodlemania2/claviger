@@ -147,6 +147,8 @@ type Dialect interface {
 	// TextType is the type (with its collation) of a plain text column
 	// that has no default, for example one that holds encrypted data.
 	TextType() string
+	// TextCastType is the type name that CAST(x AS ...) uses for text.
+	TextCastType() string
 	// Int64Type is the type name of a 64 bit integer.
 	Int64Type() string
 	// JSONType is the type name of a JSON column.

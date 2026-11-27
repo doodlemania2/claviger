@@ -287,7 +287,7 @@ func (mysqlDialect) GeoDistance(lonA, latA, lonB, latB string) string {
 // DATE_FORMAT specifiers of the supported strftime ones.
 var mysqlStrftimeSpecs = map[byte]string{
 	'Y': "%Y", 'm': "%m", 'd': "%d", 'H': "%H", 'M': "%i", 'S': "%S",
-	'j': "%j", 'w': "%w", 'e': "%e", 'k': "%k", 'l': "%l", 'I': "%h",
+	'j': "%j", 'w': "%w", 'I': "%h",
 	'p': "%p", 'F': "%Y-%m-%d", 'T': "%H:%i:%S", 'R': "%H:%i",
 }
 
@@ -366,6 +366,15 @@ func (mysqlDialect) StrFTime(format string, timeValue string, timeValueIsNumber 
 		case spec == 'f':
 			flush()
 			parts = append(parts, "SUBSTRING(DATE_FORMAT(@@TS@@, '%S.%f'), 1, 6)")
+		case spec == 'e':
+			flush()
+			parts = append(parts, "LPAD(DAYOFMONTH(@@TS@@), 2, ' ')")
+		case spec == 'k':
+			flush()
+			parts = append(parts, "LPAD(HOUR(@@TS@@), 2, ' ')")
+		case spec == 'l':
+			flush()
+			parts = append(parts, "LPAD(CAST(DATE_FORMAT(@@TS@@, '%l') AS CHAR), 2, ' ')")
 		case spec == 's':
 			flush()
 			parts = append(parts, "CAST(FLOOR(UNIX_TIMESTAMP(@@TS@@)) AS CHAR)")
@@ -517,6 +526,13 @@ func (d mysqlDialect) BuildIndexOn(db dbx.Builder, idx dbutils.Index) (string, e
 	str.WriteString(d.QuoteIdent(idx.TableName))
 	str.WriteString(" (" + strings.Join(keys, ", ") + ")")
 
+	// the portable definition travels in the index comment, so that
+	// TableIndexes can return exactly what the collection stored (the keys
+	// above are rewritten and cannot be turned back)
+	if portable := idx.Build(); portable != "" && len(portable) <= 1000 {
+		str.WriteString(" COMMENT '" + strings.ReplaceAll(portable, "'", "''") + "'")
+	}
+
 	return str.String(), nil
 }
 
@@ -640,11 +656,12 @@ func (d mysqlDialect) TableIndexes(db dbx.Builder, table string) (map[string]str
 		Column    *string `db:"col"`
 		Expr      *string `db:"expr"`
 		Sort      *string `db:"sort"`
+		Comment   *string `db:"comment"`
 	}{}
 
 	err := db.NewQuery(`
 		SELECT INDEX_NAME AS name, CAST(NON_UNIQUE AS SIGNED) AS non_unique, CAST(SEQ_IN_INDEX AS SIGNED) AS seq,
-			COLUMN_NAME AS col, EXPRESSION AS expr, COLLATION AS sort
+			COLUMN_NAME AS col, EXPRESSION AS expr, COLLATION AS sort, INDEX_COMMENT AS comment
 		FROM information_schema.STATISTICS
 		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {:table} AND INDEX_NAME <> 'PRIMARY'
 		ORDER BY INDEX_NAME, SEQ_IN_INDEX
@@ -653,6 +670,7 @@ func (d mysqlDialect) TableIndexes(db dbx.Builder, table string) (map[string]str
 		return nil, err
 	}
 
+	portable := map[string]string{}
 	byName := map[string]*dbutils.Index{}
 	var order []string
 	for _, r := range rows {
@@ -660,6 +678,10 @@ func (d mysqlDialect) TableIndexes(db dbx.Builder, table string) (map[string]str
 		// UNIQUE column of a CREATE TABLE made (named like their column)
 		if r.Column != nil && (*r.Column == RowIDColumn || (r.NonUnique == 0 && *r.Column == r.Name)) {
 			continue
+		}
+
+		if r.Comment != nil && strings.HasPrefix(*r.Comment, "CREATE ") {
+			portable[r.Name] = *r.Comment
 		}
 
 		idx, ok := byName[r.Name]
@@ -686,6 +708,10 @@ func (d mysqlDialect) TableIndexes(db dbx.Builder, table string) (map[string]str
 
 	result := make(map[string]string, len(order))
 	for _, name := range order {
+		if def, ok := portable[name]; ok {
+			result[name] = def
+			continue
+		}
 		result[name] = byName[name].Build()
 	}
 
@@ -783,3 +809,5 @@ func (mysqlDialect) RandomOrder() string { return "RAND()" }
 func (mysqlDialect) NoRows(fromWhere string) string {
 	return "0 = (SELECT COUNT(*) " + fromWhere + ")"
 }
+
+func (mysqlDialect) TextCastType() string { return "CHAR" }

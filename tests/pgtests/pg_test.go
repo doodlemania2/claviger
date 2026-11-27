@@ -31,6 +31,14 @@ func adminURL(t testing.TB) string {
 	return u
 }
 
+// textCast is the type that CAST(x AS ...) uses for text on the test server.
+func textCast(t testing.TB) string {
+	if isMySQLServer(t) {
+		return "CHAR"
+	}
+	return "TEXT"
+}
+
 // isMySQLServer reports whether the test server URL is a MySQL or MariaDB
 // one (mysql://user:pass@host:3306/db). The suites are the Postgres ones, run
 // against another engine: see docs/datastores.md.
@@ -363,10 +371,17 @@ func TestCollectionLifecycle(t *testing.T) {
 	for _, r := range info {
 		colTypes[r.Name] = r.Type
 	}
-	for col, want := range map[string]string{
+	wantTypes := map[string]string{
 		"id": "text", "title": "text", "views": "double precision", "pub": "boolean",
 		"meta": "jsonb", "when": "text", "tag": "text", "created": "text",
-	} {
+	}
+	if isMySQLServer(t) {
+		wantTypes = map[string]string{
+			"id": "varchar(255)", "title": "longtext", "views": "double", "pub": "tinyint(1)",
+			"meta": "json", "when": "longtext", "tag": "longtext", "created": "longtext",
+		}
+	}
+	for col, want := range wantTypes {
 		if colTypes[col] != want {
 			t.Errorf("column %s type = %q, want %q", col, colTypes[col], want)
 		}
@@ -377,9 +392,11 @@ func TestCollectionLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var pgDef string
-	if err := app.DB().NewQuery("SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_posts_title_nocase'").Row(&pgDef); err != nil || !strings.Contains(pgDef, "lower(") {
-		t.Errorf("expected a lower() index in the catalog, got %q (%v)", pgDef, err)
+	if !isMySQLServer(t) {
+		var pgDef string
+		if err := app.DB().NewQuery("SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_posts_title_nocase'").Row(&pgDef); err != nil || !strings.Contains(pgDef, "lower(") {
+			t.Errorf("expected a lower() index in the catalog, got %q (%v)", pgDef, err)
+		}
 	}
 	// TableIndexes returns the portable form of it
 	if !strings.Contains(indexes["idx_posts_title_nocase"], "`title` COLLATE NOCASE") {
@@ -460,13 +477,13 @@ func TestCollectionLifecycle(t *testing.T) {
 		t.Fatalf("single to multiple: %v", err)
 	}
 	var tag string
-	if err := app.DB().NewQuery("SELECT tag::text FROM articles WHERE title = 'alpha'").Row(&tag); err != nil {
+	if err := app.DB().NewQuery("SELECT CAST(tag AS " + textCast(t) + ") FROM articles WHERE title = 'alpha'").Row(&tag); err != nil {
 		t.Fatal(err)
 	}
 	if tag != `["b"]` {
 		t.Errorf("tag after single->multiple = %q", tag)
 	}
-	if err := app.DB().NewQuery("SELECT tag::text FROM articles WHERE title = 'zeta'").Row(&tag); err != nil {
+	if err := app.DB().NewQuery("SELECT CAST(tag AS " + textCast(t) + ") FROM articles WHERE title = 'zeta'").Row(&tag); err != nil {
 		t.Fatal(err)
 	}
 	if tag != `[]` {

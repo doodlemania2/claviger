@@ -14,6 +14,19 @@ type viewDef struct {
 	name   string
 	sqlite string
 	pg     string
+	// mysql is the MySQL spelling (empty: the SQLite one is valid there too)
+	mysql string
+}
+
+// forEngine is the view query in the SQL of the test server.
+func (v viewDef) forEngine(t testing.TB) string {
+	if isMySQLServer(t) {
+		if v.mysql != "" {
+			return v.mysql
+		}
+		return v.sqlite
+	}
+	return v.pg
 }
 
 var testViews = []viewDef{
@@ -36,6 +49,7 @@ var testViews = []viewDef{
 		name:   "v_expr",
 		sqlite: "SELECT id, (views * 2) AS doubled, (views > 5) AS big, (title || '!') AS shout, json_extract(meta, '$.n') AS n, CAST(views AS INTEGER) AS whole FROM posts",
 		pg:     `SELECT id, (views * 2) AS doubled, (views > 5) AS big, (title || '!') AS shout, (meta -> 'n') AS n, CAST(views AS INTEGER) AS whole FROM posts`,
+		mysql:  "SELECT id, (views * 2) AS doubled, (views > 5) AS big, (title || '!') AS shout, json_extract(meta, '$.n') AS n, CAST(views AS SIGNED) AS whole FROM posts",
 	},
 	{
 		// the quoted camelCase alias is the Postgres spelling of an identifier with capitals
@@ -68,7 +82,7 @@ func TestViewCollections(t *testing.T) {
 	for _, v := range testViews {
 		t.Run("create/"+v.name, func(t *testing.T) {
 			sres := createView(sqliteClient, v.name, v.sqlite)
-			pres := createView(pgClient, v.name, v.pg)
+			pres := createView(pgClient, v.name, v.forEngine(t))
 			if sres.Status != 200 || pres.Status != 200 {
 				t.Fatalf("create view: sqlite=%d %s postgres=%d %s", sres.Status, brief(sres.Body), pres.Status, brief(pres.Body))
 			}
@@ -83,12 +97,17 @@ func TestViewCollections(t *testing.T) {
 	// field types inferred from the view's columns (Postgres only; SQLite
 	// views are dynamically typed so unknown expressions are JSON fields)
 	t.Run("field types", func(t *testing.T) {
-		for view, want := range map[string]map[string]string{
+		wantViews := map[string]map[string]string{
 			"v_plain": {"id": "text", "title": "text", "views": "number", "active": "bool", "status": "select", "created": "autodate"},
 			"v_agg":   {"id": "text", "name": "text", "total": "number", "sum_views": "number"},
 			"v_expr":  {"id": "text", "doubled": "number", "big": "bool", "shout": "text", "n": "json", "whole": "number"},
 			"v_camel": {"id": "text", "postTitle": "text"},
-		} {
+		}
+		if isMySQLServer(t) {
+			// MySQL types a comparison as an integer, not a boolean
+			wantViews["v_expr"]["big"] = "number"
+		}
+		for view, want := range wantViews {
 			col, err := pgApp.FindCollectionByNameOrId(view)
 			if err != nil {
 				t.Fatal(err)

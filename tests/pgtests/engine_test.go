@@ -58,5 +58,26 @@ var engineGaps = map[string]map[string]string{
 		"unicode like is ascii only":  "CockroachDB's ILIKE and lower() fold the case of non ASCII letters, SQLite's only ASCII",
 		"unicode lower is ascii only": "CockroachDB's ILIKE and lower() fold the case of non ASCII letters, SQLite's only ASCII",
 	},
-	dialect.MySQLName: {},
+	dialect.MySQLName: {
+		"unicode like is ascii only":  "MySQL's case insensitive collation folds the case of non ASCII letters (accents stay significant), SQLite's LIKE only ASCII",
+		"unicode lower is ascii only": "MySQL's LOWER() and its case insensitive LIKE fold non ASCII letters, SQLite's only ASCII",
+		"json number":                 "a JSON string that looks like a number (\"5\") equals the number 5: MySQL compares text with numbers as numbers",
+		"json number string mismatch": "a JSON string that looks like a number equals the number: MySQL compares text with numbers as numbers",
+		"json type ordering":          "a JSON string that looks like a number sorts among the numbers: MySQL compares text with numbers as numbers",
+		"strftime weekday modifier":   "the weekday strftime modifier is not supported on MySQL",
+		"strftime iso week":           "the %V and %G strftime formats are not supported on MySQL",
+		"strftime week of year":       "the %W and %U strftime formats are not supported on MySQL",
+		"strftime unixepoch":          "strftime with a unix time number is not supported on MySQL",
+		"strftime julian":             "strftime with a julian day number is not supported on MySQL",
+		"sort json path":              "sorting by a JSON path orders text values that look like numbers among the numbers",
+	},
+}
+
+// engineMayAgree reports that the engine behaves like SQLite where the
+// PostgreSQL based tables list a difference (MySQL coerces text, numbers and
+// booleans in comparisons, like SQLite), so a known gap that does not differ
+// is not an error.
+func engineMayAgree(t testing.TB) bool {
+	t.Helper()
+	return testEngine(t) == dialect.MySQLName || testEngine(t) == dialect.MariaDBName
 }
