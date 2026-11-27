@@ -95,6 +95,8 @@ var builtinDataExport = map[string]dataExportSpec{
 		"id", "scope", "collection", "recordId", "reason", "reference", "placedAt", "liftedAt", "created",
 	}},
 	CollectionNamePastoralHolds: {Fields: []string{"id", "org", "collection", "state", "heldAt", "decidedAt", "created"}},
+	// #82: the kiosks the admin registered or revoked; never the token hash
+	CollectionNameKiosks: {Fields: []string{"id", "org", "name", "status", "registeredBy", "revokedBy", "revokedAt", "created"}},
 	// #88 88-2: the whole evidence trail of the person, including the text
 	// they were shown; no secrets. Purposes are not about a person (none).
 	CollectionNameConsents: {Fields: []string{
