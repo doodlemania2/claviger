@@ -114,6 +114,8 @@
     user-select: none;
     cursor: pointer;
     text-decoration: none;
+    white-space: nowrap; /* a two-word label must not wrap into a taller bar */
+    flex-shrink: 0;
     color: var(--accentTxtHintColor);
     border-radius: var(--borderRadius);
     transition:
@@ -131,6 +133,17 @@
         transition-duration: var(--activeAnimationSpeed);
     }
 }
+/* the fork adds many admin pages: on a laptop-width window keep the label only on the active one
+   (the others are icons with a tooltip) so every page stays reachable without scrolling */
+@media (max-width: 1560px) {
+    .app-main-nav .header-link:not(.active) .txt {
+        display: none;
+    }
+    .app-main-nav .header-link {
+        padding: 5px 7px;
+    }
+}
+
 .app-header .logged-user {
     max-width: 300px;
     @media (max-width: 600px) {

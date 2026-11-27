@@ -320,6 +320,7 @@
   "js.oidc.continueWith": "使用 {provider} 继续",
   "js.oidc.oauthFailed": "使用 {provider} 登录未完成。",
   "js.oidc.popupBlocked": "登录窗口被拦截。请允许此网站的弹出窗口后重试。",
+  "js.oidc.cancel": "取消",
   "js.oidc.noMethod": "此应用没有可用的登录方式。",
   "js.oidc.decisionFailed": "无法保存您的选择。",
   "oidc.problem": "登录问题",

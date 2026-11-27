@@ -26,6 +26,16 @@ test.beforeAll(async () => {
             to.searchParams.set("state", url.searchParams.get("state")!);
             return res.writeHead(302, { Location: to.toString() }).end();
         }
+        if (url.pathname === "/authorize-coop") {
+            // like Microsoft's pages: Cross-Origin-Opener-Policy cuts the opener off from the window
+            // (popup.closed reads true) and the person takes a few seconds to sign in
+            const to = new URL(url.searchParams.get("redirect_uri")!);
+            to.searchParams.set("code", "mock-code");
+            to.searchParams.set("state", url.searchParams.get("state")!);
+            return res
+                .writeHead(200, { "Content-Type": "text/html", "Cross-Origin-Opener-Policy": "same-origin" })
+                .end(`<!doctype html><title>Sign in</title><p>Signing in...</p><script>setTimeout(function(){location.href=${JSON.stringify(to.toString())}},4000)</script>`);
+        }
         if (url.pathname === "/token") {
             return res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ access_token: "mock-token", token_type: "Bearer", expires_in: 3600 }));
         }
@@ -111,6 +121,76 @@ test("OIDC login page: sign in with an OAuth2 provider through the pop-up", asyn
     expect(q.get("client_id")).toBe("mock-client");
     expect(q.get("code_challenge_method")).toBe("S256");
     expect(q.get("state")!.length).toBeGreaterThan(10);
+
+    await ctx.close();
+});
+
+test("OIDC login page: a provider window cut off by Cross-Origin-Opener-Policy still completes", async ({ browser, problems }) => {
+    const { base } = state();
+
+    await api("PATCH", "/api/collections/users", {
+        oauth2: {
+            enabled: true,
+            providers: [
+                {
+                    name: "oidc",
+                    displayName: "Mock Microsoft",
+                    clientId: "mock-client",
+                    clientSecret: "mock-secret",
+                    authURL: `${PROVIDER}/authorize-coop`,
+                    tokenURL: `${PROVIDER}/token`,
+                    userInfoURL: `${PROVIDER}/userinfo`,
+                    pkce: true,
+                },
+            ],
+        },
+    });
+
+    const client = await api("POST", "/api/oidc/clients", {
+        name: "E2E OAuth COOP app",
+        authCollection: "users",
+        redirectUris: [REDIRECT],
+        firstParty: true,
+    });
+
+    const ctx = await browser.newContext({ baseURL: base });
+    const page = await ctx.newPage();
+    watch(page, problems);
+    const k = pkce();
+    await page.goto(
+        authorizeUrl(base, { client_id: client.clientId, redirect_uri: REDIRECT, response_type: "code", scope: "openid profile email", state: "st-coop", code_challenge: k.challenge, code_challenge_method: "S256" }),
+    );
+    await page.getByRole("button", { name: "Continue with Mock Microsoft" }).click();
+
+    // the pop-up is cut off after a moment but the page keeps waiting and the sign-in completes
+    await expect(page.locator("#oauthCancel")).toBeVisible();
+    await page.waitForURL(/localhost:19001\/callback/, { timeout: 40_000 });
+    expect(new URL(page.url()).searchParams.get("state")).toBe("st-coop");
+
+    await ctx.close();
+});
+
+test("OIDC login page: cancel ends the wait", async ({ browser, problems }) => {
+    const { base } = state();
+    const client = await api("POST", "/api/oidc/clients", {
+        name: "E2E OAuth cancel app",
+        authCollection: "users",
+        redirectUris: [REDIRECT],
+        firstParty: true,
+    });
+
+    const ctx = await browser.newContext({ baseURL: base });
+    const page = await ctx.newPage();
+    watch(page, problems);
+    const k = pkce();
+    await page.goto(
+        authorizeUrl(base, { client_id: client.clientId, redirect_uri: REDIRECT, response_type: "code", scope: "openid profile email", state: "st-cancel", code_challenge: k.challenge, code_challenge_method: "S256" }),
+    );
+    await page.getByRole("button", { name: "Continue with Mock Microsoft" }).click();
+    await page.locator("#oauthCancel").click();
+    await expect(page.locator("#status")).toContainText("did not complete");
+    await expect(page.locator("#oauthCancel")).toBeHidden();
+    await expect(page.getByRole("button", { name: "Continue with Mock Microsoft" })).toBeEnabled();
 
     await ctx.close();
 });

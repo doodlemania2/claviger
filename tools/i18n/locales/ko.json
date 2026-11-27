@@ -320,6 +320,7 @@
   "js.oidc.continueWith": "{provider}(으)로 계속하기",
   "js.oidc.oauthFailed": "{provider} 로그인이 완료되지 않았습니다.",
   "js.oidc.popupBlocked": "로그인 창이 차단되었습니다. 이 사이트의 팝업을 허용한 후 다시 시도하세요.",
+  "js.oidc.cancel": "취소",
   "js.oidc.noMethod": "이 애플리케이션에서 사용할 수 있는 로그인 방법이 없습니다.",
   "js.oidc.decisionFailed": "결정을 저장하지 못했습니다.",
   "oidc.problem": "로그인 문제",

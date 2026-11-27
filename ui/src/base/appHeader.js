@@ -40,6 +40,8 @@ export function appHeader() {
                                 href: () => link.href,
                                 target: () => !isLocal ? "_blank" : undefined,
                                 rel: () => !isLocal ? "noopener noreferrer" : undefined,
+                                title: () => link.label,
+                                ariaLabel: () => link.label,
                                 className: (el) => {
                                     const isActive = link.isActive?.(el) || app.utils.isActivePath(link.href);
                                     return `header-link ${isActive ? "active" : ""}`;

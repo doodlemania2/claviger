@@ -320,6 +320,7 @@
   "js.oidc.continueWith": "Tiếp tục với {provider}",
   "js.oidc.oauthFailed": "Đăng nhập bằng {provider} chưa hoàn tất.",
   "js.oidc.popupBlocked": "Cửa sổ đăng nhập đã bị chặn. Hãy cho phép cửa sổ bật lên của trang này rồi thử lại.",
+  "js.oidc.cancel": "Hủy",
   "js.oidc.noMethod": "Không có phương thức đăng nhập nào khả dụng cho ứng dụng này.",
   "js.oidc.decisionFailed": "Không thể lưu quyết định.",
   "oidc.problem": "Sự cố đăng nhập",
