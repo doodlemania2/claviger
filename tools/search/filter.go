@@ -367,7 +367,7 @@ func resolveEqualExpr(d dialect.Dialect, equal bool, left, right *ResolverResult
 	if left.NullFallback == NullFallbackDisabled ||
 		right.NullFallback == NullFallbackDisabled {
 		return dbx.NewExp(
-			fmt.Sprintf("%s %s %s", left.Identifier, nullEqualOp, right.Identifier),
+			nullSafeCompare(d, left.Identifier, nullEqualOp, right.Identifier, !equal),
 			mergeParams(left.Params, right.Params),
 		)
 	}
@@ -395,7 +395,7 @@ func resolveEqualExpr(d dialect.Dialect, equal bool, left, right *ResolverResult
 			rightIdentifier = emptyOperand(d, left)
 		}
 		return dbx.NewExp(
-			fmt.Sprintf("%s %s %s", leftIdentifier, equalOp, rightIdentifier),
+			nullSafeCompare(d, leftIdentifier, equalOp, rightIdentifier, !equal),
 			mergeParams(left.Params, right.Params),
 		)
 	}

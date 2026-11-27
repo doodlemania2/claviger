@@ -261,7 +261,7 @@ func (r *MigrationsRunner) initMigrationsTable() error {
 	)
 
 	var err error
-	if d := dialectOf(r.app); d.Name() == dialect.PostgresName {
+	if d := dialectOf(r.app); dialect.IsPostgres(d) {
 		// fork (#106 M7): CREATE TABLE IF NOT EXISTS is not atomic on Postgres.
 		// Replicas that start together can both pass the existence check and
 		// one dies on a duplicate key in pg_type. Take the migrations lock.

@@ -14,6 +14,7 @@ import (
 	_ "github.com/doodlemania2/claviger/migrations"
 	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/security"
+	mysqldrv "github.com/go-sql-driver/mysql"
 )
 
 func adminURL(t testing.TB) string {
@@ -27,30 +28,103 @@ func adminURL(t testing.TB) string {
 	return u
 }
 
+// isMySQLServer reports whether the test server URL is a MySQL or MariaDB
+// one (mysql://user:pass@host:3306/db). The suites are the Postgres ones, run
+// against another engine: see docs/datastores.md.
+func isMySQLServer(t testing.TB) bool {
+	t.Helper()
+	return strings.HasPrefix(strings.ToLower(adminURL(t)), "mysql://") ||
+		strings.HasPrefix(strings.ToLower(adminURL(t)), "mariadb://")
+}
+
+// adminSQL opens the admin connection of the test server.
+func adminSQL(t testing.TB) *sql.DB {
+	t.Helper()
+
+	raw := adminURL(t)
+
+	if isMySQLServer(t) {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg := mysqldrv.NewConfig()
+		cfg.Net = "tcp"
+		cfg.Addr = u.Host
+		cfg.User = u.User.Username()
+		cfg.Passwd, _ = u.User.Password()
+		cfg.DBName = strings.TrimPrefix(u.Path, "/")
+		cfg.MultiStatements = true
+		db, err := sql.Open("mysql", cfg.FormatDSN())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return db
+	}
+
+	db, err := sql.Open("pgx", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
+
+// serverVersion is the version() string of the test server.
+func serverVersion(t testing.TB) string {
+	t.Helper()
+
+	db := adminSQL(t)
+	defer db.Close()
+
+	var v string
+	if err := db.QueryRow("SELECT version()").Scan(&v); err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+// isCockroach reports whether the test server is CockroachDB.
+func isCockroach(t testing.TB) bool {
+	return !isMySQLServer(t) && strings.Contains(serverVersion(t), "CockroachDB")
+}
+
+// skipUnlessPostgres skips a test of a feature that only PostgreSQL has.
+func skipUnlessPostgres(t testing.TB, why string) {
+	t.Helper()
+	if isMySQLServer(t) {
+		t.Skip("known_gap(mysql): " + why)
+	}
+	if isCockroach(t) {
+		t.Skip("known_gap(cockroach): " + why)
+	}
+}
+
 // freshDatabase creates an empty database and returns its connection URL.
 func freshDatabase(t testing.TB) string {
 	t.Helper()
 
 	admin := adminURL(t)
 
-	db, err := sql.Open("pgx", admin)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := adminSQL(t)
 	defer db.Close()
 
 	name := "pbt_" + strings.ToLower(security.PseudorandomString(10))
-	if _, err := db.Exec(`CREATE DATABASE "` + name + `"`); err != nil {
+
+	create := `CREATE DATABASE "` + name + `"`
+	drop := `DROP DATABASE IF EXISTS "` + name + `" WITH (FORCE)`
+	if isMySQLServer(t) {
+		create = "CREATE DATABASE `" + name + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin"
+		drop = "DROP DATABASE IF EXISTS `" + name + "`"
+	}
+
+	if _, err := db.Exec(create); err != nil {
 		t.Fatalf("create database: %v", err)
 	}
 
 	t.Cleanup(func() {
-		db, err := sql.Open("pgx", admin)
-		if err != nil {
-			return
-		}
+		db := adminSQL(t)
 		defer db.Close()
-		_, _ = db.Exec(`DROP DATABASE IF EXISTS "` + name + `" WITH (FORCE)`)
+		_, _ = db.Exec(drop)
 	})
 
 	u, err := url.Parse(admin)
@@ -81,8 +155,18 @@ func newApp(t testing.TB) *core.BaseApp {
 func TestDialectSelection(t *testing.T) {
 	app := newApp(t)
 
-	if got := core.DialectOf(app).Name(); got != dialect.PostgresName {
-		t.Fatalf("data db dialect = %q, want postgres", got)
+	want := dialect.PostgresName
+	if isCockroach(t) {
+		want = dialect.CockroachName
+	}
+	if isMySQLServer(t) {
+		want = dialect.MySQLName
+		if strings.Contains(strings.ToLower(serverVersion(t)), "mariadb") {
+			want = dialect.MariaDBName
+		}
+	}
+	if got := core.DialectOf(app).Name(); got != want {
+		t.Fatalf("data db dialect = %q, want %s", got, want)
 	}
 	// the logs db stays a local SQLite file
 	if got := core.AuxDialectOf(app).Name(); got != dialect.SQLiteName {
@@ -347,6 +431,10 @@ func TestCollectionLifecycle(t *testing.T) {
 	}
 	col.Fields.GetByName("tag").(*core.SelectField).MaxSelect = 3
 	if err := app.Save(col); err != nil {
+		if isCockroach(t) && strings.Contains(err.Error(), "not supported on CockroachDB") {
+			t.Logf("known_gap(cockroach): %v", err)
+			return
+		}
 		t.Fatalf("single to multiple: %v", err)
 	}
 	var tag string
@@ -399,6 +487,9 @@ func TestCollectionLifecycle(t *testing.T) {
 }
 
 func TestTryUsesSavepoints(t *testing.T) {
+	if isMySQLServer(t) || isCockroach(t) {
+		t.Skip("known_gap(" + testEngine(t) + "): a failed statement does not abort a MySQL transaction, and CockroachDB cannot roll back to a savepoint after DDL")
+	}
 	app := newApp(t)
 
 	err := app.RunInTransaction(func(txApp core.App) error {

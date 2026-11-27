@@ -59,6 +59,9 @@ func runFilterCases(t *testing.T, cases []filterCase) {
 	seedRecords(t, pgApp)
 
 	for _, c := range cases {
+		if c.gap == "" {
+			c.gap = engineGap(t, c.name)
+		}
 		name := strings.NewReplacer(" ", "_", "/", "_").Replace(c.name)
 		if c.gap != "" {
 			name = "known_gap/" + name

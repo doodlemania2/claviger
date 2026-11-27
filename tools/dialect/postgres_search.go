@@ -55,7 +55,7 @@ func (d postgresDialect) JSONOrderTerm(expr, direction string) string {
 		"(CASE WHEN " + expr + " IS NULL THEN 0 WHEN jsonb_typeof(" + expr + ") IN ('number', 'boolean') THEN 1 ELSE 2 END), " +
 		"(CASE jsonb_typeof(" + expr + ") WHEN 'number' THEN CAST((" + expr + " #>> '{}') AS DOUBLE PRECISION)" +
 		" WHEN 'boolean' THEN (CASE WHEN " + expr + " = 'true'::jsonb THEN 1.0 ELSE 0.0 END) END), " +
-		"((" + expr + " #>> '{}') COLLATE \"C\"))"
+		"((" + expr + " #>> '{}')" + d.collation() + "))"
 
 	return d.OrderTerm(key, direction)
 }
@@ -238,9 +238,9 @@ func (d postgresDialect) StrFTime(format string, timeValue string, timeValueIsNu
 		t := "pb_in.t"
 		ts = "CASE" +
 			" WHEN lower(" + t + ") = 'now' THEN NOW() AT TIME ZONE 'UTC'" +
-			" WHEN " + t + " ~ '" + pgZonedTimestamp + "' AND pg_input_is_valid(" + t + ", 'timestamptz')" +
+			" WHEN " + t + " ~ '" + pgZonedTimestamp + "' AND " + d.inputIsValid(t, "timestamptz") +
 			" THEN CAST(" + t + " AS TIMESTAMPTZ) AT TIME ZONE 'UTC'" +
-			" WHEN pg_input_is_valid(" + t + ", 'timestamp') THEN CAST(" + t + " AS TIMESTAMP)" +
+			" WHEN " + d.inputIsValid(t, "timestamp") + " THEN CAST(" + t + " AS TIMESTAMP)" +
 			" END"
 		source = "SELECT CAST(" + timeValue + " AS TEXT) AS t"
 	}
@@ -273,12 +273,29 @@ func (d postgresDialect) StrFTime(format string, timeValue string, timeValueIsNu
 		return "", fmt.Errorf("the strftime modifier %q is not supported on PostgreSQL", m)
 	}
 
-	out, err := pgStrftimeFormat(format, "pb_ts.ts")
+	out, err := pgStrftimeFormat(format, "pb_ts.ts", d.crdb)
 	if err != nil {
 		return "", err
 	}
 
 	return "(SELECT " + out + " FROM (SELECT " + ts + " AS ts FROM (" + source + ") AS pb_in) AS pb_ts)", nil
+}
+
+// crdbTimestampPattern is what the text of a date or datetime must look like
+// to be cast on CockroachDB, which has no pg_input_is_valid() and raises an
+// error for text that is not a timestamp (SQLite returns NULL). The pattern
+// bounds the fields, so only a day that does not exist in its month
+// (2024-02-30) still reaches the cast and fails the query.
+const crdbTimestampPattern = `^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])` +
+	`([ T]([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\.[0-9]+)?)?)?` +
+	`\s*(Z|z|[+-]([01][0-9]|2[0-3])(:?[0-5][0-9])?)?$`
+
+// inputIsValid renders the "can this text be cast to the type" test.
+func (d postgresDialect) inputIsValid(expr, typ string) string {
+	if d.crdb {
+		return "(" + expr + " ~ '" + crdbTimestampPattern + "')"
+	}
+	return "pg_input_is_valid(" + expr + ", '" + typ + "')"
 }
 
 // to_char patterns of the supported strftime format specifiers.
@@ -291,7 +308,13 @@ var pgStrftimePatterns = map[byte]string{
 
 // pgStrftimeFormat translates a strftime format string to a text expression
 // over the timestamp ts. Adjacent specifiers and literals share one to_char.
-func pgStrftimeFormat(format, ts string) (string, error) {
+func pgStrftimeFormat(format, ts string, crdb bool) (string, error) {
+	// CockroachDB divides integers into decimals: "//" is the floor division
+	div := "/"
+	if crdb {
+		div = "//"
+	}
+
 	var parts []string // SQL text expressions
 	var pattern, literal strings.Builder
 
@@ -362,9 +385,9 @@ func pgStrftimeFormat(format, ts string) (string, error) {
 		case 'l':
 			parts = append(parts, "lpad(to_char("+ts+", 'FMHH12'), 2, ' ')")
 		case 'W': // week of the year, Monday first (00-53)
-			parts = append(parts, "lpad(CAST((("+doy+" - 1 + 7 - (("+dow+" + 6) % 7)) / 7) AS TEXT), 2, '0')")
+			parts = append(parts, "lpad(CAST((("+doy+" - 1 + 7 - (("+dow+" + 6) % 7)) "+div+" 7) AS TEXT), 2, '0')")
 		case 'U': // week of the year, Sunday first (00-53)
-			parts = append(parts, "lpad(CAST((("+doy+" - 1 + 7 - "+dow+") / 7) AS TEXT), 2, '0')")
+			parts = append(parts, "lpad(CAST((("+doy+" - 1 + 7 - "+dow+") "+div+" 7) AS TEXT), 2, '0')")
 		default:
 			return "", fmt.Errorf("the strftime format specifier %%%c is not supported on PostgreSQL", spec)
 		}

@@ -34,7 +34,7 @@ var postgresWriteKeywords = map[string]struct{}{
 
 // isWriteQuery reports if the statement has to take the write path.
 func isWriteQuery(d dialect.Dialect, query string, sqliteGuess bool) bool {
-	if d.Name() != dialect.PostgresName {
+	if !dialect.IsPostgres(d) {
 		return sqliteGuess
 	}
 
@@ -46,7 +46,7 @@ func isWriteQuery(d dialect.Dialect, query string, sqliteGuess bool) bool {
 // sqlTouchesAuditLog reports if the query must be rejected because it
 // would modify the (append only) audit log. It is only asked for write queries.
 func sqlTouchesAuditLog(d dialect.Dialect, query string) bool {
-	if d.Name() != dialect.PostgresName {
+	if !dialect.IsPostgres(d) {
 		return strings.Contains(strings.ToLower(query), strings.ToLower(core.CollectionNameAuditLog))
 	}
 
@@ -221,7 +221,7 @@ func postgresFirstKeyword(q string) string {
 func runReadQuery(ctx context.Context, app core.App, query string) (rows *dbx.Rows, release func(), err error) {
 	db := app.ConcurrentDB()
 
-	if core.DialectOf(app).Name() != dialect.PostgresName {
+	if !dialect.IsPostgres(core.DialectOf(app)) {
 		rows, err = db.NewQuery(query).WithContext(ctx).Rows()
 		return rows, func() {}, err
 	}

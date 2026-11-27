@@ -71,7 +71,7 @@ func TestBackupsOnPostgres(t *testing.T) {
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.DataDatabase != "postgres" || !strings.Contains(manifest.Note, "pg_dump") {
+	if (manifest.DataDatabase != "postgres" && manifest.DataDatabase != "cockroach") || manifest.Note == "" {
 		t.Fatalf("the manifest must say that the database is not in the archive: %s", raw)
 	}
 	if manifest.Tables["data.db"] != nil {
@@ -102,7 +102,7 @@ func TestBackupsOnPostgres(t *testing.T) {
 		t.Fatalf("restore: %d %v", r.Status, r.Body)
 	}
 	r := c.do("GET", "/api/health", "super", nil)
-	if got := fmt.Sprint(r.Body.(map[string]any)["data"].(map[string]any)["database"]); got != "postgres" {
+	if got := fmt.Sprint(r.Body.(map[string]any)["data"].(map[string]any)["database"]); got != manifest.DataDatabase {
 		t.Fatalf("health database = %q", got)
 	}
 }

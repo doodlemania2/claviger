@@ -4,15 +4,20 @@ package pgtests
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/doodlemania2/claviger/apis"
 	"github.com/doodlemania2/claviger/core"
 	"github.com/doodlemania2/claviger/tools/dbutils"
@@ -167,8 +172,23 @@ func runAPICases(t *testing.T, cases []apiCase, setup func(t testing.TB, app cor
 
 	sqliteClient := newAPIClient(t, sqliteApp)
 	pgClient := newAPIClient(t, pgApp)
+	if os.Getenv("PGTESTS_LOGSQL") != "" {
+		pgApp.DB().(*dbx.DB).ExecLogFunc = func(ctx context.Context, d time.Duration, sql string, res sql.Result, err error) {
+			if err != nil {
+				t.Logf("SQLERR %v: %s", err, sql)
+			}
+		}
+		pgApp.DB().(*dbx.DB).QueryLogFunc = func(ctx context.Context, d time.Duration, sql string, rows *sql.Rows, err error) {
+			if err != nil {
+				t.Logf("SQLERR %v: %s", err, sql)
+			}
+		}
+	}
 
 	for _, c := range cases {
+		if c.gap == "" {
+			c.gap = engineGap(t, c.name)
+		}
 		name := strings.NewReplacer(" ", "_", "/", "_").Replace(c.name)
 		if c.gap != "" {
 			name = "known_gap/" + name

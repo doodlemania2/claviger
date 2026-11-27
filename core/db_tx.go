@@ -3,10 +3,26 @@ package core
 import (
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"sync"
+	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	"github.com/doodlemania2/claviger/tools/dialect"
 )
+
+// txMaxAttempts is how many times a transaction that the database aborted
+// with a retryable error (CockroachDB 40001, MySQL deadlock) is run.
+const txMaxAttempts = 10
+
+func txRetryDelay(attempt int) time.Duration {
+	base := time.Duration(attempt*attempt) * 5 * time.Millisecond
+	return base + time.Duration(rand.Int64N(int64(base)+1))
+}
+
+func isRetryableTxError(db dbx.Builder, err error) bool {
+	return dialect.Of(db).IsRetryable(err)
+}
 
 // RunInTransaction wraps fn into a transaction for the regular app database.
 //
@@ -28,21 +44,34 @@ func (app *BaseApp) runInTransaction(db dbx.Builder, fn func(txApp App) error, i
 		// run as part of the already existing transaction
 		return fn(app)
 	case *dbx.DB:
-		var txApp *BaseApp
-		txErr := txOrDB.Transactional(func(tx *dbx.Tx) error {
-			txApp = app.createTxApp(tx, isForAuxDB)
-			return fn(txApp)
-		})
+		// fork (#106): CockroachDB (and MySQL on a deadlock) abort a transaction
+		// that conflicts with another one and expect the client to run it again.
+		retry := dialect.Of(txOrDB).Retries()
 
-		// execute all after event calls on transaction complete
-		if txApp != nil && txApp.txInfo != nil {
-			afterFuncErr := txApp.txInfo.runAfterFuncs(txErr)
+		for attempt := 1; ; attempt++ {
+			var txApp *BaseApp
+			txErr := txOrDB.Transactional(func(tx *dbx.Tx) error {
+				txApp = app.createTxApp(tx, isForAuxDB)
+				return fn(txApp)
+			})
+
+			// execute all after event calls on transaction complete
+			var afterFuncErr error
+			if txApp != nil && txApp.txInfo != nil {
+				afterFuncErr = txApp.txInfo.runAfterFuncs(txErr)
+			}
+
+			if txErr != nil && retry && attempt < txMaxAttempts && isRetryableTxError(txOrDB, txErr) {
+				time.Sleep(txRetryDelay(attempt))
+				continue
+			}
+
 			if afterFuncErr != nil {
 				return errors.Join(txErr, afterFuncErr)
 			}
-		}
 
-		return txErr
+			return txErr
+		}
 	default:
 		return errors.New("failed to start transaction (unknown db type)")
 	}

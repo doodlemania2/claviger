@@ -40,6 +40,8 @@ type replicas struct {
 func newReplicas(t *testing.T, n int) *replicas {
 	t.Helper()
 
+	skipUnlessPostgres(t, "several replicas need LISTEN/NOTIFY and advisory locks")
+
 	url := freshDatabase(t)
 	t.Setenv(core.DBURLEnv, url)
 	t.Setenv(core.MultiReplicaEnv, "true")

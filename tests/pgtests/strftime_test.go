@@ -16,7 +16,11 @@ func TestStrftimeMatchesSQLite(t *testing.T) {
 	sqliteApp := newSQLiteApp(t)
 	pgApp := newApp(t)
 
-	fb := dialect.Postgres.(dialect.FunctionBuilder)
+	var d dialect.Dialect = dialect.Postgres
+	if isCockroach(t) {
+		d = dialect.Cockroach
+	}
+	fb := d.(dialect.FunctionBuilder)
 
 	dates := []string{
 		"2024-02-05 03:04:05.678Z",
