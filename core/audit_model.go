@@ -73,6 +73,7 @@ var auditExcludedCollections = []string{
 	CollectionNamePastoralHolds,     // #86: explicit pastoral_* entries
 	CollectionNameLegalHolds,        // #88: explicit gdpr_hold* entries (the reason stays out of the log)
 	CollectionNameErasureLog,        // #88: written by the erasure job; the gdpr_erase entry describes it
+	CheckinLogCollection,            // #82: the check-in log is its own append-only record; the session rows carry the audit entries
 }
 
 // auditNoiseFields are fields whose changes alone do not warrant an entry
@@ -84,7 +85,7 @@ var auditNoiseFields = map[string][]string{
 	CollectionNameTOTPs: {"lastStep"},
 }
 
-var auditSensitiveNameRegex = regexp.MustCompile(`(?i)(password|passwd|passphrase|secret|token|api[_-]?key|private[_-]?key|credential)`)
+var auditSensitiveNameRegex = regexp.MustCompile(`(?i)(password|passwd|passphrase|secret|token|api[_-]?key|private[_-]?key|credential|codeHash|qrHash)`)
 
 type auditCtxKey struct{}
 type auditWriterCtxKey struct{}
