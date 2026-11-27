@@ -348,11 +348,11 @@ scripts/test_migrate_db_smoke.sh                               # migrate-db end 
 
 Skipped on CockroachDB (each prints its reason, named `known_gap(cockroach)` or in `engineGaps`): the eight multi replica tests, `TestTryUsesSavepoints` (CockroachDB cannot roll back to a savepoint after DDL; `Try` therefore just runs the function there), the two Unicode `LIKE`/`lower()` cases, and the single to multiple conversion step of `TestCollectionLifecycle` (the refusal above is asserted instead). The container needs about 1 GiB of memory.
 
-The **regular suites** (`CLAVIGER_TEST_DB=postgres scripts/test_postgres_suites.sh`) build the test database by converting the fixture, because CockroachDB has no `CREATE DATABASE ... TEMPLATE`: that costs about 7 seconds per test app instead of milliseconds, so the full `./apis` and `./core` runs (several thousand apps) take hours. They are wired (`tests/app_postgres.go` builds one database per app on engines without templates) and were run only partly, see the report in the pull request.
+The **regular suites** (`CLAVIGER_TEST_DB=postgres`, see `scripts/test_postgres_suites.sh`) build one database per test app from the fixture, because CockroachDB has no `CREATE DATABASE ... TEMPLATE`: about 7 seconds per app instead of milliseconds, so a full `./apis` and `./core` run (several thousand apps) takes many hours and was **not** run. What was run, with `-parallel 1` (several concurrent schema builds conflict on CockroachDB's system tables and fail with `restart transaction` even after the retries): `go test ./core -run '^TestRecord' -skip <tests/postgres_skip.txt>` passes (310 tests, about 8 minutes). Add `ALTER RANGE default CONFIGURE ZONE USING gc.ttlseconds = 5` to the settings above for such long runs, and drop leftover `pbt_*` databases with `DROP DATABASE ... CASCADE` (CockroachDB has no `WITH (FORCE)`).
 
 ## MySQL (experimental)
 
-Status: **experimental** (issue #106). A MySQL 8.0.13+ dialect (`dialect.MySQL`, name `mysql`) exists and the tagged suites (`tests/pgtests`) pass against MySQL 8.4 with the engine gaps listed below, but the regular `core`/`apis` suites were run only on a sample, `migrate-db` does not target MySQL, several replicas are refused, and SQLite semantics are approximated in places (list below). Do not use it for data you cannot lose. **MariaDB is refused at startup**: its 11.4 has no functional indexes.
+Status: **experimental** (issue #106). A MySQL 8.0.13+ dialect (`dialect.MySQL`, name `mysql`) exists and the tagged suites (`tests/pgtests`) pass against MySQL 8.4 (419 pass, 0 fail, 36 skips for the engine gaps below), but the regular `core`/`apis` suites were run only on a sample (see [Running the tests](#running-the-tests-1)), `migrate-db` does not target MySQL, several replicas are refused, and SQLite semantics are approximated in places (list below). Do not use it for data you cannot lose. **MariaDB is refused at startup**: its 11.4 has no functional indexes.
 
 ### Turning it on
 
@@ -400,7 +400,15 @@ CLAVIGER_TEST_PG_URL='mysql://root:test@127.0.0.1:3307/claviger' \
   go test -tags postgres -count=1 -v ./tests/pgtests/...           # about a minute
 ```
 
-Every test creates and drops its own database (`CREATE DATABASE ... utf8mb4_bin`), so the root user is needed. The regular suites need `CLAVIGER_TEST_DB=postgres` plus the same URL, and build one database per test app from the fixture (about 4 seconds); run them on a sample, not whole: `CLAVIGER_TEST_DB=postgres go test -count=1 -skip "$(...)" ./core -run '^TestRecord'` (see `scripts/test_postgres_suites.sh` for the skip list). MariaDB 11.4 is refused at startup, so there is nothing to run against it.
+Every test creates and drops its own database (`CREATE DATABASE ... utf8mb4_bin`), so the root user is needed. The regular suites need `CLAVIGER_TEST_DB=postgres` plus the same URL and build one database per test app from the fixture (about 4 seconds), so a full run takes hours and was **not** run. What was run (skip list: `tests/postgres_skip.txt`, as `scripts/test_postgres_suites.sh` builds it):
+
+| Run | Result |
+| --- | --- |
+| `./core -run '^TestRecord'` | 310 tests pass. |
+| `./core -run '^TestCollection'` | 233 tests pass, 1 fails: `TestCollectionDelete/view_with_reference` (DDL commits implicitly, see the table above). |
+| `./apis -run '^TestRecordCrud'` | 249 tests pass; 2 failed on the unique field error check (the violated MySQL index was not mapped to its field), fixed since and re-run alone: both pass. |
+
+MariaDB 11.4 is refused at startup, so there is nothing to run against it.
 
 ## CI for CockroachDB and MySQL (for the conductor)
 
