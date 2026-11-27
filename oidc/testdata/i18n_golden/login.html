@@ -25,6 +25,10 @@
 <label>Password<input name="password" type="password" autocomplete="current-password" required aria-describedby="status"></label>
 <button type="submit">Sign in</button>
 </form>
+<div id="ssoBox" hidden>
+<p id="ssoNote" class="msg"></p>
+<button id="ssoBtn" type="button"></button>
+</div>
 <form id="totp" hidden>
 <label>Code from your authenticator app, or a backup code<input name="code" inputmode="numeric" autocomplete="one-time-code" required aria-describedby="status"></label>
 <button type="submit">Verify</button>

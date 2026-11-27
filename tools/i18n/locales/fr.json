@@ -611,5 +611,13 @@
   "js.registers.kind.legal_note": "Legal note",
   "js.registers.kind.retraction": "Retraction",
   "js.registers.kind.data_subject_note": "Data subject note",
-  "js.admin.registersLink": "Registers"
+  "js.admin.registersLink": "Registers",
+  "js.sso.continueWith": "Continuer avec {provider}",
+  "js.sso.required": "Votre organisation exige l'authentification unique.",
+  "js.sso.available": "Votre organisation propose l'authentification unique.",
+  "js.sso.failed": "L'authentification unique n'a pas abouti. Réessayez ou utilisez une autre méthode.",
+  "js.sso.err.email_unverified": "Un compte existe pour cette adresse, mais le fournisseur d'identité de votre organisation ne la confirme pas. Demandez de l'aide à un administrateur.",
+  "js.sso.err.no_account": "Vous n'avez pas encore de compte et votre organisation n'en crée pas à la connexion. Contactez un administrateur.",
+  "js.sso.err.other_browser": "La connexion a été lancée dans un autre navigateur. Recommencez ici.",
+  "js.sso.err.expired": "La connexion a pris trop de temps. Recommencez."
 }
