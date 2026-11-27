@@ -2,6 +2,8 @@
 // templates for org-owned collections. Everything goes through /api/orgs, so
 // the last-owner and role guards apply here too.
 
+import { ssoSection } from "@/sso/ssoSection";
+
 const ROLES = ["owner", "admin", "member", "viewer"];
 const STATUSES = ["active", "suspended"];
 
@@ -33,6 +35,7 @@ export function pageOrgs(route) {
     });
 
     const active = () => state.orgs.find((o) => o.id == state.activeId);
+    const sso = ssoSection(active); // #92: inbound single sign-on
 
     async function loadOrgs() {
         state.isLoading = true;
@@ -646,13 +649,14 @@ export function pageOrgs(route) {
             className: "page page-orgs",
             onmount() {
                 loadConfig();
-                loadOrgs().then(loadMembers).then(loadInvitations).then(loadScim).then(loadStatus);
+                loadOrgs().then(loadMembers).then(loadInvitations).then(loadScim).then(sso.load).then(loadStatus);
                 watchers.push(
                     watch(() => state.activeId, () => {
                         app.utils.replaceHashQueryParams({ org: state.activeId });
                         loadMembers();
                         loadInvitations();
                         loadScim();
+                        sso.load();
                         loadStatus();
                     }),
                     watch(() => state.showArchived, () => loadOrgs()),
@@ -1000,6 +1004,7 @@ export function pageOrgs(route) {
                         );
                     }),
                 ),
+                sso.el,
                 t.div(
                     { className: "m-t-20" },
                     t.button(
