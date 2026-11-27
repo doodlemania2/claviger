@@ -13,10 +13,10 @@ import (
 
 // txMaxAttempts is how many times a transaction that the database aborted
 // with a retryable error (CockroachDB 40001, MySQL deadlock) is run.
-const txMaxAttempts = 10
+const txMaxAttempts = 20
 
 func txRetryDelay(attempt int) time.Duration {
-	base := time.Duration(attempt*attempt) * 5 * time.Millisecond
+	base := min(time.Duration(attempt*attempt)*5*time.Millisecond, time.Second)
 	return base + time.Duration(rand.Int64N(int64(base)+1))
 }
 
