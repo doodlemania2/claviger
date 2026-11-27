@@ -329,6 +329,7 @@
   "oidc.signedOut.message": "Vous pouvez fermer cette fenêtre.",
   "oidc.login.continueToHtml": "pour continuer vers <strong>{client}</strong>",
   "oidc.consent.title": "Autoriser l'accès",
+  "oidc.brand.securedBy": "Sécurisé par Claviger",
   "oidc.consent.heading": "Autoriser l'accès ?",
   "oidc.consent.wantsHtml": "<strong>{client}</strong> souhaite accéder à votre compte{account}.",
   "oidc.consent.allow": "Autoriser",

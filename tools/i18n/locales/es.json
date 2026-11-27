@@ -329,6 +329,7 @@
   "oidc.signedOut.message": "Puede cerrar esta ventana.",
   "oidc.login.continueToHtml": "para continuar a <strong>{client}</strong>",
   "oidc.consent.title": "Permitir acceso",
+  "oidc.brand.securedBy": "Protegido por Claviger",
   "oidc.consent.heading": "¿Permitir el acceso?",
   "oidc.consent.wantsHtml": "<strong>{client}</strong> quiere acceder a su cuenta{account}.",
   "oidc.consent.allow": "Permitir",

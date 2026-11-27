@@ -36,6 +36,10 @@ button[disabled] { opacity: .55; cursor: not-allowed; }
 .msg.err { background: var(--err-bg); color: var(--err-fg); } .msg.ok { background: var(--ok-bg); color: var(--ok-fg); }
 .scopes { list-style: none; margin: 14px 0 0; padding: 0; }
 .scopes li { padding: 10px 0; border-top: 1px solid var(--line); } .scopes li span { display: block; color: var(--muted); font-size: .9rem; }
+.brandbar { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; }
+.brandbar img { display: block; max-height: 28px; max-width: 160px; width: auto; height: 28px; }
+.brandbar .x { color: var(--muted); }
+.powered { margin: 18px 0 0; font-size: .8rem; text-align: center; }
 [hidden] { display: none !important; }
 `
 

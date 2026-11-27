@@ -329,6 +329,7 @@
   "oidc.signedOut.message": "يمكنك إغلاق هذه النافذة.",
   "oidc.login.continueToHtml": "للمتابعة إلى <strong>{client}</strong>",
   "oidc.consent.title": "السماح بالوصول",
+  "oidc.brand.securedBy": "مؤمَّن بواسطة Claviger",
   "oidc.consent.heading": "هل تريد السماح بالوصول؟",
   "oidc.consent.wantsHtml": "يريد <strong>{client}</strong> الوصول إلى حسابك{account}.",
   "oidc.consent.allow": "سماح",

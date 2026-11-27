@@ -329,6 +329,7 @@
   "oidc.signedOut.message": "Maaari mo nang isara ang window na ito.",
   "oidc.login.continueToHtml": "upang magpatuloy sa <strong>{client}</strong>",
   "oidc.consent.title": "Payagan ang access",
+  "oidc.brand.securedBy": "Pinoprotektahan ng Claviger",
   "oidc.consent.heading": "Payagan ang access?",
   "oidc.consent.wantsHtml": "Gustong i-access ng <strong>{client}</strong> ang iyong account{account}.",
   "oidc.consent.allow": "Payagan",

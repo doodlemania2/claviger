@@ -586,7 +586,7 @@ func (m *module) deviceVerify(e *core.RequestEvent) error {
 
 	return m.render(e, http.StatusOK, pageData{
 		Title: text.T("js.signIn"), Heading: text.T("js.signIn"), Page: "login", RequestID: ref, Finish: mountPath + "/device/finish",
-		Collection: col.Name, ClientName: client.Name, Script: mountPath + "/assets/login.js", Text: text,
+		Collection: col.Name, ClientName: client.Name, Brand: m.brandOf(client), Script: mountPath + "/assets/login.js", Text: text,
 	})
 }
 
@@ -603,7 +603,7 @@ func (m *module) deviceApprovePage(e *core.RequestEvent, row *deviceRow, client 
 
 	d := extData{
 		Page: "device-approve", Title: text.T("oidc.consent.title"), Heading: text.T("oidc.device.approveHeading"), Ref: row.Id,
-		ClientName: client.Name, Script: mountPath + "/assets/device.js", Text: text, Action: mountPath + "/device/decision",
+		ClientName: client.Name, Brand: m.brandOf(client), Script: mountPath + "/assets/device.js", Text: text, Action: mountPath + "/device/decision",
 	}
 
 	if accountErr == nil {
