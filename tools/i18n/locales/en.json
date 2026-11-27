@@ -610,5 +610,13 @@
   "js.registers.kind.legal_note": "Legal note",
   "js.registers.kind.retraction": "Retraction",
   "js.registers.kind.data_subject_note": "Data subject note",
-  "js.admin.registersLink": "Registers"
+  "js.admin.registersLink": "Registers",
+  "js.sso.continueWith": "Continue with {provider}",
+  "js.sso.required": "Your organization requires single sign-on.",
+  "js.sso.available": "Your organization offers single sign-on.",
+  "js.sso.failed": "Single sign-on did not complete. Try again or use another sign-in method.",
+  "js.sso.err.email_unverified": "An account with this address exists, but your organization's identity provider does not confirm the address. Ask an administrator for help.",
+  "js.sso.err.no_account": "There is no account for you yet, and your organization does not create accounts at sign-in. Ask an administrator.",
+  "js.sso.err.other_browser": "The sign-in was started in another browser. Start again here.",
+  "js.sso.err.expired": "The sign-in took too long. Start again."
 }

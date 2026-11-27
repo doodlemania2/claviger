@@ -51,6 +51,7 @@ JavaScript hooks. Every feature below is off, or has no effect, until you config
 | Accessible hosted pages | Larger text, high contrast, keyboard and screen reader use: [docs/accessibility.md](docs/accessibility.md) |
 | Organizations and roles | Members, roles, tags, invitations, nested orgs and transfers: [docs/orgs.md](docs/orgs.md) |
 | SCIM 2.0 | Provision members from Entra ID or Okta: [docs/scim.md](docs/scim.md) |
+| Enterprise single sign-on | An organization's own OpenID Connect provider (Okta, Entra ID, Google Workspace), DNS-verified domains, home-realm discovery, just-in-time accounts, group-to-role mapping: [docs/inbound-sso.md](docs/inbound-sso.md) |
 
 ### Trust and operations
 

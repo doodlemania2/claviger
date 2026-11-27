@@ -611,5 +611,13 @@
   "js.registers.kind.legal_note": "Legal note",
   "js.registers.kind.retraction": "Retraction",
   "js.registers.kind.data_subject_note": "Data subject note",
-  "js.admin.registersLink": "Registers"
+  "js.admin.registersLink": "Registers",
+  "js.sso.continueWith": "Magpatuloy gamit ang {provider}",
+  "js.sso.required": "Kinakailangan ng iyong organisasyon ang single sign-on.",
+  "js.sso.available": "Nag-aalok ang iyong organisasyon ng single sign-on.",
+  "js.sso.failed": "Hindi natapos ang single sign-on. Subukan muli o gumamit ng ibang paraan ng pag-sign in.",
+  "js.sso.err.email_unverified": "May account na may ganitong address, pero hindi ito kinukumpirma ng identity provider ng iyong organisasyon. Humingi ng tulong sa isang administrator.",
+  "js.sso.err.no_account": "Wala ka pang account, at hindi gumagawa ng account ang iyong organisasyon sa pag-sign in. Magtanong sa isang administrator.",
+  "js.sso.err.other_browser": "Sa ibang browser sinimulan ang pag-sign in. Magsimula ulit dito.",
+  "js.sso.err.expired": "Masyadong natagalan ang pag-sign in. Magsimula ulit."
 }

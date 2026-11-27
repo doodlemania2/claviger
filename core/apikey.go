@@ -111,6 +111,9 @@ var APIKeyForbiddenCollections = []string{
 	CollectionNameConsentPurposes,  // #88: consent evidence; no machine access
 	CollectionNameConsents,
 	CollectionNameConsentEvents,
+	CollectionNameSSOConnections, // #92: identity provider settings and secrets
+	CollectionNameSSODomains,
+	CollectionNameSSOFlows,
 }
 
 // APIKeyInfo describes the key that authenticated a request.

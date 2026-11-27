@@ -611,5 +611,13 @@
   "js.registers.kind.legal_note": "Legal note",
   "js.registers.kind.retraction": "Retraction",
   "js.registers.kind.data_subject_note": "Data subject note",
-  "js.admin.registersLink": "Registers"
+  "js.admin.registersLink": "Registers",
+  "js.sso.continueWith": "المتابعة باستخدام {provider}",
+  "js.sso.required": "تشترط مؤسستك تسجيل الدخول الموحّد.",
+  "js.sso.available": "توفّر مؤسستك تسجيل الدخول الموحّد.",
+  "js.sso.failed": "لم يكتمل تسجيل الدخول الموحّد. حاول مرة أخرى أو استخدم طريقة أخرى.",
+  "js.sso.err.email_unverified": "يوجد حساب بهذا العنوان، لكن مزوّد الهوية في مؤسستك لا يؤكد العنوان. اطلب المساعدة من مسؤول.",
+  "js.sso.err.no_account": "ليس لديك حساب بعد، ولا تنشئ مؤسستك حسابات عند تسجيل الدخول. اسأل مسؤولًا.",
+  "js.sso.err.other_browser": "بدأ تسجيل الدخول في متصفح آخر. ابدأ من جديد هنا.",
+  "js.sso.err.expired": "استغرق تسجيل الدخول وقتًا طويلًا. ابدأ من جديد."
 }

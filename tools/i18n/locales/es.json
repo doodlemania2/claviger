@@ -611,5 +611,13 @@
   "js.registers.kind.legal_note": "Legal note",
   "js.registers.kind.retraction": "Retraction",
   "js.registers.kind.data_subject_note": "Data subject note",
-  "js.admin.registersLink": "Registers"
+  "js.admin.registersLink": "Registers",
+  "js.sso.continueWith": "Continuar con {provider}",
+  "js.sso.required": "Tu organización exige el inicio de sesión único.",
+  "js.sso.available": "Tu organización ofrece inicio de sesión único.",
+  "js.sso.failed": "El inicio de sesión único no se completó. Inténtalo de nuevo o usa otro método.",
+  "js.sso.err.email_unverified": "Existe una cuenta con esta dirección, pero el proveedor de identidad de tu organización no la confirma. Pide ayuda a un administrador.",
+  "js.sso.err.no_account": "Todavía no tienes una cuenta y tu organización no crea cuentas al iniciar sesión. Consulta a un administrador.",
+  "js.sso.err.other_browser": "El inicio de sesión se inició en otro navegador. Vuelve a empezar aquí.",
+  "js.sso.err.expired": "El inicio de sesión tardó demasiado. Vuelve a empezar."
 }

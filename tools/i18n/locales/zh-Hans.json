@@ -611,5 +611,13 @@
   "js.registers.kind.legal_note": "Legal note",
   "js.registers.kind.retraction": "Retraction",
   "js.registers.kind.data_subject_note": "Data subject note",
-  "js.admin.registersLink": "Registers"
+  "js.admin.registersLink": "Registers",
+  "js.sso.continueWith": "使用 {provider} 继续",
+  "js.sso.required": "您的组织要求使用单点登录。",
+  "js.sso.available": "您的组织提供单点登录。",
+  "js.sso.failed": "单点登录未完成。请重试或使用其他登录方式。",
+  "js.sso.err.email_unverified": "已有使用此地址的账户，但您所在组织的身份提供商未确认该地址。请联系管理员。",
+  "js.sso.err.no_account": "您还没有账户，且您的组织不会在登录时创建账户。请联系管理员。",
+  "js.sso.err.other_browser": "登录是在另一个浏览器中发起的。请在此重新开始。",
+  "js.sso.err.expired": "登录耗时过长。请重新开始。"
 }
