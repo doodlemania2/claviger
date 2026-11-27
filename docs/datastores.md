@@ -402,3 +402,51 @@ CLAVIGER_TEST_PG_URL='mysql://root:test@127.0.0.1:3307/claviger' \
 
 Every test creates and drops its own database (`CREATE DATABASE ... utf8mb4_bin`), so the root user is needed. The regular suites need `CLAVIGER_TEST_DB=postgres` plus the same URL, and build one database per test app from the fixture (about 4 seconds); run them on a sample, not whole: `CLAVIGER_TEST_DB=postgres go test -count=1 -skip "$(...)" ./core -run '^TestRecord'` (see `scripts/test_postgres_suites.sh` for the skip list). MariaDB 11.4 is refused at startup, so there is nothing to run against it.
 
+## CI for CockroachDB and MySQL (for the conductor)
+
+Nothing here is wired into `.github/workflows/test.yml` yet. Two jobs would do it, each after the `test` job, on the same runner tier as the `postgres` job. The service container syntax of GitHub Actions cannot pass arguments to the CockroachDB image, so that one is started with a `docker run` step.
+
+```yaml
+  cockroach:
+    needs: test
+    runs-on: ${{ vars.RUNNER_LIGHT || 'tdp-k3s-claviger' }}
+    env:
+      CLAVIGER_TEST_PG_URL: postgresql://root@127.0.0.1:26257/defaultdb?sslmode=disable
+    steps:
+      - uses: actions/checkout@<sha>
+      - uses: actions/setup-go@<sha>
+        with: { go-version-file: go.mod }
+      - name: Start CockroachDB
+        run: |
+          docker run -d --name crdb -p 26257:26257 cockroachdb/cockroach:v25.4.21 \
+            start-single-node --insecure --cache=512MiB --max-sql-memory=512MiB
+          until docker exec crdb ./cockroach sql --insecure -e 'select 1' >/dev/null 2>&1; do sleep 1; done
+          for q in "SET CLUSTER SETTING jobs.registry.interval.adopt = '1s'" \
+                   "SET CLUSTER SETTING jobs.registry.interval.cancel = '1s'" \
+                   "SET CLUSTER SETTING sql.stats.automatic_collection.enabled = false" \
+                   "ALTER RANGE default CONFIGURE ZONE USING gc.ttlseconds = 5"; do
+            docker exec crdb ./cockroach sql --insecure -e "$q"; done
+      - run: go test -tags postgres -count=1 -v ./tests/pgtests/... | tee crdb.log   # expect about 440 PASS, 0 FAIL, skips named known_gap(cockroach) or MultiReplica
+      - run: scripts/test_migrate_db_smoke.sh
+
+  mysql:
+    needs: test
+    runs-on: ${{ vars.RUNNER_LIGHT || 'tdp-k3s-claviger' }}
+    services:
+      mysql:
+        image: mysql:8.4
+        env: { MYSQL_ROOT_PASSWORD: test, MYSQL_DATABASE: claviger }
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -ptest" --health-interval 5s --health-retries 20
+    env:
+      CLAVIGER_TEST_PG_URL: mysql://root:test@127.0.0.1:3306/claviger
+    steps:
+      - uses: actions/checkout@<sha>
+      - uses: actions/setup-go@<sha>
+        with: { go-version-file: go.mod }
+      - run: go test -tags postgres -count=1 -v ./tests/pgtests/... | tee mysql.log   # expect about 420 PASS, 0 FAIL
+```
+
+Check the counts the way the `postgres` job does (`grep -c -- '--- PASS'` against a minimum, any `--- SKIP` that is not `known_gap` or a multi replica test fails the job). The regular suites on these engines are not part of this proposal: they build one database per test app (4 to 7 seconds), so a full run takes hours; run a sample (`./core -run '^TestRecord'`, `./apis -run '^TestRecordCrud'`) with `CLAVIGER_TEST_DB=postgres` if you want one.
+
