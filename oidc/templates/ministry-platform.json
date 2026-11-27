@@ -1,0 +1,30 @@
+{
+  "id": "ministry-platform",
+  "name": "MinistryPlatform (ACS Technologies)",
+  "vendor": "ACS Technologies",
+  "description": "External login for MinistryPlatform through an Identity Provider record of type OAuth 2.0 / OpenID Connect. Only existing MinistryPlatform users can sign in this way.",
+  "verified": false,
+  "guide": "docs/sso/ministry-platform.md",
+  "placeholders": [
+    {"key": "domain", "label": "MinistryPlatform domain", "hint": "The host name of your installation, without https://.", "example": "my.example.org"},
+    {"key": "identity_provider_id", "label": "Identity Provider Unique ID (uppercase)", "hint": "The GUID of the Identity Provider record, converted to uppercase.", "example": "0F8FAD5B-D9CB-469F-A165-70867728950E"}
+  ],
+  "redirectUris": ["https://{domain}/ministryplatformapi/oauth/callback/{identity_provider_id}"],
+  "postLogoutUris": [],
+  "scopes": ["openid", "profile", "email"],
+  "public": false,
+  "firstParty": false,
+  "requirePkce": false,
+  "accessTokenType": "jwt",
+  "signingAlg": "RS256",
+  "idTokenSeconds": 0,
+  "claims": [
+    {"name": "sub", "scope": "openid", "description": "A stable account identifier (the Claviger record id)."},
+    {"name": "collection", "scope": "openid", "description": "The name of the auth collection the account belongs to."},
+    {"name": "email", "scope": "email", "description": "The member's email address."},
+    {"name": "email_verified", "scope": "email", "description": "Whether the email address is verified."},
+    {"name": "name", "scope": "profile", "description": "The member's display name, when the collection has a name field."},
+    {"name": "preferred_username", "scope": "profile", "description": "The username, when the collection has a username field."},
+    {"name": "updated_at", "scope": "profile", "description": "When the account was last changed."}
+  ]
+}

@@ -37,6 +37,7 @@ func (m *module) bindAdminRoutes(se *core.ServeEvent) {
 		})
 	})
 
+	g.GET("/client-templates", m.listClientTemplates)
 	g.POST("/clients", m.createClient)
 	g.POST("/clients/{id}/secret", m.rotateClientSecret)
 

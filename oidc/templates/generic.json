@@ -1,0 +1,29 @@
+{
+  "id": "generic",
+  "name": "Generic OpenID Connect application",
+  "vendor": "Any",
+  "description": "A confidential web application that signs in with the authorization code flow and PKCE. Use it for products without a template.",
+  "verified": false,
+  "guide": "docs/sso/generic.md",
+  "placeholders": [
+    {"key": "callback_url", "label": "Application callback URL", "hint": "The redirect (callback) URL the application shows when you add an OpenID Connect provider.", "example": "https://app.example.com/auth/callback"}
+  ],
+  "redirectUris": ["{callback_url}"],
+  "postLogoutUris": [],
+  "scopes": ["openid", "profile", "email"],
+  "public": false,
+  "firstParty": false,
+  "requirePkce": true,
+  "accessTokenType": "jwt",
+  "signingAlg": "RS256",
+  "idTokenSeconds": 0,
+  "claims": [
+    {"name": "sub", "scope": "openid", "description": "A stable account identifier (the Claviger record id)."},
+    {"name": "collection", "scope": "openid", "description": "The name of the auth collection the account belongs to."},
+    {"name": "email", "scope": "email", "description": "The member's email address."},
+    {"name": "email_verified", "scope": "email", "description": "Whether the email address is verified."},
+    {"name": "name", "scope": "profile", "description": "The member's display name, when the collection has a name field."},
+    {"name": "preferred_username", "scope": "profile", "description": "The username, when the collection has a username field."},
+    {"name": "updated_at", "scope": "profile", "description": "When the account was last changed."}
+  ]
+}
