@@ -300,11 +300,24 @@ func createDatabase(adminURL, name string) error {
 	return adminExec(adminURL, `CREATE DATABASE "`+name+`"`)
 }
 
+var (
+	templateOnce sync.Once
+	templateOK   bool
+)
+
 func dropDatabase(adminURL, name string) {
 	if isMySQLURL(adminURL) {
 		_ = adminExec(adminURL, "DROP DATABASE IF EXISTS `"+name+"`")
 		return
 	}
+
+	templateOnce.Do(func() { templateOK = canTemplate(adminURL) })
+	if !templateOK {
+		// CockroachDB has no WITH (FORCE); CASCADE drops what is in it
+		_ = adminExec(adminURL, `DROP DATABASE IF EXISTS "`+name+`" CASCADE`)
+		return
+	}
+
 	_ = adminExec(adminURL, `DROP DATABASE IF EXISTS "`+name+`" WITH (FORCE)`)
 }
 
@@ -317,6 +330,8 @@ func (p *testPostgres) clone() (string, error) {
 		}
 		if err := p.fill(name); err != nil {
 			dropDatabase(p.adminURL, name)
+			// many tests ignore the NewTestApp error and would only panic on a nil app
+			fmt.Fprintf(os.Stderr, "TESTAPP: build the test database: %v\n", err)
 			return "", fmt.Errorf("build the test database: %w", err)
 		}
 		return name, nil

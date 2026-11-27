@@ -375,7 +375,7 @@ CLAVIGER_DB_URL='mysql://user:password@host:3306/dbname'     # mariadb:// is acc
 | Insertion order | A hidden `_rowid_ BIGINT AUTO_INCREMENT UNIQUE` column, like PostgreSQL's. |
 | Indexes | MySQL cannot index a TEXT column whole, has no partial indexes and no `COLLATE NOCASE`. A plain index on text uses a 191 character prefix key. A **unique** index on text is a unique expression index over `SHA2(column, 256)`. A partial unique index (`WHERE email != ''`) is an expression that is `NULL` when the condition is false (NULLs never collide), so it keeps its meaning. A partial non unique index is created without its `WHERE`. `COLLATE NOCASE` is `LOWER(column)`. The portable definition is kept in the index comment, and `TableIndexes` returns it, so collections export and import the same indexes on every engine. |
 | Unique errors | `Duplicate entry ... for key 'table.index'` (error 1062) is mapped to the `validation_not_unique` error of the field whose name the index name contains (the primary key is `id`). |
-| DDL | DDL commits implicitly in MySQL: a migration or a collection save that fails half way is **not** rolled back. |
+| DDL | DDL commits implicitly in MySQL: a migration or a collection save that fails half way is **not** rolled back. Seen in the suites: deleting a collection that a view still selects from is refused, but only after its table was dropped (`TestCollectionDelete/view_with_reference`). |
 | Transactions | Deadlocks (1213) and lock wait timeouts (1205) are retried like CockroachDB's `40001`. |
 
 ### Differences from SQLite

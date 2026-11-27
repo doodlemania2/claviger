@@ -237,7 +237,7 @@ func (form *RecordUpsert) DrySubmit(callback func(txApp core.App, drySavedRecord
 			defer tx.Rollback()
 
 			if err := txApp.SaveNoValidateWithContext(form.ctx, clone); err != nil {
-				return validators.NormalizeUniqueIndexError(err, clone.Collection().Name, clone.Collection().Fields.FieldNames())
+				return validators.NormalizeUniqueIndexError(err, clone.Collection().Name, clone.Collection().Fields.FieldNames(), []string(clone.Collection().Indexes)...)
 			}
 
 			if callback != nil {
@@ -253,7 +253,7 @@ func (form *RecordUpsert) DrySubmit(callback func(txApp core.App, drySavedRecord
 	// ---------------------------------------------------------------
 	err := app.SaveNoValidateWithContext(form.ctx, clone)
 	if err != nil {
-		return validators.NormalizeUniqueIndexError(err, clone.Collection().Name, clone.Collection().Fields.FieldNames())
+		return validators.NormalizeUniqueIndexError(err, clone.Collection().Name, clone.Collection().Fields.FieldNames(), []string(clone.Collection().Indexes)...)
 	}
 
 	manualRollback := func() error {

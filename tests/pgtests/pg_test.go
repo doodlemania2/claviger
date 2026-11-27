@@ -127,6 +127,9 @@ func freshDatabase(t testing.TB) string {
 		create = "CREATE DATABASE `" + name + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin"
 		drop = "DROP DATABASE IF EXISTS `" + name + "`"
 	}
+	if isCockroach(t) {
+		drop = `DROP DATABASE IF EXISTS "` + name + `" CASCADE` // no WITH (FORCE) there
+	}
 
 	if _, err := db.Exec(create); err != nil {
 		t.Fatalf("create database: %v", err)
