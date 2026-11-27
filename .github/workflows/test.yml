@@ -23,7 +23,13 @@ concurrency:
 # Outside contributors' runs also need approval first (repo setting).
 
 jobs:
+  # The SQLite suites, as three parallel shards. The apis package alone ran 26-36 minutes on the
+  # k3s runners (2026-11) and timed out when two runs shared a runner, so its tests are split by
+  # the first letter of the top-level test name, like the Postgres shards below (the two regexes
+  # are complements: every top-level test runs in exactly one). The third shard runs every other
+  # package, the KMS build-tag tests and the linter.
   test:
+    name: test ${{ matrix.shard.id }}
     timeout-minutes: 60
     # Dependabot PRs are notices and never run CI; label one `run-ci` to test it.
     # docker-build needs this job, so it is skipped too.
@@ -31,6 +37,13 @@ jobs:
       github.event.pull_request.user.login != 'dependabot[bot]' ||
       contains(github.event.pull_request.labels.*.name, 'run-ci')
     runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || (vars.RUNNER_LIGHT || 'tdp-k3s-claviger') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - { id: apis-a, run: "^Test([A-F]|O)" }
+          - { id: apis-b, run: "^Test[^A-FO]" }
+          - { id: rest, run: "" }
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
@@ -38,14 +51,20 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Run tests
-        # The apis package alone runs past go test's default 10m on the k3s runners.
-        run: go test -timeout 40m ./... -v --cover
+      - name: Run apis tests (${{ matrix.shard.id }})
+        if: matrix.shard.id != 'rest'
+        run: go test -timeout 45m ./apis -run '${{ matrix.shard.run }}' -v --cover
+
+      - name: Run the other packages
+        if: matrix.shard.id == 'rest'
+        run: go test -timeout 40m $(go list ./... | grep -v '/apis$') -v --cover
 
       - name: Run KMS key source tests (AWS KMS and Google Cloud KMS build tags)
+        if: matrix.shard.id == 'rest'
         run: go test -tags kms_aws,kms_gcp -count=1 ./tools/keys/...
 
       - name: Run linter
+        if: matrix.shard.id == 'rest'
         # golangci.yml is schema `version: "2"`, which requires golangci-lint v2
         # (action v7+). The old action@v6 installs v1 and fails to parse it.
         # Upstream v0.40.0 renamed the `gomodguard` linter to `gomodguard_v2`,
