@@ -8,6 +8,9 @@ shellcheck:
 test-entrypoint:
 	TEST_SH=sh sh scripts/test_entrypoint_encryption.sh
 
+release:
+	goreleaser release --skip=publish --clean
+
 test:
 	go test ./... -v --cover
 

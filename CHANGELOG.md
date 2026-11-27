@@ -1,3 +1,63 @@
+## v0.42.3
+
+- Increased the auto `VACUUM` deleted logs threshold to 50k to avoid unnecessery running too often.
+
+- Explicitly check for error body in the [S3 CompleteMultipartUpload call](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html) because chunks post-processing can still fail even with 200 responses.
+
+- Added `write error: client disconnected` to the benign log errors list.
+
+- Added `.webm` to the UI video extensions list.
+
+- Changed the OAuth2 redirect failure logs from DEBUG to WARN level for better visibility.
+
+- Relaxed the extra IP realtime check to allow subscription requests for a single client to originate from different IPs ([#7758](https://ganigeorgiev.com/pocketbase/discussions/7758#comment-7ccdsr6gi1nd0y3)).
+    _Note that authenticated realtime subscribers are still protected from bruteforce subscription change attempts because we still enforce a same auth requirement._
+    _Since v0.38.2 realtime connections are also restricted to max 30min by default no matter whether they are idle or not forcing the client id to reset on reconnect which further makes such enumaration related attacks very unlikely._
+    _You can technically also completely disable all realtime IP checks as shown in the related discussion but I'd advice against doing that unless you have a very good reason._
+
+- Bumped `golang.org/x/*` dependencies.
+
+
+## v0.42.2
+
+- Fixed another UI regression causing wrong redirect page on OAuth2 success ([bugstage#14](https://ganigeorgiev.com/bugstage/discussions/14)).
+
+
+## v0.42.1
+
+- Fixed superuser UI regression as a result of the extra `Authorization` checks in v0.42.0 ([#8368](https://ganigeorgiev.com/pocketbase/discussions/8368)).
+
+
+## v0.42.0
+
+- Allow previewing JPEG XL images (`.jxl`) in the superuser UI.
+    _Note that there is no thumbs support for JPEG XL yet._
+
+- Allow reordering the configured OAuth2 providers in the UI _(mostly for the `listAuthMethods()` response)_.
+
+- Added helper `app.CountLogs()` query method.
+
+- Auto run `VACUUM` for the `auxiliary.db` after deleting more than 20k logs [#7854](https://ganigeorgiev.com/pocketbase/discussions/7854#comment-8lea6s7xy8x4abs).
+    _It runs as part of the `__pbLogsCleanup__` cron job and it is an extra optimization to more eagerly free up unused disk space after large logs rotation._
+
+- Fixed logs chart y-axis overlap when numbers with more than 5 digits are shown.
+
+- Replaced `fmt.Sprintf("%x")` with the slightly more performant `encoding/hex.EncodeToString()`.
+
+- Added guard for a `cron.Stop()` race in case it happens to be called right before the ticker initialization _(unlikely to trigger in real usage)_.
+
+- Allowed the `update/Config.Channel` field to be optional so that it can be configured to fetch the latest release from any of the repo release channels.
+
+- Added a global middleware to reject with 401 unknown or expired `Auhorization` tokens so that client-side apps can more easily handle auth state changes _(e.g. invalidating session screens after the user has changed password on another device)_. As a side-effect this also enables practically any endpoint, not just `authRefresh()`, to be used as a very rudimentary auth token verification.
+    _⚠️ For most applications this should be a none breaking change but note that previously such `Authorization` header values were silently ignored to allow custom token handling because pre v0.23 middlewares didn't have a way to control the execution priority. Now this global middleware acts as a catch-all fallback and applies as latest as possible and only if `e.Auth` is not already loaded._
+
+- Log harmless mid-response network errors with level `INFO (0)` ([#8361](https://ganigeorgiev.com/pocketbase/discussions/8361)).
+
+- Bumped `modernc.org/sqlite` to 1.62.0 _([SQLite 3.54.1](https://sqlite.org/src/timeline?from=version-3.54.0&to=version-3.54.1&y=ci) and other minor fixes)_.
+
+- Bumped `golang.org/x/*` dependencies and use Go 1.27.4 to generate the prebuilt binaries since it has some [minor security fixes](https://groups.google.com/g/golang-announce/c/iY8TY0wWgbM) _(none of them are critical for PocketBase but nevertheless it is advised to update)_.
+
+
 ## v0.41.1
 
 - Added missing license info to the vendored fonts ([#8352](https://ganigeorgiev.com/pocketbase/discussions/8352)).

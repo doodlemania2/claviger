@@ -6607,6 +6607,10 @@ namespace core {
    */
   logsStats(expr: dbx.Expression): Array<(LogsStatsItem | undefined)>
   /**
+   * CountLogs returns the total number of log entries.
+   */
+  countLogs(...exprs: dbx.Expression[]): number
+  /**
    * DeleteOldLogs delete all logs that are created before createdBefore.
    */
   deleteOldLogs(createdBefore: time.Time): void
@@ -15641,6 +15645,12 @@ namespace core {
    */
   findLogById(id: string): (Log)
  }
+ interface BaseApp {
+  /**
+   * CountLogs returns the total number of log entries.
+   */
+  countLogs(...optExprs: dbx.Expression[]): number
+ }
  /**
   * LogsStatsItem defines the total number of logs for a specific time period.
   */
@@ -17686,7 +17696,7 @@ namespace core {
   /**
    * CountRecords returns the total number of records in a collection.
    */
-  countRecords(collectionModelOrIdentifier: any, ...exprs: dbx.Expression[]): number
+  countRecords(collectionModelOrIdentifier: any, ...optExprs: dbx.Expression[]): number
  }
  interface BaseApp {
   /**
@@ -21741,6 +21751,93 @@ namespace template {
  }
 }
 
+namespace pocketbase {
+ /**
+  * PocketBase defines a PocketBase app launcher.
+  * 
+  * It implements [CoreApp] via embedding and all of the app interface methods
+  * could be accessed directly through the instance (eg. PocketBase.DataDir()).
+  */
+ type _slMXNHk = CoreApp
+ interface PocketBase extends _slMXNHk {
+  /**
+   * RootCmd is the main console command
+   */
+  rootCmd?: cobra.Command
+ }
+ /**
+  * Config is the PocketBase initialization config struct.
+  */
+ interface Config {
+  /**
+   * hide the default console server info on app startup
+   */
+  hideStartBanner: boolean
+  /**
+   * optional default values for the console flags
+   */
+  defaultDev: boolean
+  defaultDataDir: string // if not set, it will fallback to "./pb_data"
+  defaultEncryptionEnv: string
+  defaultQueryTimeout: time.Duration // default to core.DefaultQueryTimeout (in seconds)
+  /**
+   * optional DB configurations
+   */
+  dataMaxOpenConns: number // default to core.DefaultDataMaxOpenConns
+  dataMaxIdleConns: number // default to core.DefaultDataMaxIdleConns
+  auxMaxOpenConns: number // default to core.DefaultAuxMaxOpenConns
+  auxMaxIdleConns: number // default to core.DefaultAuxMaxIdleConns
+  dbConnect: core.DBConnectFunc // default to core.dbConnect
+ }
+ interface _new {
+  /**
+   * New creates a new PocketBase instance with the default configuration.
+   * Use [NewWithConfig] if you want to provide a custom configuration.
+   * 
+   * Note that the application will not be initialized/bootstrapped yet,
+   * aka. DB connections, migrations, app settings, etc. will not be accessible.
+   * Everything will be initialized when [PocketBase.Start] is executed.
+   * If you want to initialize the application before calling [PocketBase.Start],
+   * then you'll have to manually call [PocketBase.Bootstrap].
+   */
+  (): (PocketBase)
+ }
+ interface newWithConfig {
+  /**
+   * NewWithConfig creates a new PocketBase instance with the provided config.
+   * 
+   * Note that the application will not be initialized/bootstrapped yet,
+   * aka. DB connections, migrations, app settings, etc. will not be accessible.
+   * Everything will be initialized when [PocketBase.Start] is executed.
+   * If you want to initialize the application before calling [PocketBase.Start],
+   * then you'll have to manually call [PocketBase.Bootstrap].
+   */
+  (config: Config): (PocketBase)
+ }
+ interface PocketBase {
+  /**
+   * Start starts the application, aka. registers the default system
+   * commands (serve, superuser, version) and executes pb.RootCmd.
+   */
+  start(): void
+ }
+ interface PocketBase {
+  /**
+   * Execute initializes the application (if not already) and executes
+   * the pb.RootCmd with graceful shutdown support.
+   * 
+   * This method differs from pb.Start() by not registering the default
+   * system commands!
+   */
+  execute(): void
+ }
+ interface nopWrite {
+ }
+ interface nopWrite {
+  write(p: string|Array<number>): number
+ }
+}
+
 /**
  * Package sync provides basic synchronization primitives such as mutual
  * exclusion locks. Other than the [Once] and [WaitGroup] types, most are intended
@@ -23229,6 +23326,300 @@ namespace fs {
   * ```
   */
  interface WalkDirFunc {(path: string, d: DirEntry, err: Error): void }
+}
+
+namespace store {
+ /**
+  * Store defines a concurrent safe in memory key-value data store.
+  */
+ interface Store<K,T> {
+ }
+ interface Store<K, T> {
+  /**
+   * Reset clears the store and replaces the store data with a
+   * shallow copy of the provided newData.
+   */
+  reset(newData: _TygojaDict): void
+ }
+ interface Store<K, T> {
+  /**
+   * Length returns the current number of elements in the store.
+   */
+  length(): number
+ }
+ interface Store<K, T> {
+  /**
+   * RemoveAll removes all the existing store entries.
+   */
+  removeAll(): void
+ }
+ interface Store<K, T> {
+  /**
+   * Remove removes a single entry from the store.
+   * 
+   * Remove does nothing if key doesn't exist in the store.
+   */
+  remove(key: K): void
+ }
+ interface Store<K, T> {
+  /**
+   * Has checks if element with the specified key exist or not.
+   */
+  has(key: K): boolean
+ }
+ interface Store<K, T> {
+  /**
+   * Get returns a single element value from the store.
+   * 
+   * If key is not set, the zero T value is returned.
+   */
+  get(key: K): T
+ }
+ interface Store<K, T> {
+  /**
+   * GetOk is similar to Get but returns also a boolean indicating whether the key exists or not.
+   */
+  getOk(key: K): [T, boolean]
+ }
+ interface Store<K, T> {
+  /**
+   * GetAll returns a shallow copy of the current store data.
+   */
+  getAll(): _TygojaDict
+ }
+ interface Store<K, T> {
+  /**
+   * Keys returns a slice with all of the store keys.
+   */
+  keys(): Array<K>
+ }
+ interface Store<K, T> {
+  /**
+   * Values returns a slice with all of the store values.
+   */
+  values(): Array<T>
+ }
+ interface Store<K, T> {
+  /**
+   * Set sets (or overwrite if already exists) a new value for key.
+   */
+  set(key: K, value: T): void
+ }
+ interface Store<K, T> {
+  /**
+   * SetFunc sets (or overwrite if already exists) a new value resolved
+   * from the function callback for the provided key.
+   * 
+   * The function callback receives as argument the old store element value (if exists).
+   * If there is no old store element, the argument will be the T zero value.
+   * 
+   * Example:
+   * 
+   * ```
+   * 	s := store.New[string, int](nil)
+   * 	s.SetFunc("count", func(old int) int {
+   * 	    return old + 1
+   * 	})
+   * ```
+   */
+  setFunc(key: K, fn: (old: T) => T): void
+ }
+ interface Store<K, T> {
+  /**
+   * GetOrSet retrieves a single existing value for the provided key
+   * or stores a new one if it doesn't exist.
+   */
+  getOrSet(key: K, setFunc: () => T): T
+ }
+ interface Store<K, T> {
+  /**
+   * SetIfLessThanLimit sets (or overwrite if already exist) a new value for key.
+   * 
+   * This method is similar to Set() but **it will skip adding new elements**
+   * to the store if the store length has reached the specified limit.
+   * false is returned if maxAllowedElements limit is reached.
+   */
+  setIfLessThanLimit(key: K, value: T, maxAllowedElements: number): boolean
+ }
+ interface Store<K, T> {
+  /**
+   * UnmarshalJSON implements [json.Unmarshaler] and imports the
+   * provided JSON data into the store.
+   * 
+   * The store entries that match with the ones from the data will be overwritten with the new value.
+   */
+  unmarshalJSON(data: string|Array<number>): void
+ }
+ interface Store<K, T> {
+  /**
+   * MarshalJSON implements [json.Marshaler] and export the current
+   * store data into valid JSON.
+   */
+  marshalJSON(): string|Array<number>
+ }
+}
+
+/**
+ * Package syntax parses regular expressions into parse trees and compiles
+ * parse trees into programs. Most clients of regular expressions will use the
+ * facilities of package [regexp] (such as [regexp.Compile] and [regexp.Match]) instead of this package.
+ * 
+ * # Syntax
+ * 
+ * The regular expression syntax understood by this package when parsing with the [Perl] flag is as follows.
+ * Parts of the syntax can be disabled by passing alternate flags to [Parse].
+ * 
+ * Single characters:
+ * 
+ * ```
+ * 	.              any character, possibly including newline (flag s=true)
+ * 	[xyz]          character class
+ * 	[^xyz]         negated character class
+ * 	\d             Perl character class
+ * 	\D             negated Perl character class
+ * 	[[:alpha:]]    ASCII character class
+ * 	[[:^alpha:]]   negated ASCII character class
+ * 	\pN            Unicode character class (one-letter name)
+ * 	\p{Greek}      Unicode character class
+ * 	\PN            negated Unicode character class (one-letter name)
+ * 	\P{Greek}      negated Unicode character class
+ * ```
+ * 
+ * Composites:
+ * 
+ * ```
+ * 	xy             x followed by y
+ * 	x|y            x or y (prefer x)
+ * ```
+ * 
+ * Repetitions:
+ * 
+ * ```
+ * 	x*             zero or more x, prefer more
+ * 	x+             one or more x, prefer more
+ * 	x?             zero or one x, prefer one
+ * 	x{n,m}         n or n+1 or ... or m x, prefer more
+ * 	x{n,}          n or more x, prefer more
+ * 	x{n}           exactly n x
+ * 	x*?            zero or more x, prefer fewer
+ * 	x+?            one or more x, prefer fewer
+ * 	x??            zero or one x, prefer zero
+ * 	x{n,m}?        n or n+1 or ... or m x, prefer fewer
+ * 	x{n,}?         n or more x, prefer fewer
+ * 	x{n}?          exactly n x
+ * ```
+ * 
+ * Implementation restriction: The counting forms x{n,m}, x{n,}, and x{n}
+ * reject forms that create a minimum or maximum repetition count above 1000.
+ * Unlimited repetitions are not subject to this restriction.
+ * 
+ * Grouping:
+ * 
+ * ```
+ * 	(re)           numbered capturing group (submatch)
+ * 	(?P<name>re)   named & numbered capturing group (submatch)
+ * 	(?<name>re)    named & numbered capturing group (submatch)
+ * 	(?:re)         non-capturing group
+ * 	(?flags)       set flags within current group; non-capturing
+ * 	(?flags:re)    set flags during re; non-capturing
+ * 
+ * 	Flag syntax is xyz (set) or -xyz (clear) or xy-z (set xy, clear z). The flags are:
+ * 
+ * 	i              case-insensitive (default false)
+ * 	m              multi-line mode: ^ and $ match begin/end line in addition to begin/end text (default false)
+ * 	s              let . match \n (default false)
+ * 	U              ungreedy: swap meaning of x* and x*?, x+ and x+?, etc (default false)
+ * ```
+ * 
+ * Empty strings:
+ * 
+ * ```
+ * 	^              at beginning of text or line (flag m=true)
+ * 	$              at end of text (like \z not \Z) or line (flag m=true)
+ * 	\A             at beginning of text
+ * 	\b             at ASCII word boundary (\w on one side and \W, \A, or \z on the other)
+ * 	\B             not at ASCII word boundary
+ * 	\z             at end of text
+ * ```
+ * 
+ * Escape sequences:
+ * 
+ * ```
+ * 	\a             bell (== \007)
+ * 	\f             form feed (== \014)
+ * 	\t             horizontal tab (== \011)
+ * 	\n             newline (== \012)
+ * 	\r             carriage return (== \015)
+ * 	\v             vertical tab character (== \013)
+ * 	\*             literal *, for any punctuation character *
+ * 	\123           octal character code (up to three digits)
+ * 	\x7F           hex character code (exactly two digits)
+ * 	\x{10FFFF}     hex character code
+ * 	\Q...\E        literal text ... even if ... has punctuation
+ * ```
+ * 
+ * Character class elements:
+ * 
+ * ```
+ * 	x              single character
+ * 	A-Z            character range (inclusive)
+ * 	\d             Perl character class
+ * 	[:foo:]        ASCII character class foo
+ * 	\p{Foo}        Unicode character class Foo
+ * 	\pF            Unicode character class F (one-letter name)
+ * ```
+ * 
+ * Named character classes as character class elements:
+ * 
+ * ```
+ * 	[\d]           digits (== \d)
+ * 	[^\d]          not digits (== \D)
+ * 	[\D]           not digits (== \D)
+ * 	[^\D]          not not digits (== \d)
+ * 	[[:name:]]     named ASCII class inside character class (== [:name:])
+ * 	[^[:name:]]    named ASCII class inside negated character class (== [:^name:])
+ * 	[\p{Name}]     named Unicode property inside character class (== \p{Name})
+ * 	[^\p{Name}]    named Unicode property inside negated character class (== \P{Name})
+ * ```
+ * 
+ * Perl character classes (all ASCII-only):
+ * 
+ * ```
+ * 	\d             digits (== [0-9])
+ * 	\D             not digits (== [^0-9])
+ * 	\s             whitespace (== [\t\n\f\r ])
+ * 	\S             not whitespace (== [^\t\n\f\r ])
+ * 	\w             word characters (== [0-9A-Za-z_])
+ * 	\W             not word characters (== [^0-9A-Za-z_])
+ * ```
+ * 
+ * ASCII character classes:
+ * 
+ * ```
+ * 	[[:alnum:]]    alphanumeric (== [0-9A-Za-z])
+ * 	[[:alpha:]]    alphabetic (== [A-Za-z])
+ * 	[[:ascii:]]    ASCII (== [\x00-\x7F])
+ * 	[[:blank:]]    blank (== [\t ])
+ * 	[[:cntrl:]]    control (== [\x00-\x1F\x7F])
+ * 	[[:digit:]]    digits (== [0-9])
+ * 	[[:graph:]]    graphical (== [!-~] == [A-Za-z0-9!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])
+ * 	[[:lower:]]    lower case (== [a-z])
+ * 	[[:print:]]    printable (== [ -~] == [ [:graph:]])
+ * 	[[:punct:]]    punctuation (== [!-/:-@[-`{-~])
+ * 	[[:space:]]    whitespace (== [\t\n\v\f\r ])
+ * 	[[:upper:]]    upper case (== [A-Z])
+ * 	[[:word:]]     word characters (== [0-9A-Za-z_])
+ * 	[[:xdigit:]]   hex digit (== [0-9A-Fa-f])
+ * ```
+ * 
+ * Unicode character classes are those in [unicode.Categories],
+ * [unicode.CategoryAliases], and [unicode.Scripts].
+ */
+namespace syntax {
+ /**
+  * Flags control the behavior of the parser and record information about regexp context.
+  */
+ interface Flags extends Number{}
 }
 
 /**
@@ -27627,6 +28018,344 @@ namespace http {
  }
 }
 
+namespace exec {
+ /**
+  * Cmd represents an external command being prepared or run.
+  * 
+  * A Cmd cannot be reused after calling its [Cmd.Start], [Cmd.Run],
+  * [Cmd.Output], or [Cmd.CombinedOutput] methods.
+  */
+ interface Cmd {
+  /**
+   * Path is the path of the command to run.
+   * 
+   * This is the only field that must be set to a non-zero
+   * value. If Path is relative, it is evaluated relative
+   * to Dir.
+   */
+  path: string
+  /**
+   * Args holds command line arguments, including the command as Args[0].
+   * If the Args field is empty or nil, Run uses {Path}.
+   * 
+   * In typical use, both Path and Args are set by calling Command.
+   */
+  args: Array<string>
+  /**
+   * Env specifies the environment of the process.
+   * Each entry is of the form "key=value".
+   * If Env is nil, the new process uses the current process's
+   * environment.
+   * If Env contains duplicate environment keys, only the last
+   * value in the slice for each duplicate key is used.
+   * As a special case on Windows, SYSTEMROOT is always added if
+   * missing and not explicitly set to the empty string.
+   * 
+   * See also the Dir field, which may set PWD in the environment.
+   */
+  env: Array<string>
+  /**
+   * Dir specifies the working directory of the command.
+   * If Dir is the empty string, Run runs the command in the
+   * calling process's current directory.
+   * 
+   * On Unix systems, the value of Dir also determines the
+   * child process's PWD environment variable if not otherwise
+   * specified. A Unix process represents its working directory
+   * not by name but as an implicit reference to a node in the
+   * file tree. So, if the child process obtains its working
+   * directory by calling a function such as C's getcwd, which
+   * computes the canonical name by walking up the file tree, it
+   * will not recover the original value of Dir if that value
+   * was an alias involving symbolic links. However, if the
+   * child process calls Go's [os.Getwd] or GNU C's
+   * get_current_dir_name, and the value of PWD is an alias for
+   * the current directory, those functions will return the
+   * value of PWD, which matches the value of Dir.
+   */
+  dir: string
+  /**
+   * Stdin specifies the process's standard input.
+   * 
+   * If Stdin is nil, the process reads from the null device (os.DevNull).
+   * 
+   * If Stdin is an *os.File, the process's standard input is connected
+   * directly to that file.
+   * 
+   * Otherwise, during the execution of the command a separate
+   * goroutine reads from Stdin and delivers that data to the command
+   * over a pipe. In this case, Wait does not complete until the goroutine
+   * stops copying, either because it has reached the end of Stdin
+   * (EOF or a read error), or because writing to the pipe returned an error,
+   * or because a nonzero WaitDelay was set and expired.
+   * 
+   * Regardless of WaitDelay, Wait can block until a Read from
+   * Stdin completes. If you need to use a blocking io.Reader,
+   * use the StdinPipe method to get a pipe, copy from the Reader
+   * to the pipe, and arrange to close the Reader after Wait returns.
+   */
+  stdin: io.Reader
+  /**
+   * Stdout and Stderr specify the process's standard output and error.
+   * 
+   * If either is nil, Run connects the corresponding file descriptor
+   * to the null device (os.DevNull).
+   * 
+   * If either is an *os.File, the corresponding output from the process
+   * is connected directly to that file.
+   * 
+   * Otherwise, during the execution of the command a separate goroutine
+   * reads from the process over a pipe and delivers that data to the
+   * corresponding Writer. In this case, Wait does not complete until the
+   * goroutine reaches EOF or encounters an error or a nonzero WaitDelay
+   * expires.
+   * 
+   * Regardless of WaitDelay, Wait can block until a Write to
+   * Stdout or Stderr completes. If you need to use a blocking io.Writer,
+   * use the StdoutPipe or StderrPipe method to get a pipe,
+   * copy from the pipe to the Writer, and arrange to close the
+   * Writer after Wait returns.
+   * 
+   * If Stdout and Stderr are the same writer, and have a type that can
+   * be compared with ==, at most one goroutine at a time will call Write.
+   */
+  stdout: io.Writer
+  stderr: io.Writer
+  /**
+   * ExtraFiles specifies additional open files to be inherited by the
+   * new process. It does not include standard input, standard output, or
+   * standard error. If non-nil, entry i becomes file descriptor 3+i.
+   * 
+   * ExtraFiles is not supported on Windows.
+   */
+  extraFiles: Array<(os.File | undefined)>
+  /**
+   * SysProcAttr holds optional, operating system-specific attributes.
+   * Run passes it to os.StartProcess as the os.ProcAttr's Sys field.
+   */
+  sysProcAttr?: syscall.SysProcAttr
+  /**
+   * Process is the underlying process, once started.
+   */
+  process?: os.Process
+  /**
+   * ProcessState contains information about an exited process.
+   * If the process was started successfully, Wait or Run will
+   * populate its ProcessState when the command completes.
+   */
+  processState?: os.ProcessState
+  err: Error // LookPath error, if any.
+  /**
+   * If Cancel is non-nil, the command must have been created with
+   * CommandContext and Cancel will be called when the command's
+   * Context is done. By default, CommandContext sets Cancel to
+   * call the Kill method on the command's Process.
+   * 
+   * Typically a custom Cancel will send a signal to the command's
+   * Process, but it may instead take other actions to initiate cancellation,
+   * such as closing a stdin or stdout pipe or sending a shutdown request on a
+   * network socket.
+   * 
+   * If the command exits with a success status after Cancel is
+   * called, and Cancel does not return an error equivalent to
+   * os.ErrProcessDone, then Wait and similar methods will return a non-nil
+   * error: either an error wrapping the one returned by Cancel,
+   * or the error from the Context.
+   * (If the command exits with a non-success status, or Cancel
+   * returns an error that wraps os.ErrProcessDone, Wait and similar methods
+   * continue to return the command's usual exit status.)
+   * 
+   * If Cancel is set to nil, nothing will happen immediately when the command's
+   * Context is done, but a nonzero WaitDelay will still take effect. That may
+   * be useful, for example, to work around deadlocks in commands that do not
+   * support shutdown signals but are expected to always finish quickly.
+   * 
+   * Cancel will not be called if Start returns a non-nil error.
+   */
+  cancel: () => void
+  /**
+   * If WaitDelay is non-zero, it bounds the time spent waiting on two sources
+   * of unexpected delay in Wait: a child process that fails to exit after the
+   * associated Context is canceled, and a child process that exits but leaves
+   * its I/O pipes unclosed.
+   * 
+   * The WaitDelay timer starts when either the associated Context is done or a
+   * call to Wait observes that the child process has exited, whichever occurs
+   * first. When the delay has elapsed, the command shuts down the child process
+   * and/or its I/O pipes.
+   * 
+   * If the child process has failed to exit — perhaps because it ignored or
+   * failed to receive a shutdown signal from a Cancel function, or because no
+   * Cancel function was set — then it will be terminated using os.Process.Kill.
+   * 
+   * Then, if the I/O pipes communicating with the child process are still open,
+   * those pipes are closed in order to unblock any goroutines currently blocked
+   * on Read or Write calls.
+   * 
+   * If pipes are closed due to WaitDelay, no Cancel call has occurred,
+   * and the command has otherwise exited with a successful status, Wait and
+   * similar methods will return ErrWaitDelay instead of nil.
+   * 
+   * If WaitDelay is zero (the default), I/O pipes will be read until EOF,
+   * which might not occur until orphaned subprocesses of the command have
+   * also closed their descriptors for the pipes.
+   */
+  waitDelay: time.Duration
+ }
+ interface Cmd {
+  /**
+   * String returns a human-readable description of c.
+   * It is intended only for debugging.
+   * In particular, it is not suitable for use as input to a shell.
+   * The output of String may vary across Go releases.
+   */
+  string(): string
+ }
+ interface Cmd {
+  /**
+   * Run starts the specified command and waits for it to complete.
+   * 
+   * The returned error is nil if the command runs, has no problems
+   * copying stdin, stdout, and stderr, and exits with a zero exit
+   * status.
+   * 
+   * If the command starts but does not complete successfully, the error is of
+   * type [*ExitError]. Other error types may be returned for other situations.
+   * 
+   * If the calling goroutine has locked the operating system thread
+   * with [runtime.LockOSThread] and modified any inheritable OS-level
+   * thread state (for example, Linux or Plan 9 name spaces), the new
+   * process will inherit the caller's thread state.
+   */
+  run(): void
+ }
+ interface Cmd {
+  /**
+   * Start starts the specified command but does not wait for it to complete.
+   * 
+   * If Start returns successfully, the c.Process field will be set.
+   * 
+   * After a successful call to Start the [Cmd.Wait] method must be called in
+   * order to release associated system resources.
+   */
+  start(): void
+ }
+ interface Cmd {
+  /**
+   * Wait waits for the command to exit and waits for any copying to
+   * stdin or copying from stdout or stderr to complete.
+   * 
+   * The command must have been started by [Cmd.Start].
+   * 
+   * The returned error is nil if the command runs, has no problems
+   * copying stdin, stdout, and stderr, and exits with a zero exit
+   * status.
+   * 
+   * If the command fails to run or doesn't complete successfully, the
+   * error is of type [*ExitError]. Other error types may be
+   * returned for I/O problems.
+   * 
+   * If any of c.Stdin, c.Stdout or c.Stderr are not an [*os.File], Wait also waits
+   * for the respective I/O loop copying to or from the process to complete.
+   * 
+   * Wait must not be called concurrently from multiple goroutines.
+   * A custom Cmd.Cancel function should not call Wait.
+   * 
+   * Wait releases any resources associated with the [Cmd].
+   */
+  wait(): void
+ }
+ interface Cmd {
+  /**
+   * Output runs the command and returns its standard output.
+   * Any returned error will usually be of type [*ExitError].
+   * If c.Stderr was nil and the returned error is of type
+   * [*ExitError], Output populates the Stderr field of the
+   * returned error.
+   */
+  output(): string|Array<number>
+ }
+ interface Cmd {
+  /**
+   * CombinedOutput runs the command and returns its combined standard
+   * output and standard error.
+   */
+  combinedOutput(): string|Array<number>
+ }
+ interface Cmd {
+  /**
+   * StdinPipe returns a pipe that will be connected to the command's
+   * standard input when the command starts.
+   * The pipe will be closed automatically after [Cmd.Wait] sees the command exit.
+   * A caller need only call Close to force the pipe to close sooner.
+   * For example, if the command being run will not exit until standard input
+   * is closed, the caller must close the pipe.
+   */
+  stdinPipe(): io.WriteCloser
+ }
+ interface Cmd {
+  /**
+   * StdoutPipe returns a pipe that will be connected to the command's
+   * standard output when the command starts.
+   * 
+   * [Cmd.Wait] will close the pipe after seeing the command exit, so most callers
+   * need not close the pipe themselves. It is thus incorrect to call Wait
+   * before all reads from the pipe have completed.
+   * For the same reason, it is incorrect to call [Cmd.Run] when using StdoutPipe.
+   * See the example for idiomatic usage.
+   */
+  stdoutPipe(): io.ReadCloser
+ }
+ interface Cmd {
+  /**
+   * StderrPipe returns a pipe that will be connected to the command's
+   * standard error when the command starts.
+   * 
+   * [Cmd.Wait] will close the pipe after seeing the command exit, so most callers
+   * need not close the pipe themselves. It is thus incorrect to call Wait
+   * before all reads from the pipe have completed.
+   * For the same reason, it is incorrect to use [Cmd.Run] when using StderrPipe.
+   * See the StdoutPipe example for idiomatic usage.
+   */
+  stderrPipe(): io.ReadCloser
+ }
+ interface Cmd {
+  /**
+   * Environ returns a copy of the environment in which the command would be run
+   * as it is currently configured.
+   */
+  environ(): Array<string>
+ }
+}
+
+namespace mailer {
+ /**
+  * Message defines a generic email message struct.
+  */
+ interface Message {
+  from: { address: string; name?: string; }
+  to: Array<{ address: string; name?: string; }>
+  bcc: Array<{ address: string; name?: string; }>
+  cc: Array<{ address: string; name?: string; }>
+  subject: string
+  html: string
+  text: string
+  headers: _TygojaDict
+  attachments: _TygojaDict
+  inlineAttachments: _TygojaDict
+ }
+ /**
+  * Mailer defines a base mail client interface.
+  */
+ interface Mailer {
+  [key:string]: any;
+  /**
+   * Send sends an email with the provided Message.
+   */
+  send(message: Message): void
+ }
+}
+
 /**
  * Package keys implements the key-encryption-key (KEK) sources used by the
  * fork-only field encryption (#75).
@@ -27663,176 +28392,6 @@ namespace keys {
    * Unwrap decrypts a data key that was wrapped under kekID.
    */
   unwrap(ctx: context.Context, kekID: string, wrapped: string|Array<number>): string|Array<number>
- }
-}
-
-namespace auth {
- /**
-  * @todo refactor and consider replace with a plain struct
-  * 
-  * Provider defines a common interface for an OAuth2 client.
-  */
- interface Provider {
-  [key:string]: any;
-  /**
-   * @todo temp backport
-   * 
-   * Order returns the sorting order of the provider usually used in the auth methods list response.
-   */
-  logo(): string
-  /**
-   * @todo temp backport
-   * 
-   * Order returns the sorting order of the provider usually used in the auth methods list response.
-   */
-  order(): number
-  /**
-   * Context returns the context associated with the provider (if any).
-   */
-  context(): context.Context
-  /**
-   * SetContext assigns the specified context to the current provider.
-   */
-  setContext(ctx: context.Context): void
-  /**
-   * PKCE indicates whether the provider can use the PKCE flow.
-   */
-  pkce(): boolean
-  /**
-   * SetPKCE toggles the state whether the provider can use the PKCE flow or not.
-   */
-  setPKCE(enable: boolean): void
-  /**
-   * DisplayName usually returns provider name as it is officially written
-   * and it could be used directly in the UI.
-   */
-  displayName(): string
-  /**
-   * SetDisplayName sets the provider's display name.
-   */
-  setDisplayName(displayName: string): void
-  /**
-   * Scopes returns the provider access permissions that will be requested.
-   */
-  scopes(): Array<string>
-  /**
-   * SetScopes sets the provider access permissions that will be requested later.
-   */
-  setScopes(scopes: Array<string>): void
-  /**
-   * ClientId returns the provider client's app ID.
-   */
-  clientId(): string
-  /**
-   * SetClientId sets the provider client's ID.
-   */
-  setClientId(clientId: string): void
-  /**
-   * ClientSecret returns the provider client's app secret.
-   */
-  clientSecret(): string
-  /**
-   * SetClientSecret sets the provider client's app secret.
-   */
-  setClientSecret(secret: string): void
-  /**
-   * RedirectURL returns the end address to redirect the user
-   * going through the OAuth flow.
-   */
-  redirectURL(): string
-  /**
-   * SetRedirectURL sets the provider's RedirectURL.
-   */
-  setRedirectURL(url: string): void
-  /**
-   * AuthURL returns the provider's authorization service url.
-   */
-  authURL(): string
-  /**
-   * SetAuthURL sets the provider's AuthURL.
-   */
-  setAuthURL(url: string): void
-  /**
-   * TokenURL returns the provider's token exchange service url.
-   */
-  tokenURL(): string
-  /**
-   * SetTokenURL sets the provider's TokenURL.
-   */
-  setTokenURL(url: string): void
-  /**
-   * UserInfoURL returns the provider's user info api url.
-   */
-  userInfoURL(): string
-  /**
-   * SetUserInfoURL sets the provider's UserInfoURL.
-   */
-  setUserInfoURL(url: string): void
-  /**
-   * Extra returns a shallow copy of any custom config data
-   * that the provider may need.
-   */
-  extra(): _TygojaDict
-  /**
-   * SetExtra updates the provider's custom config data.
-   */
-  setExtra(data: _TygojaDict): void
-  /**
-   * Client returns an http client using the provided token.
-   */
-  client(token: oauth2.Token): (any)
-  /**
-   * BuildAuthURL returns a URL to the provider's consent page
-   * that asks for permissions for the required scopes explicitly.
-   */
-  buildAuthURL(state: string, ...opts: oauth2.AuthCodeOption[]): string
-  /**
-   * FetchToken converts an authorization code to token.
-   */
-  fetchToken(code: string, ...opts: oauth2.AuthCodeOption[]): (oauth2.Token)
-  /**
-   * FetchRawUserInfo requests and marshalizes into `result` the
-   * the OAuth user api response.
-   */
-  fetchRawUserInfo(token: oauth2.Token): string|Array<number>
-  /**
-   * FetchAuthUser is similar to FetchRawUserInfo, but normalizes and
-   * marshalizes the user api response into a standardized AuthUser struct.
-   */
-  fetchAuthUser(token: oauth2.Token): (AuthUser)
- }
- /**
-  * AuthUser defines a standardized OAuth2 user data structure.
-  */
- interface AuthUser {
-  expiry: types.DateTime
-  rawUser: _TygojaDict
-  id: string
-  name: string
-  username: string
-  avatarURL: string
-  accessToken: string
-  refreshToken: string
-  /**
-   * The VERIFIED OAuth2 account email.
-   * 
-   * It must be empty if the provider is not able to verify the email ownership.
-   */
-  email: string
-  /**
-   * @todo
-   * deprecated: use AvatarURL instead
-   * AvatarUrl will be removed after dropping v0.22 support
-   */
-  avatarUrl: string
- }
- interface AuthUser {
-  /**
-   * MarshalJSON implements the [json.Marshaler] interface.
-   * 
-   * @todo remove after dropping v0.22 support
-   */
-  marshalJSON(): string|Array<number>
  }
 }
 
@@ -30962,7 +31521,7 @@ namespace time {
  }
 }
 
-namespace fs {
+namespace context {
 }
 
 /**
@@ -32901,6 +33460,47 @@ namespace dialect {
  interface ColumnKind extends Number{}
 }
 
+namespace store {
+}
+
+namespace jwt {
+ /**
+  * NumericDate represents a JSON numeric date value, as referenced at
+  * https://datatracker.ietf.org/doc/html/rfc7519#section-2.
+  */
+ type _srHWZCg = time.Time
+ interface NumericDate extends _srHWZCg {
+ }
+ interface NumericDate {
+  /**
+   * MarshalJSON is an implementation of the json.RawMessage interface and serializes the UNIX epoch
+   * represented in NumericDate to a byte array, using the precision specified in TimePrecision.
+   */
+  marshalJSON(): string|Array<number>
+ }
+ interface NumericDate {
+  /**
+   * UnmarshalJSON is an implementation of the json.RawMessage interface and
+   * deserializes a [NumericDate] from a JSON representation, i.e. a
+   * [json.Number]. This number represents an UNIX epoch with either integer or
+   * non-integer seconds.
+   */
+  unmarshalJSON(b: string|Array<number>): void
+ }
+ /**
+  * ClaimStrings is basically just a slice of strings, but it can be either
+  * serialized from a string array or just a string. This type is necessary,
+  * since the "aud" claim can either be a single string or an array.
+  */
+ interface ClaimStrings extends Array<string>{}
+ interface ClaimStrings {
+  unmarshalJSON(data: string|Array<number>): void
+ }
+ interface ClaimStrings {
+  marshalJSON(): string|Array<number>
+ }
+}
+
 namespace types {
 }
 
@@ -33059,6 +33659,161 @@ namespace router {
    */
   hasRoute(method: string, path: string): boolean
  }
+}
+
+namespace cobra {
+ interface PositionalArgs {(cmd: Command, args: Array<string>): void }
+ // @ts-ignore
+ import flag = pflag
+ /**
+  * FParseErrWhitelist configures Flag parse errors to be ignored
+  */
+ interface FParseErrWhitelist extends _TygojaAny{}
+ /**
+  * Group Structure to manage groups for commands
+  */
+ interface Group {
+  id: string
+  title: string
+ }
+ /**
+  * CompletionOptions are the options to control shell completion
+  */
+ interface CompletionOptions {
+  /**
+   * DisableDefaultCmd prevents Cobra from creating a default 'completion' command
+   */
+  disableDefaultCmd: boolean
+  /**
+   * DisableNoDescFlag prevents Cobra from creating the '--no-descriptions' flag
+   * for shells that support completion descriptions
+   */
+  disableNoDescFlag: boolean
+  /**
+   * DisableDescriptions turns off all completion descriptions for shells
+   * that support them
+   */
+  disableDescriptions: boolean
+  /**
+   * HiddenDefaultCmd makes the default 'completion' command hidden
+   */
+  hiddenDefaultCmd: boolean
+  /**
+   * DefaultShellCompDirective sets the ShellCompDirective that is returned
+   * if no special directive can be determined
+   */
+  defaultShellCompDirective?: ShellCompDirective
+ }
+ interface CompletionOptions {
+  setDefaultShellCompDirective(directive: ShellCompDirective): void
+ }
+ /**
+  * Completion is a string that can be used for completions
+  * 
+  * two formats are supported:
+  * ```
+  *   - the completion choice
+  *   - the completion choice with a textual description (separated by a TAB).
+  * ```
+  * 
+  * [CompletionWithDesc] can be used to create a completion string with a textual description.
+  * 
+  * Note: Go type alias is used to provide a more descriptive name in the documentation, but any string can be used.
+  */
+ interface Completion extends String{}
+ /**
+  * CompletionFunc is a function that provides completion results.
+  */
+ interface CompletionFunc {(cmd: Command, args: Array<string>, toComplete: string): [Array<Completion>, ShellCompDirective] }
+}
+
+namespace subscriptions {
+}
+
+namespace url {
+ /**
+  * The Userinfo type is an immutable encapsulation of username and
+  * password details for a [URL]. An existing Userinfo value is guaranteed
+  * to have a username set (potentially empty, as allowed by RFC 2396),
+  * and optionally a password.
+  */
+ interface Userinfo {
+ }
+ interface Userinfo {
+  /**
+   * Username returns the username.
+   */
+  username(): string
+ }
+ interface Userinfo {
+  /**
+   * Password returns the password in case it is set, and whether it is set.
+   */
+  password(): [string, boolean]
+ }
+ interface Userinfo {
+  /**
+   * String returns the encoded userinfo information in the standard form
+   * of "username[:password]".
+   */
+  string(): string
+ }
+}
+
+namespace multipart {
+ /**
+  * A Part represents a single part in a multipart body.
+  */
+ interface Part {
+  /**
+   * The headers of the body, if any, with the keys canonicalized
+   * in the same fashion that the Go http.Request headers are.
+   * For example, "foo-bar" changes case to "Foo-Bar"
+   */
+  header: textproto.MIMEHeader
+ }
+ interface Part {
+  /**
+   * FormName returns the name parameter if p has a Content-Disposition
+   * of type "form-data".  Otherwise it returns the empty string.
+   */
+  formName(): string
+ }
+ interface Part {
+  /**
+   * FileName returns the filename parameter of the [Part]'s Content-Disposition
+   * header. If not empty, the filename is passed through filepath.Base (which is
+   * platform dependent) before being returned.
+   */
+  fileName(): string
+ }
+ interface Part {
+  /**
+   * Read reads the body of a part, after its headers and before the
+   * next part (if any) begins.
+   */
+  read(d: string|Array<number>): number
+ }
+ interface Part {
+  close(): void
+ }
+}
+
+namespace http {
+ /**
+  * SameSite allows a server to define a cookie attribute making it impossible for
+  * the browser to send this cookie along with cross-site requests. The main
+  * goal is to mitigate the risk of cross-origin information leakage, and provide
+  * some protection against cross-site request forgery attacks.
+  * 
+  * See https://tools.ietf.org/html/draft-ietf-httpbis-cookie-same-site-00 for details.
+  */
+ interface SameSite extends Number{}
+ // @ts-ignore
+ import urlpkg = url
+}
+
+namespace oauth2 {
 }
 
 namespace slog {
