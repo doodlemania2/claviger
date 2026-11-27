@@ -100,6 +100,10 @@ func mysqlDSN(rawURL string) (string, error) {
 	cfg.Params = map[string]string{
 		"sql_mode":  "'" + mysqlSQLMode + "'",
 		"time_zone": "'+00:00'",
+		// MySQL 8.4 turns EXISTS and IN subqueries over JSON_TABLE into a
+		// semijoin that matches nothing (a server bug, seen with a utf8mb4_bin
+		// database): the back relations and the multi value filters rely on them
+		"optimizer_switch": "'semijoin=off'",
 	}
 
 	// everything else of the query string is a driver option or a session variable
@@ -110,7 +114,7 @@ func mysqlDSN(rawURL string) (string, error) {
 		switch strings.ToLower(key) {
 		case "tls":
 			cfg.TLSConfig = values[0]
-		case "sql_mode", "time_zone", "collation", "parsetime", "multistatements":
+		case "sql_mode", "time_zone", "collation", "parsetime", "multistatements", "optimizer_switch":
 			// owned by Claviger
 		default:
 			cfg.Params[key] = values[0]

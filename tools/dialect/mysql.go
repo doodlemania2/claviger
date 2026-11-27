@@ -145,7 +145,7 @@ func (mysqlDialect) NullSafeEqual(left, right string, not bool) string {
 	return left + " <=> " + right
 }
 
-// AsText converts to text: MySQL compares a number with '' as numbers (0 = ''),
+// AsText converts to text: MySQL compares a number with ” as numbers (0 = ”),
 // SQLite does not. The cast is also a unit for the LIKE operator below, which
 // puts a COLLATE after it.
 func (mysqlDialect) AsText(expr string) string { return "CAST(" + expr + " AS CHAR)" }
@@ -493,7 +493,8 @@ func (d mysqlDialect) BuildIndexOn(db dbx.Builder, idx dbutils.Index) (string, e
 		case plain != "" && isText(plain):
 			key = expr + "(" + strconv.Itoa(mysqlMaxPrefix) + ")"
 		case plain == "":
-			key = "((" + expr + "))"
+			// a functional key part cannot be a TEXT: cast it (a prefix key, like the plain columns)
+			key = "((CAST(" + expr + " AS CHAR(" + strconv.Itoa(mysqlMaxPrefix) + "))))"
 		default:
 			key = expr
 		}
@@ -655,8 +656,9 @@ func (d mysqlDialect) TableIndexes(db dbx.Builder, table string) (map[string]str
 	byName := map[string]*dbutils.Index{}
 	var order []string
 	for _, r := range rows {
-		// the unique key of the hidden row id column
-		if r.Column != nil && *r.Column == RowIDColumn {
+		// the unique key of the hidden row id column, and the ones that a
+		// UNIQUE column of a CREATE TABLE made (named like their column)
+		if r.Column != nil && (*r.Column == RowIDColumn || (r.NonUnique == 0 && *r.Column == r.Name)) {
 			continue
 		}
 
@@ -773,3 +775,11 @@ func (d mysqlDialect) DropIndexIfExists(db dbx.Builder, table, name string) erro
 }
 
 func (mysqlDialect) FinishIndexDrops(db dbx.Builder) error { return nil }
+
+// RandomOrder is the ORDER BY term of the @random sort.
+func (mysqlDialect) RandomOrder() string { return "RAND()" }
+
+// NoRows is "no row in the FROM ... WHERE ... tail", see tools/search.
+func (mysqlDialect) NoRows(fromWhere string) string {
+	return "0 = (SELECT COUNT(*) " + fromWhere + ")"
+}

@@ -681,15 +681,15 @@ func (e *manyVsManyExpr) Build(db *dbx.DB, params dbx.Params) string {
 		return "0=1"
 	}
 
-	return fmt.Sprintf(
-		"NOT EXISTS (SELECT 1 FROM (%s) {{%s}} LEFT JOIN (%s) {{%s}}%s WHERE %s)",
+	return noRows(e.d, fmt.Sprintf(
+		"FROM (%s) {{%s}} LEFT JOIN (%s) {{%s}}%s WHERE %s",
 		e.left.MultiMatchSubQuery.Build(db, params),
 		lAlias,
 		e.right.MultiMatchSubQuery.Build(db, params),
 		rAlias,
 		joinOnClause(e.d),
 		whereExpr.Build(db, params),
-	)
+	))
 }
 
 // -------------------------------------------------------------------
@@ -747,10 +747,10 @@ func (e *manyVsOneExpr) Build(db *dbx.DB, params dbx.Params) string {
 		return "0=1"
 	}
 
-	return fmt.Sprintf(
-		"NOT EXISTS (SELECT 1 FROM (%s) {{%s}} WHERE %s)",
+	return noRows(e.d, fmt.Sprintf(
+		"FROM (%s) {{%s}} WHERE %s",
 		e.subQuery.Build(db, params),
 		alias,
 		whereExpr.Build(db, params),
-	)
+	))
 }

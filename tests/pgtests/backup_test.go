@@ -71,7 +71,7 @@ func TestBackupsOnPostgres(t *testing.T) {
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if (manifest.DataDatabase != "postgres" && manifest.DataDatabase != "cockroach") || manifest.Note == "" {
+	if manifest.DataDatabase == "" || manifest.DataDatabase == "sqlite" || manifest.Note == "" {
 		t.Fatalf("the manifest must say that the database is not in the archive: %s", raw)
 	}
 	if manifest.Tables["data.db"] != nil {

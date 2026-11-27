@@ -58,6 +58,9 @@ func NormalizeUniqueIndexError(err error, tableOrAlias string, fieldNames []stri
 	if pgErrs := normalizePostgresUniqueError(err, fieldNames); pgErrs != nil {
 		return pgErrs
 	}
+	if myErrs := normalizeMySQLUniqueError(err, fieldNames); myErrs != nil {
+		return myErrs
+	}
 
 	msg := strings.ToLower(err.Error())
 

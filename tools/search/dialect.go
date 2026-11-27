@@ -273,3 +273,15 @@ func nullSafeCompare(d dialect.Dialect, left, op, right string, not bool) string
 
 	return left + " " + op + " " + right
 }
+
+// noRows renders "there is no row in <fromWhere>" (a FROM ... WHERE ... tail).
+// It is NOT EXISTS, except on the dialects that implement NoRows: MySQL
+// evaluates NOT EXISTS over a correlated derived table with an outer join
+// wrongly (it is always false), a COUNT(*) comparison is right.
+func noRows(d dialect.Dialect, fromWhere string) string {
+	if nr, ok := d.(interface{ NoRows(fromWhere string) string }); ok {
+		return nr.NoRows(fromWhere)
+	}
+
+	return "NOT EXISTS (SELECT 1 " + fromWhere + ")"
+}
