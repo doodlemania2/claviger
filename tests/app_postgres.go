@@ -200,7 +200,7 @@ func preparePostgres(config *core.BaseAppConfig, srcDataDir, dataDir string) (fu
 	testPGDBs.byDir[dataDir] = name
 	testPGDBs.mu.Unlock()
 
-	config.DBConnect = core.PostgresDBConnect(withDatabase(testPG.adminURL, name))
+	config.DBConnect = connectFunc(withDatabase(testPG.adminURL, name))
 	config.AuxDBConnect = core.DefaultDBConnect
 	limitTestPGConns(config)
 
@@ -231,7 +231,58 @@ func randomDBName(prefix string) string {
 	return prefix + strings.ToLower(security.PseudorandomString(10))
 }
 
+func isMySQLURL(u string) bool {
+	l := strings.ToLower(strings.TrimSpace(u))
+	return strings.HasPrefix(l, "mysql://") || strings.HasPrefix(l, "mariadb://")
+}
+
+// canTemplate reports whether the server clones a database with CREATE DATABASE
+// ... TEMPLATE (PostgreSQL). MySQL and CockroachDB do not: every test app then
+// builds its own database from the fixture (a few seconds each, see clone).
+func canTemplate(adminURL string) bool {
+	if isMySQLURL(adminURL) {
+		return false
+	}
+
+	db, err := sql.Open("pgx", adminURL)
+	if err != nil {
+		return false
+	}
+	defer db.Close()
+
+	var version string
+	if err := db.QueryRow("SELECT version()").Scan(&version); err != nil {
+		return false
+	}
+
+	return !strings.Contains(version, "CockroachDB")
+}
+
+// connectFunc opens the database of the engine of the test server.
+func connectFunc(url string) core.DBConnectFunc {
+	if isMySQLURL(url) {
+		return core.MySQLDBConnect(url)
+	}
+	return core.PostgresDBConnect(url)
+}
+
 func adminExec(adminURL string, query string) error {
+	if isMySQLURL(adminURL) {
+		u, err := url.Parse(adminURL)
+		if err != nil {
+			return err
+		}
+		pass, _ := u.User.Password()
+		db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s)/?multiStatements=true", u.User.Username(), pass, u.Host))
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+
+		_, err = db.Exec(query)
+		return err
+	}
+
 	db, err := sql.Open("pgx", adminURL)
 	if err != nil {
 		return err
@@ -242,11 +293,50 @@ func adminExec(adminURL string, query string) error {
 	return err
 }
 
+func createDatabase(adminURL, name string) error {
+	if isMySQLURL(adminURL) {
+		return adminExec(adminURL, "CREATE DATABASE `"+name+"` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin")
+	}
+	return adminExec(adminURL, `CREATE DATABASE "`+name+`"`)
+}
+
+var (
+	templateOnce sync.Once
+	templateOK   bool
+)
+
 func dropDatabase(adminURL, name string) {
+	if isMySQLURL(adminURL) {
+		_ = adminExec(adminURL, "DROP DATABASE IF EXISTS `"+name+"`")
+		return
+	}
+
+	templateOnce.Do(func() { templateOK = canTemplate(adminURL) })
+	if !templateOK {
+		// CockroachDB has no WITH (FORCE); CASCADE drops what is in it
+		_ = adminExec(adminURL, `DROP DATABASE IF EXISTS "`+name+`" CASCADE`)
+		return
+	}
+
 	_ = adminExec(adminURL, `DROP DATABASE IF EXISTS "`+name+`" WITH (FORCE)`)
 }
 
 func (p *testPostgres) clone() (string, error) {
+	// no templates (MySQL, CockroachDB): build the database from the fixture
+	if p.tplName == "" {
+		name := randomDBName("pbt_")
+		if err := createDatabase(p.adminURL, name); err != nil {
+			return "", err
+		}
+		if err := p.fill(name); err != nil {
+			dropDatabase(p.adminURL, name)
+			// many tests ignore the NewTestApp error and would only panic on a nil app
+			fmt.Fprintf(os.Stderr, "TESTAPP: build the test database: %v\n", err)
+			return "", fmt.Errorf("build the test database: %w", err)
+		}
+		return name, nil
+	}
+
 	// a template can't be accessed by two CREATE DATABASE at the same time
 	p.cloneMu.Lock()
 	defer p.cloneMu.Unlock()
@@ -273,6 +363,11 @@ func buildPostgresTemplate() (*testPostgres, error) {
 		return nil, fmt.Errorf("%s is not set", TestPGURLEnv)
 	}
 
+	if !canTemplate(adminURL) {
+		// MySQL, CockroachDB: nothing to prepare, every app builds its database
+		return &testPostgres{adminURL: adminURL}, nil
+	}
+
 	// templates leaked by crashed runs
 	dropStaleTemplates(adminURL)
 
@@ -283,7 +378,7 @@ func buildPostgresTemplate() (*testPostgres, error) {
 	}
 	p.touch()
 
-	if err := p.fill(); err != nil {
+	if err := p.fill(p.tplName); err != nil {
 		dropDatabase(adminURL, p.tplName)
 		return nil, err
 	}
@@ -296,6 +391,9 @@ func buildPostgresTemplate() (*testPostgres, error) {
 // package once ran past the old 30-minute cutoff and lost its template mid-run.
 // Call with cloneMu held, or before the template is shared.
 func (p *testPostgres) touch() {
+	if p.tplName == "" {
+		return
+	}
 	if time.Since(p.touched) < time.Minute {
 		return
 	}
@@ -330,7 +428,7 @@ func dropStaleTemplates(adminURL string) {
 	}
 }
 
-func (p *testPostgres) fill() (err error) {
+func (p *testPostgres) fill(dbName string) (err error) {
 	_, currentFile, _, _ := runtime.Caller(0)
 	fixtureDir := filepath.Join(path.Dir(currentFile), "data")
 
@@ -366,7 +464,7 @@ func (p *testPostgres) fill() (err error) {
 		DataDir: dstDir,
 		// no settings encryption: the template must not depend on the env of the first test
 		EncryptionEnv: "",
-		DBConnect:     core.PostgresDBConnect(withDatabase(p.adminURL, p.tplName)),
+		DBConnect:     connectFunc(withDatabase(p.adminURL, dbName)),
 		AuxDBConnect:  core.DefaultDBConnect,
 	}
 	limitTestPGConns(&dstConfig)
@@ -534,7 +632,7 @@ func adaptFixtureValue(v any, pgType string) any {
 	}
 
 	switch {
-	case pgType == "boolean":
+	case pgType == "boolean" || pgType == "tinyint(1)":
 		switch x := v.(type) {
 		case int64:
 			return x != 0
@@ -556,7 +654,7 @@ func adaptFixtureValue(v any, pgType string) any {
 				return f
 			}
 		}
-	case pgType == "text" || strings.HasPrefix(pgType, "character"):
+	case pgType == "text" || pgType == "longtext" || strings.HasPrefix(pgType, "varchar") || strings.HasPrefix(pgType, "character"):
 		if _, ok := v.(string); !ok {
 			return fmt.Sprint(v)
 		}

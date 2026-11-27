@@ -1483,6 +1483,7 @@ func onRecordSaveExecute(e *RecordEvent) error {
 		err,
 		e.Record.Collection().Name,
 		e.Record.Collection().Fields.FieldNames(),
+		[]string(e.Record.Collection().Indexes)...,
 	)
 }
 

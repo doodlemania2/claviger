@@ -240,11 +240,11 @@ func createZip(be *BackupEvent, tempZipPath string, kekSource keys.KeySource) er
 
 		manifest.DataDatabase = d.Name()
 		manifest.Note = "This archive does not contain the app data database (it is " + d.Name() +
-			"). Back it up with pg_dump or your provider's point-in-time recovery. " +
+			"). Back it up with " + backupTool(d.Name()) + " or your provider's point-in-time recovery. " +
 			"The archive holds the storage files and the local auxiliary (logs) database only."
 
 		be.App.Logger().Info(
-			logPrefix+"the data database is "+d.Name()+": skipped in the zip archive (use pg_dump or point-in-time recovery)",
+			logPrefix+"the data database is "+d.Name()+": skipped in the zip archive (use "+backupTool(d.Name())+" or point-in-time recovery)",
 			slog.Bool(OTelAlwaysAttr, true),
 		)
 	} else {
@@ -529,4 +529,15 @@ func (z *zipWriter) copyDirToZip(fsys fs.FS, excludedPrefixes *store.Store[strin
 
 		return err
 	})
+}
+
+// backupTool names the native backup tool of the data database engine.
+func backupTool(dialectName string) string {
+	switch dialectName {
+	case dialect.CockroachName:
+		return "BACKUP (cockroach sql)"
+	case dialect.MySQLName, dialect.MariaDBName:
+		return "mysqldump"
+	}
+	return "pg_dump"
 }

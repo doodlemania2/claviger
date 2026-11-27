@@ -15,6 +15,9 @@ import (
 // and the append-only audit log guard cannot be bypassed by the ways Postgres
 // lets a table name be written differently.
 func TestSQLEndpoint(t *testing.T) {
+	if isMySQLServer(t) {
+		t.Skip("known_gap(mysql): the statements of this test are PostgreSQL SQL (quoted camelCase, WITH ... DELETE RETURNING); the endpoint runs MySQL SQL as written there")
+	}
 	app := newApp(t)
 	seedRecords(t, app)
 	c := newAPIClient(t, app)

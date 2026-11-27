@@ -275,8 +275,9 @@ func MigrateDB(ctx context.Context, opts MigrateDBOptions) (*MigrateDBReport, er
 	if opts.TargetURL == "" {
 		return nil, fmt.Errorf("the target is required: pass --to=postgres://... (or set %s)", core.DBURLEnv)
 	}
-	if u, err := url.Parse(opts.TargetURL); err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") {
-		return nil, errors.New("the target must be a postgres:// URL")
+	if u, err := url.Parse(opts.TargetURL); err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql" && u.Scheme != "cockroach" && u.Scheme != "cockroachdb") {
+		// fork (#106): MySQL is not a target of migrate-db (yet)
+		return nil, errors.New("the target must be a postgres:// or cockroach:// URL")
 	}
 
 	dbPath := filepath.Join(opts.Dir, "data.db")

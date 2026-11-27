@@ -25,6 +25,12 @@ import (
 const (
 	SQLiteName   = "sqlite"
 	PostgresName = "postgres"
+	// CockroachName is the CockroachDB dialect (PostgreSQL wire protocol).
+	CockroachName = "cockroach"
+	// MySQLName is the MySQL 8.0+ dialect and MariaDBName the MariaDB 10.11+ one
+	// (experimental): the same code with a few differences.
+	MySQLName   = "mysql"
+	MariaDBName = "mariadb"
 )
 
 // RowIDColumn is the name under which every record table can be ordered by
@@ -138,6 +144,11 @@ type Dialect interface {
 	// means "DEFAULT NULL", otherwise it is the raw JSON text of a
 	// NOT NULL default.
 	JSONColumn(defaultValue string) string
+	// TextType is the type (with its collation) of a plain text column
+	// that has no default, for example one that holds encrypted data.
+	TextType() string
+	// TextCastType is the type name that CAST(x AS ...) uses for text.
+	TextCastType() string
 	// Int64Type is the type name of a 64 bit integer.
 	Int64Type() string
 	// JSONType is the type name of a JSON column.
@@ -226,9 +237,24 @@ type Dialect interface {
 	// DDL
 	// ---------------------------------------------------------------
 
+	// AdaptDDL rewrites a CREATE TABLE / CREATE INDEX script written in the
+	// SQLite flavor (TEXT columns, literal JSON defaults) for the engine. It
+	// returns sql unchanged on SQLite and PostgreSQL. It is meant for the few
+	// hand written statements of the system migrations; collections get their
+	// column definitions from the dialect (IDColumn, TextColumn, ...).
+	AdaptDDL(sql string) string
 	// BuildIndex renders a (portable, SQLite flavoured) parsed index as a
 	// CREATE INDEX statement for this dialect.
 	BuildIndex(idx dbutils.Index) string
+	// DropIndexIfExists drops the named index of the table (MySQL needs the
+	// table, and has no IF EXISTS).
+	DropIndexIfExists(db dbx.Builder, table, name string) error
+	// FinishIndexDrops completes the DropIndexIfExists calls that were
+	// postponed in the transaction (CockroachDB cannot create an expression
+	// index after an expression index was dropped in the same transaction, so
+	// it renames on drop and drops here, after the new indexes exist). A no-op
+	// for the other dialects.
+	FinishIndexDrops(db dbx.Builder) error
 	// DropSuffix is appended to DROP TABLE and DROP VIEW statements: Postgres
 	// refuses to drop an object that a view depends on, SQLite leaves the view
 	// dangling. It is "" on SQLite.
@@ -277,6 +303,14 @@ type Dialect interface {
 	// inside the migrations transaction (no-op on SQLite, which has a
 	// single writer).
 	LockMigrations(db dbx.Builder) error
+	// Retries reports whether a transaction on this engine can be aborted by
+	// the server for a conflict (CockroachDB serialization failures, MySQL
+	// deadlocks), so that the app must run it again. See [Dialect.IsRetryable].
+	Retries() bool
+	// IsRetryable reports whether err is such an abort. The transaction
+	// function is then run again from the start (it must not have effects
+	// outside the transaction that cannot be repeated).
+	IsRetryable(err error) bool
 	// Try runs fn and reports its error. If db is a transaction, a failure
 	// of fn is rolled back to a savepoint on engines where a failed
 	// statement aborts the whole transaction (Postgres), so the caller can
@@ -284,13 +318,25 @@ type Dialect interface {
 	Try(db dbx.Builder, fn func() error) error
 }
 
+func init() {
+	// CockroachDB is addressed with its own driver name so that dialect.Of can
+	// tell it from PostgreSQL; dbx builds the same SQL for both.
+	dbx.BuilderFuncMap[CockroachName] = dbx.NewPgsqlBuilder
+	// MariaDB is addressed with its own driver name for the same reason; dbx
+	// builds MySQL SQL for it.
+	dbx.BuilderFuncMap[MariaDBName] = dbx.NewMysqlBuilder
+}
+
 var (
 	registryMu sync.RWMutex
 	registry   = map[string]Dialect{
-		"sqlite":   SQLite,
-		"sqlite3":  SQLite,
-		"pgx":      Postgres,
-		"postgres": Postgres,
+		"sqlite":    SQLite,
+		"sqlite3":   SQLite,
+		"pgx":       Postgres,
+		"postgres":  Postgres,
+		"cockroach": Cockroach,
+		"mysql":     MySQL,
+		"mariadb":   MariaDB,
 	}
 )
 
@@ -335,6 +381,15 @@ func Of(b dbx.Builder) Dialect {
 	}
 
 	return SQLite
+}
+
+// IsPostgres reports whether the dialect speaks the PostgreSQL wire protocol
+// and its SQL (PostgreSQL itself and CockroachDB). Code that has to branch for
+// a feature of the family asks this; code that depends on an engine's own
+// feature (advisory locks, LISTEN/NOTIFY) compares the name instead.
+func IsPostgres(d Dialect) bool {
+	n := d.Name()
+	return n == PostgresName || n == CockroachName
 }
 
 // IsSQLite is a shorthand for Of(b).Name() == SQLiteName.

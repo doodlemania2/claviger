@@ -1033,7 +1033,7 @@ func upgradeHouseholdCollection(app App, name string, wants []householdUpgrade) 
 			Value string `db:"v"`
 		}
 
-		if err := app.DB().NewQuery("SELECT [[id]] AS id, COALESCE(CAST([[" + w.field + "]] AS TEXT), '') AS v FROM {{" + name + "}} WHERE [[" + w.field + "]] IS NOT NULL").All(&rows); err != nil {
+		if err := app.DB().NewQuery("SELECT [[id]] AS id, COALESCE(CAST([[" + w.field + "]] AS " + dialectOf(app).TextCastType() + "), '') AS v FROM {{" + name + "}} WHERE [[" + w.field + "]] IS NOT NULL").All(&rows); err != nil {
 			return err
 		}
 

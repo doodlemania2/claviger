@@ -1,11 +1,14 @@
 package dialect
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/doodlemania2/claviger/tools/dbutils"
@@ -14,15 +17,29 @@ import (
 // Postgres is the PostgreSQL (16+) dialect.
 var Postgres Dialect = postgresDialect{}
 
+// Cockroach is the CockroachDB dialect (issue #106): the PostgreSQL wire
+// protocol and most of its SQL, with the differences listed in cockroach.go.
+var Cockroach Dialect = postgresDialect{crdb: true}
+
 // migrationsLockKey is the pg_advisory_xact_lock key that serializes
 // migration runs of concurrently starting instances ("Claviger" in ASCII).
 const migrationsLockKey int64 = 0x436c617669676572
 
 var savepointSeq atomic.Uint64
 
-type postgresDialect struct{}
+// postgresDialect is both PostgreSQL and CockroachDB (crdb): the second speaks
+// the same protocol and nearly the same SQL, so it shares the code and branches
+// where the engines differ (see cockroach.go for the list).
+type postgresDialect struct {
+	crdb bool
+}
 
-func (postgresDialect) Name() string { return PostgresName }
+func (d postgresDialect) Name() string {
+	if d.crdb {
+		return CockroachName
+	}
+	return PostgresName
+}
 
 // A server database has no single writer limit, so reads and
 // writes share one pool.
@@ -49,11 +66,22 @@ func (postgresDialect) StringDefault(value string) string {
 // would depend on the cluster's locale (and give other results than SQLite).
 const textCollation = ` COLLATE "C"`
 
-func (d postgresDialect) IDColumn() string {
-	return "TEXT" + textCollation + " PRIMARY KEY DEFAULT " + d.RandomIDDefault() + " NOT NULL"
+// collation is the collation clause of a text column. CockroachDB already
+// sorts and compares strings byte by byte by default and rejects the locale "C".
+func (d postgresDialect) collation() string {
+	if d.crdb {
+		return ""
+	}
+	return textCollation
 }
 
-func (postgresDialect) TextColumn() string { return "TEXT" + textCollation + " DEFAULT '' NOT NULL" }
+func (d postgresDialect) IDColumn() string {
+	return "TEXT" + d.collation() + " PRIMARY KEY DEFAULT " + d.RandomIDDefault() + " NOT NULL"
+}
+
+func (d postgresDialect) TextType() string { return "TEXT" + d.collation() }
+
+func (d postgresDialect) TextColumn() string { return "TEXT" + d.collation() + " DEFAULT '' NOT NULL" }
 
 // PocketBase numbers are float64 end to end. DOUBLE PRECISION keeps those
 // semantics and is returned by the driver as a float64 (NUMERIC is
@@ -72,7 +100,12 @@ func (postgresDialect) JSONType() string { return "JSONB" }
 
 // Postgres has no rowid, so every record table gets a hidden identity
 // column to keep the insertion order (list default order, @rowid sort).
-func (postgresDialect) HiddenColumns() map[string]string {
+func (d postgresDialect) HiddenColumns() map[string]string {
+	if d.crdb {
+		// CACHE 1: the default sequence cache of CockroachDB hands out ranges
+		// per node, which would break the insertion order across nodes
+		return map[string]string{RowIDColumn: "BIGINT GENERATED ALWAYS AS IDENTITY (CACHE 1)"}
+	}
 	return map[string]string{RowIDColumn: "BIGINT GENERATED ALWAYS AS IDENTITY"}
 }
 
@@ -142,7 +175,7 @@ func (d postgresDialect) BuildIndex(idx dbutils.Index) string {
 				term = "lower(" + term + ")"
 			}
 		case strings.EqualFold(collate, "BINARY"):
-			term += ` COLLATE "C"`
+			term += d.collation()
 		case collate != "":
 			term += " COLLATE " + quoteIdent(collate)
 		}
@@ -175,7 +208,11 @@ func pgPortableQuotes(expr string) string {
 // ConvertMultiplicity changes the column type in place with
 // "ALTER COLUMN ... TYPE ... USING". Postgres refuses to retype a
 // column that is used by a view so the views are dropped and recreated.
-func (postgresDialect) ConvertMultiplicity(db dbx.Builder, table, column string, toMultiple bool) (bool, error) {
+func (d postgresDialect) ConvertMultiplicity(db dbx.Builder, table, column string, toMultiple bool) (bool, error) {
+	if d.crdb {
+		return cockroachConvertMultiplicity(db, table, column, toMultiple)
+	}
+
 	// a field that is added together with its data has the target type already
 	// (the caller cannot tell it from a real single <-> multiple change)
 	var dataType string
@@ -344,7 +381,14 @@ func pgTableInfo(db dbx.Builder, table string) ([]*TableInfoRow, error) {
 	return info, err
 }
 
-func (postgresDialect) TableIndexes(db dbx.Builder, table string) (map[string]string, error) {
+func (d postgresDialect) TableIndexes(db dbx.Builder, table string) (map[string]string, error) {
+	// CockroachDB records every unique index in pg_constraint, so only the
+	// primary key is excluded there
+	constraintFilter := "TRUE"
+	if d.crdb {
+		constraintFilter = "(c.contype = 'p' OR i.indexname LIKE i.tablename || '\\_%\\_key')"
+	}
+
 	rows := []struct {
 		Name   string `db:"name"`
 		SQL    string `db:"sql"`
@@ -362,6 +406,7 @@ func (postgresDialect) TableIndexes(db dbx.Builder, table string) (map[string]st
 				SELECT 1 FROM pg_constraint c
 				JOIN pg_class ic ON ic.oid = c.conindid
 				WHERE ic.relname = i.indexname AND c.connamespace = (SELECT oid FROM pg_namespace WHERE nspname = i.schemaname)
+					AND ` + constraintFilter + `
 			)
 	`).Bind(dbx.Params{"table": table}).All(&rows)
 	if err != nil {
@@ -377,11 +422,12 @@ func (postgresDialect) TableIndexes(db dbx.Builder, table string) (map[string]st
 }
 
 var (
-	pgIndexUsing     = regexp.MustCompile(`(?i)\s+USING\s+\w+\s*\(`)
-	pgIndexLowerCol  = regexp.MustCompile(`(?i)^lower\(\s*("?)([^()"\s]+)("?)\s*\)$`)
-	pgIndexCollateC  = regexp.MustCompile(`(?i)\s+COLLATE\s+"C"`)
-	pgIndexCollateQ  = regexp.MustCompile(`(?i)\s+COLLATE\s+"([^"]+)"`)
-	pgIndexTypeCasts = regexp.MustCompile(`::(?:text|character varying|double precision|boolean|bigint|jsonb)\b`)
+	pgIndexQualifiedTable = regexp.MustCompile(`(?i)\sON\s+(?:"?[A-Za-z0-9_]+"?\.)+`)
+	pgIndexUsing          = regexp.MustCompile(`(?i)\s+USING\s+\w+\s*\(`)
+	pgIndexLowerCol       = regexp.MustCompile(`(?i)^lower\(\s*("?)([^()"\s]+)("?)\s*\)$`)
+	pgIndexCollateC       = regexp.MustCompile(`(?i)\s+COLLATE\s+"C"`)
+	pgIndexCollateQ       = regexp.MustCompile(`(?i)\s+COLLATE\s+"([^"]+)"`)
+	pgIndexTypeCasts      = regexp.MustCompile(`(?i)::(?:text|string|character varying|double precision|float8|float|boolean|bool|bigint|int8|jsonb)\b`)
 )
 
 // PortableIndex converts a pg_get_indexdef() definition back to PocketBase's
@@ -395,6 +441,7 @@ var (
 // recognize stays as written.
 func PortableIndex(def, schema, table string) string {
 	def = strings.Replace(def, " ON "+schema+".", " ON ", 1)
+	def = pgIndexQualifiedTable.ReplaceAllString(def, " ON ") // CockroachDB: database.schema.table
 	def = pgIndexUsing.ReplaceAllString(def, " (")
 
 	// split the definition in "head (columns) [WHERE ...]" with the same
@@ -409,6 +456,13 @@ func PortableIndex(def, schema, table string) string {
 
 	idx.SchemaName = ""
 	idx.TableName = table
+
+	// CockroachDB spells the default sort order out
+	for i := range idx.Columns {
+		if strings.EqualFold(idx.Columns[i].Sort, "ASC") {
+			idx.Columns[i].Sort = ""
+		}
+	}
 
 	for i, col := range idx.Columns {
 		name := strings.TrimSpace(col.Name)
@@ -470,7 +524,10 @@ func (postgresDialect) IndexOwner(db dbx.Builder, indexName string, skipTables .
 	return owner
 }
 
-func (postgresDialect) Vacuum(db dbx.Builder) error {
+func (d postgresDialect) Vacuum(db dbx.Builder) error {
+	if d.crdb {
+		return nil // garbage collection is automatic
+	}
 	_, err := db.NewQuery("VACUUM").Execute()
 	return err
 }
@@ -481,7 +538,10 @@ func (postgresDialect) Optimize(db dbx.Builder) error { return nil }
 // there is no wal file to truncate
 func (postgresDialect) Checkpoint(db dbx.Builder) error { return nil }
 
-func (postgresDialect) LockMigrations(db dbx.Builder) error {
+func (d postgresDialect) LockMigrations(db dbx.Builder) error {
+	if d.crdb {
+		return cockroachLockMigrations(db)
+	}
 	_, err := db.NewQuery("SELECT pg_advisory_xact_lock(" + strconv.FormatInt(migrationsLockKey, 10) + ")").Execute()
 	return err
 }
@@ -489,8 +549,9 @@ func (postgresDialect) LockMigrations(db dbx.Builder) error {
 // Try wraps fn in a savepoint when db is a transaction because a failed
 // statement aborts the whole Postgres transaction ("current transaction
 // is aborted, commands ignored until end of transaction block").
-func (postgresDialect) Try(db dbx.Builder, fn func() error) error {
-	if _, ok := db.(*dbx.Tx); !ok {
+func (d postgresDialect) Try(db dbx.Builder, fn func() error) error {
+	// CockroachDB cannot roll back to a savepoint after DDL: a failure aborts the transaction
+	if _, ok := db.(*dbx.Tx); !ok || d.crdb {
 		return fn()
 	}
 
@@ -583,3 +644,75 @@ func (postgresDialect) DetachDependentViews(db dbx.Builder, view string) (func()
 		return nil
 	}, nil
 }
+
+func (d postgresDialect) Retries() bool { return d.crdb }
+
+// IsRetryable is SQLSTATE 40001 (serialization_failure), which CockroachDB
+// raises for conflicting transactions (and for "restart transaction"). The
+// check goes through the SQLState method of the driver error (pgx), so this
+// package needs no driver.
+func (d postgresDialect) IsRetryable(err error) bool {
+	if !d.crdb || err == nil {
+		return false
+	}
+
+	var se interface{ SQLState() string }
+	return errors.As(err, &se) && se.SQLState() == "40001"
+}
+
+func (postgresDialect) AdaptDDL(sql string) string { return sql }
+
+var (
+	pendingDropsMu sync.Mutex
+	pendingDrops   = map[dbx.Builder][]string{}
+)
+
+func (d postgresDialect) FinishIndexDrops(db dbx.Builder) error {
+	if !d.crdb {
+		return nil
+	}
+
+	pendingDropsMu.Lock()
+	names := pendingDrops[db]
+	delete(pendingDrops, db)
+	pendingDropsMu.Unlock()
+
+	for _, name := range names {
+		var table string
+		if err := db.NewQuery(`SELECT tablename FROM pg_indexes WHERE schemaname = current_schema() AND indexname = {:name}`).
+			Bind(dbx.Params{"name": name}).Row(&table); err != nil || table == "" {
+			continue
+		}
+		if _, err := db.NewQuery("DROP INDEX " + quoteIdent(table) + "@" + quoteIdent(name)).Execute(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (d postgresDialect) DropIndexIfExists(db dbx.Builder, table, name string) error {
+	if d.crdb {
+		// CockroachDB refuses to create an index under the name of one that was
+		// dropped in the same transaction ("being dropped, try again later"):
+		// rename it out of the way first
+		var exists int
+		if err := db.NewQuery(`SELECT 1 FROM pg_indexes WHERE schemaname = current_schema() AND tablename = {:table} AND indexname = {:name}`).
+			Bind(dbx.Params{"table": table, "name": name}).Row(&exists); err != nil || exists != 1 {
+			return nil
+		}
+		tmp := "claviger_drop_" + strconv.FormatUint(savepointSeq.Add(1), 10) + "_" + strconv.FormatInt(time.Now().UnixNano(), 36)
+		if _, err := db.NewQuery("ALTER INDEX " + quoteIdent(table) + "@" + quoteIdent(name) + " RENAME TO " + quoteIdent(tmp)).Execute(); err != nil {
+			return err
+		}
+		pendingDropsMu.Lock()
+		pendingDrops[db] = append(pendingDrops[db], tmp)
+		pendingDropsMu.Unlock()
+		return nil
+	}
+
+	_, err := db.NewQuery("DROP INDEX IF EXISTS [[" + name + "]]").Execute()
+	return err
+}
+
+func (postgresDialect) TextCastType() string { return "TEXT" }

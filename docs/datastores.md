@@ -2,6 +2,20 @@
 
 Claviger stores its data in SQLite by default, exactly like PocketBase. Nothing needs to be configured for that.
 
+## Engines at a glance
+
+One variable chooses the engine, `CLAVIGER_DB_URL`; the URL scheme says which. Unset means SQLite.
+
+| Engine | `CLAVIGER_DB_URL` | Status | Several replicas | `migrate-db` target | Tested versions |
+| --- | --- | --- | --- | --- | --- |
+| SQLite | (unset) | The default, unchanged. | No (single writer, `entrypoint.sh` handover) | n/a (the source) | bundled `modernc.org/sqlite` |
+| [PostgreSQL](#postgresql) | `postgres://` or `postgresql://` | Supported. | Yes, opt-in | Yes | 16, 17 |
+| [CockroachDB](#cockroachdb) | `cockroach://` or `cockroachdb://`; a `postgres://` URL that reaches CockroachDB is detected | Supported, with the limits listed in its section. | **Refused** (no `LISTEN`/`NOTIFY`, no advisory locks) | Yes | v25.4 (single node) |
+| [MySQL](#mysql-experimental) | `mysql://` | **Experimental.** Passes the tagged suites, not the regular ones (see the section). | **Refused** | No | 8.4 |
+| MariaDB | `mysql://` or `mariadb://` | **Refused at startup** (no functional indexes in 11.4, which the partial and case insensitive unique indexes need). | n/a | n/a | n/a |
+
+Everything engine specific lives behind the `Dialect` interface in `tools/dialect`. SQLite's SQL text is pinned byte for byte by `tools/search/dialect_sqlite_golden_test.go`, and the SQLite suites run as before.
+
 ## PostgreSQL
 
 Status: **supported, one replica or several** (issue #106, milestones 1 to 7). The storage layer sits behind a dialect interface (`tools/dialect`), the app runs on PostgreSQL 16 and 17, the records API works (filters, sorting, expand, view collections), collections import and export and the migration commands work, every fork feature runs on it, and `claviger migrate-db` copies an existing SQLite install over ([Moving from SQLite to PostgreSQL](#moving-from-sqlite-to-postgresql)). CI runs the Postgres suites on both versions. More than one replica is opt-in ([Several replicas](#several-replicas)). What is not there is zip backups of the database (see [Backups](#backups)). SQLite stays the default and its behavior is unchanged. The lists below say exactly what is and is not there.
@@ -246,6 +260,8 @@ Claviger does not translate user SQL; translating it would turn this into a hard
 
 ### Running the Postgres tests
 
+The same suites run against CockroachDB and MySQL: point `CLAVIGER_TEST_PG_URL` at a server of that engine (see [CockroachDB](#cockroachdb) and [MySQL](#mysql-experimental) for the URLs and what is skipped). The tests that differ per engine are listed in `tests/pgtests/engine_test.go` (`engineGaps`).
+
 ```sh
 # against a throwaway local Postgres 16 (downloaded on first use, no Docker needed;
 # EPG_VERSION=17 for Postgres 17):
@@ -280,3 +296,165 @@ The tests that cannot pass on Postgres are listed in `tests/postgres_skip.txt`, 
 ### For developers
 
 The seam is the `Dialect` interface in `tools/dialect`. Code that has to differ per engine asks `core.DialectOf(app)` (or `dialect.Of(db)` when it holds a builder; a transaction keeps the dialect of its connection). SQLite is the previous behavior moved behind the interface and its SQL text is unchanged. New raw SQL in `core/`, `apis/` or a migration must either work on both engines or go through the dialect. `FORK_SYNC.md` lists the upstream-owned files that call into it.
+
+## CockroachDB
+
+Status: **supported on a single cluster, one or several nodes of it** (issue #106). CockroachDB speaks the PostgreSQL wire protocol and most of its SQL, so it is the PostgreSQL dialect with a CockroachDB variant (`dialect.Cockroach`, name `cockroach`); the PostgreSQL sections above (what works, how data is stored, backups, your own SQL, `migrate-db`) apply unless this section says otherwise. The tagged suites (`tests/pgtests`) pass against CockroachDB v25.4: 439 tests pass and the rest are the skips listed below.
+
+### Turning it on
+
+```sh
+CLAVIGER_DB_URL='cockroach://user:password@host:26257/dbname?sslmode=verify-full'
+# or, the same thing, because the server is detected after connecting:
+CLAVIGER_DB_URL='postgresql://user:password@host:26257/dbname?sslmode=verify-full'
+```
+
+- `cockroach://` and `cockroachdb://` are rewritten to `postgresql://` for the driver (`pgx`, the same as for PostgreSQL) and force the CockroachDB dialect. A `postgres://` or `postgresql://` URL gets it too when `SELECT version()` says CockroachDB.
+- The data database is the one in the URL, created by you. `auxiliary.db` (logs) stays a local SQLite file, as on PostgreSQL.
+- `claviger migrate-db --to='cockroach://...'` works like the PostgreSQL one (the smoke test `scripts/test_migrate_db_smoke.sh` passes against CockroachDB).
+
+### What differs from PostgreSQL
+
+| Area | CockroachDB |
+| --- | --- |
+| Several replicas (`CLAVIGER_MULTI_REPLICA=true`) | **Refused at startup**, with a message that names the engine. The bus is `LISTEN`/`NOTIFY` (CockroachDB has none) and the cron guard an advisory lock (the functions are missing or no-ops). Run one replica, or use PostgreSQL. |
+| Transactions | The default isolation is `SERIALIZABLE`, so a transaction can be aborted with SQLSTATE `40001` when it conflicts with another one. `RunInTransaction` runs the whole function again (up to 20 times, with a growing, jittered delay of at most a second) when that happens. Keep the function free of effects outside the database, as you should anyway; the model hooks that run after commit are only called for the attempt that committed. Single statements outside a transaction are retried by the server. |
+| Migrations lock | There is no advisory lock to serialize migrations, so starting two instances at the same moment on an empty database is not guarded: the second one fails on the `_migrations` primary key and can simply be started again. Start one instance first. |
+| Changing a field between single and multiple (select, relation, file) | `ALTER COLUMN ... TYPE` that rewrites data is not allowed in a transaction, so this is done only for a collection **without records** (the column is recreated). With records the save is refused with an error that says to add a new field, copy the values and drop the old one. |
+| Case insensitive and partial indexes | `COLLATE NOCASE` is a `lower(column)` expression index as on PostgreSQL. CockroachDB cannot create an expression index in a transaction after one was dropped in it, so a collection update renames the old indexes first and drops them after the new ones exist (`FinishIndexDrops`). |
+| Text columns | No `COLLATE "C"`: the default collation is already byte order, and the locale `C` is rejected. |
+| Row order | The hidden `_rowid_` identity column uses `CACHE 1`, so insertion order holds across nodes (each insert asks the sequence). |
+| `ILIKE` and `lower()` | Fold the case of non ASCII letters (`é` matches `É`), SQLite and PostgreSQL's `C` collation only ASCII. The filter operator `~` is therefore Unicode aware on CockroachDB. |
+| `strftime()` | The same formats and modifiers as PostgreSQL. CockroachDB has no `pg_input_is_valid()`, so text is cast to a timestamp only if it matches a strict date pattern (months 01-12, days 01-31, hours 00-23); text that does not match is `NULL`, like SQLite. A date that does not exist in its month (`2024-02-30`) matches the pattern and makes the query fail. |
+| Backups | As on PostgreSQL, the zip holds files only. The manifest names `cockroach` and points at `BACKUP`. |
+| `VACUUM`, `ANALYZE` | Not run (garbage collection and statistics are automatic). |
+
+### Running the tests
+
+```sh
+docker run -d --name crdb-test -p 26257:26257 cockroachdb/cockroach:latest-v25.4 \
+  start-single-node --insecure --cache=512MiB --max-sql-memory=512MiB
+
+# DDL is slow by default (a 25 second bootstrap). These two settings make it ~2 seconds:
+for q in "SET CLUSTER SETTING jobs.registry.interval.adopt = '1s'" \
+         "SET CLUSTER SETTING jobs.registry.interval.cancel = '1s'" \
+         "SET CLUSTER SETTING sql.stats.automatic_collection.enabled = false"; do
+  docker exec crdb-test ./cockroach sql --insecure -e "$q"; done
+
+export CLAVIGER_TEST_PG_URL='postgresql://root@localhost:26257/defaultdb?sslmode=disable'
+go test -tags postgres -count=1 -v ./tests/pgtests/...        # about a minute
+scripts/test_migrate_db_smoke.sh                               # migrate-db end to end
+```
+
+Skipped on CockroachDB (each prints its reason, named `known_gap(cockroach)` or in `engineGaps`): the eight multi replica tests, `TestTryUsesSavepoints` (CockroachDB cannot roll back to a savepoint after DDL; `Try` therefore just runs the function there), the two Unicode `LIKE`/`lower()` cases, and the single to multiple conversion step of `TestCollectionLifecycle` (the refusal above is asserted instead). The container needs about 1 GiB of memory.
+
+The **regular suites** (`CLAVIGER_TEST_DB=postgres`, see `scripts/test_postgres_suites.sh`) build one database per test app from the fixture, because CockroachDB has no `CREATE DATABASE ... TEMPLATE`: about 7 seconds per app instead of milliseconds, so a full `./apis` and `./core` run (several thousand apps) takes many hours and was **not** run. What was run, with `-parallel 1` (several concurrent schema builds conflict on CockroachDB's system tables and fail with `restart transaction` even after the retries): `go test ./core -run '^TestRecord' -skip <tests/postgres_skip.txt>` passes (310 tests, about 8 minutes), and `go test ./apis -run '^TestRecordCrudView$'` passes (23 scenarios, 6 minutes). `TestRecordCrudCreate` was started and stopped unfinished (no failure before it was stopped); the rest of `./apis` was not run. Add `ALTER RANGE default CONFIGURE ZONE USING gc.ttlseconds = 5` to the settings above for such long runs, and drop leftover `pbt_*` databases with `DROP DATABASE ... CASCADE` (CockroachDB has no `WITH (FORCE)`).
+
+## MySQL (experimental)
+
+Status: **experimental** (issue #106). A MySQL 8.0.13+ dialect (`dialect.MySQL`, name `mysql`) exists and the tagged suites (`tests/pgtests`) pass against MySQL 8.4 (419 pass, 0 fail, 36 skips for the engine gaps below), but the regular `core`/`apis` suites were run only on a sample (see [Running the tests](#running-the-tests-1)), `migrate-db` does not target MySQL, several replicas are refused, and SQLite semantics are approximated in places (list below). Do not use it for data you cannot lose. **MariaDB is refused at startup**: its 11.4 has no functional indexes.
+
+### Turning it on
+
+```sh
+CLAVIGER_DB_URL='mysql://user:password@host:3306/dbname'     # mariadb:// is accepted and then refused
+```
+
+- Create the database yourself, as `utf8mb4` with `utf8mb4_bin`: `CREATE DATABASE claviger CHARACTER SET utf8mb4 COLLATE utf8mb4_bin`. Claviger creates its tables in it. `tls=` and other driver options of the go-sql-driver (`?tls=true`) can be added to the URL.
+- The driver is `github.com/go-sql-driver/mysql` (pure Go). The session is opened with `sql_mode=STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION,PIPES_AS_CONCAT,NO_BACKSLASH_ESCAPES` (the filter SQL concatenates with `||` and writes `ESCAPE '\'`), `time_zone='+00:00'`, `collation=utf8mb4_bin`, `multiStatements=true` (the system migrations send scripts) and `optimizer_switch='semijoin=off'`. The last one works around a MySQL 8.4 bug: an `EXISTS` or `IN` subquery over `JSON_TABLE` matched nothing (seen with a `utf8mb4_bin` database), and the back relations and multi value filters need them.
+- `auxiliary.db` (logs) stays a local SQLite file.
+
+### How data is stored
+
+| What | MySQL |
+| --- | --- |
+| Text | `LONGTEXT ... utf8mb4_bin` (byte order, case sensitive, like SQLite's `BINARY`). A literal default is not allowed on a TEXT column, so defaults are expressions: `DEFAULT ('')`. |
+| Ids | `VARCHAR(255) utf8mb4_bin`, default `CONCAT('r', LOWER(HEX(RANDOM_BYTES(7))))`. |
+| Dates | `LONGTEXT` in the same `2006-01-02 15:04:05.000Z` format, UTC. |
+| Numbers, booleans, JSON | `DOUBLE`, `BOOLEAN` (`tinyint(1)`), the native `JSON` type. JSON text is normalized by MySQL (a space after `:` and `,`, keys ordered by length). |
+| Insertion order | A hidden `_rowid_ BIGINT AUTO_INCREMENT UNIQUE` column, like PostgreSQL's. |
+| Indexes | MySQL cannot index a TEXT column whole, has no partial indexes and no `COLLATE NOCASE`. A plain index on text uses a 191 character prefix key. A **unique** index on text is a unique expression index over `SHA2(column, 256)`. A partial unique index (`WHERE email != ''`) is an expression that is `NULL` when the condition is false (NULLs never collide), so it keeps its meaning. A partial non unique index is created without its `WHERE`. `COLLATE NOCASE` is `LOWER(column)`. The portable definition is kept in the index comment, and `TableIndexes` returns it, so collections export and import the same indexes on every engine. |
+| Unique errors | `Duplicate entry ... for key 'table.index'` (error 1062) is mapped to the `validation_not_unique` error of the field whose name the index name contains (the primary key is `id`). |
+| DDL | DDL commits implicitly in MySQL: a migration or a collection save that fails half way is **not** rolled back. Seen in the suites: deleting a collection that a view still selects from is refused, but only after its table was dropped (`TestCollectionDelete/view_with_reference`). |
+| Transactions | Deadlocks (1213) and lock wait timeouts (1205) are retried like CockroachDB's `40001`. |
+
+### Differences from SQLite
+
+Besides the PostgreSQL list above (most of it applies in spirit), these are the cases that the suites show differ on MySQL (each is a `known_gap(mysql)` or an `engineGaps` entry in `tests/pgtests/engine_test.go`):
+
+- `~` and `:lower` fold the case of non ASCII letters (accents stay significant): `title ~ "école"` matches `ÉCOLE`.
+- A JSON string that looks like a number equals the number: `meta.n = 5` also matches `{"n": "5"}`, and it sorts among the numbers.
+- `strftime()` supports `%Y %m %d %e %H %I %k %l %M %S %f %j %p %w %s %F %T %R %%` and the modifiers `start of day|month|year`, `[+-]N second|minute|hour|day|month|year`, `utc`, `subsec`. **Not supported** (rejected when the filter is built): `%u %U %W %V %G %g %P`, `weekday N`, julian day and unix time numbers, `localtime`.
+- The `info` of a table (`app.TableInfo`) reports MySQL's type spellings (`varchar(255)`, `longtext`, `tinyint(1)`) and defaults (`concat(_utf8mb4\'r\', ...)`).
+- A view query is MySQL SQL, as written (`CAST(x AS SIGNED)`, not `INTEGER`; a comparison is typed as a number, not a boolean).
+- The superuser SQL endpoint (`/api/sql`) runs MySQL SQL as written; the PostgreSQL oriented test of it is skipped.
+- Several replicas, zip backups of the database (as on PostgreSQL: use `mysqldump`) and `migrate-db` to MySQL are not available. Migrations are not serialized (start one instance first).
+- `TestTryUsesSavepoints` is skipped: a failed statement does not abort a MySQL transaction.
+
+### Running the tests
+
+```sh
+docker run -d --name mysql-test -e MYSQL_ROOT_PASSWORD=test -e MYSQL_DATABASE=claviger -p 3307:3306 mysql:8.4
+
+CLAVIGER_TEST_PG_URL='mysql://root:test@127.0.0.1:3307/claviger' \
+  go test -tags postgres -count=1 -v ./tests/pgtests/...           # about a minute
+```
+
+Every test creates and drops its own database (`CREATE DATABASE ... utf8mb4_bin`), so the root user is needed. The regular suites need `CLAVIGER_TEST_DB=postgres` plus the same URL and build one database per test app from the fixture (about 4 seconds), so a full run takes hours and was **not** run. What was run (skip list: `tests/postgres_skip.txt`, as `scripts/test_postgres_suites.sh` builds it):
+
+| Run | Result |
+| --- | --- |
+| `./core -run '^TestRecord'` | 310 tests pass. |
+| `./core -run '^TestCollection'` | 233 tests pass, 1 fails: `TestCollectionDelete/view_with_reference` (DDL commits implicitly, see the table above). |
+| `./apis -run '^TestRecordCrud'` | 249 tests pass; 2 failed on the unique field error check (the violated MySQL index was not mapped to its field), fixed since and re-run alone: both pass. |
+
+MariaDB 11.4 is refused at startup, so there is nothing to run against it.
+
+## CI for CockroachDB and MySQL (for the conductor)
+
+Nothing here is wired into `.github/workflows/test.yml` yet. Two jobs would do it, each after the `test` job, on the same runner tier as the `postgres` job. The service container syntax of GitHub Actions cannot pass arguments to the CockroachDB image, so that one is started with a `docker run` step.
+
+```yaml
+  cockroach:
+    needs: test
+    runs-on: ${{ vars.RUNNER_LIGHT || 'tdp-k3s-claviger' }}
+    env:
+      CLAVIGER_TEST_PG_URL: postgresql://root@127.0.0.1:26257/defaultdb?sslmode=disable
+    steps:
+      - uses: actions/checkout@<sha>
+      - uses: actions/setup-go@<sha>
+        with: { go-version-file: go.mod }
+      - name: Start CockroachDB
+        run: |
+          docker run -d --name crdb -p 26257:26257 cockroachdb/cockroach:v25.4.21 \
+            start-single-node --insecure --cache=512MiB --max-sql-memory=512MiB
+          until docker exec crdb ./cockroach sql --insecure -e 'select 1' >/dev/null 2>&1; do sleep 1; done
+          for q in "SET CLUSTER SETTING jobs.registry.interval.adopt = '1s'" \
+                   "SET CLUSTER SETTING jobs.registry.interval.cancel = '1s'" \
+                   "SET CLUSTER SETTING sql.stats.automatic_collection.enabled = false" \
+                   "ALTER RANGE default CONFIGURE ZONE USING gc.ttlseconds = 5"; do
+            docker exec crdb ./cockroach sql --insecure -e "$q"; done
+      - run: go test -tags postgres -count=1 -v ./tests/pgtests/... | tee crdb.log   # expect about 440 PASS, 0 FAIL, skips named known_gap(cockroach) or MultiReplica
+      - run: scripts/test_migrate_db_smoke.sh
+
+  mysql:
+    needs: test
+    runs-on: ${{ vars.RUNNER_LIGHT || 'tdp-k3s-claviger' }}
+    services:
+      mysql:
+        image: mysql:8.4
+        env: { MYSQL_ROOT_PASSWORD: test, MYSQL_DATABASE: claviger }
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -ptest" --health-interval 5s --health-retries 20
+    env:
+      CLAVIGER_TEST_PG_URL: mysql://root:test@127.0.0.1:3306/claviger
+    steps:
+      - uses: actions/checkout@<sha>
+      - uses: actions/setup-go@<sha>
+        with: { go-version-file: go.mod }
+      - run: go test -tags postgres -count=1 -v ./tests/pgtests/... | tee mysql.log   # expect about 420 PASS, 0 FAIL
+```
+
+Check the counts the way the `postgres` job does (`grep -c -- '--- PASS'` against a minimum, any `--- SKIP` that is not `known_gap` or a multi replica test fails the job). The regular suites on these engines are not part of this proposal: they build one database per test app (4 to 7 seconds), so a full run takes hours; run a sample (`./core -run '^TestRecord'`, `./apis -run '^TestRecordCrud'`) with `CLAVIGER_TEST_DB=postgres` if you want one.
+

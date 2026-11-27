@@ -22,3 +22,10 @@ func PostgresDBConnect(url string) DBConnectFunc {
 		return nil, errors.New("PostgreSQL support is not compiled in (no_default_driver build tag)")
 	}
 }
+
+// MySQLDBConnect is not available without the default drivers.
+func MySQLDBConnect(url string) DBConnectFunc {
+	return func(_ string) (*dbx.DB, error) {
+		return nil, errors.New("MySQL support is not compiled in (no_default_driver build tag)")
+	}
+}

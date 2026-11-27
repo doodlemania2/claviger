@@ -9,6 +9,7 @@ import (
 	"ganigeorgiev.com/pocketbase/dbx"
 	validation "ganigeorgiev.com/pocketbase/ozzo-validation/v4"
 	"github.com/doodlemania2/claviger/tools/dbutils"
+	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/security"
 )
 
@@ -326,8 +327,7 @@ func dropCollectionIndexes(app App, collection *Collection) error {
 				return fmt.Errorf("failed to dop index - missing index name: %s", raw)
 			}
 
-			_, err := txApp.DB().NewQuery(fmt.Sprintf("DROP INDEX IF EXISTS [[%s]]", parsed.IndexName)).Execute()
-			if err != nil {
+			if err := dialectOf(txApp).DropIndexIfExists(txApp.DB(), collection.Name, parsed.IndexName); err != nil {
 				return err
 			}
 		}
@@ -364,7 +364,11 @@ func createCollectionIndexes(app App, collection *Collection) error {
 
 			d := dialectOf(txApp)
 			if err := d.Try(txApp.DB(), func() error {
-				_, err := txApp.DB().NewQuery(d.BuildIndex(parsed)).Execute()
+				indexSQL, err := dialect.BuildIndexFor(d, txApp.DB(), parsed)
+				if err != nil {
+					return err
+				}
+				_, err = txApp.DB().NewQuery(indexSQL).Execute()
 				return err
 			}); err != nil {
 				errs[strconv.Itoa(i)] = validation.NewError(
@@ -379,6 +383,7 @@ func createCollectionIndexes(app App, collection *Collection) error {
 			return validation.Errors{"indexes": errs}
 		}
 
-		return nil
+		// fork (#106): drops that the dialect postponed until the new indexes exist
+		return dialectOf(txApp).FinishIndexDrops(txApp.DB())
 	})
 }

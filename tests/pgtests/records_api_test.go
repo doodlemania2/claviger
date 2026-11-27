@@ -169,6 +169,9 @@ func runAPICases(t *testing.T, cases []apiCase, setup func(t testing.TB, app cor
 	pgClient := newAPIClient(t, pgApp)
 
 	for _, c := range cases {
+		if c.gap == "" {
+			c.gap = engineGap(t, c.name)
+		}
 		name := strings.NewReplacer(" ", "_", "/", "_").Replace(c.name)
 		if c.gap != "" {
 			name = "known_gap/" + name
