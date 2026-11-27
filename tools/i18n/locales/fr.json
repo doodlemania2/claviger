@@ -320,6 +320,7 @@
   "js.oidc.continueWith": "Continuer avec {provider}",
   "js.oidc.oauthFailed": "La connexion avec {provider} n'a pas abouti.",
   "js.oidc.popupBlocked": "La fenêtre de connexion a été bloquée. Autorisez les fenêtres contextuelles pour ce site et réessayez.",
+  "js.oidc.cancel": "Annuler",
   "js.oidc.noMethod": "Aucune méthode de connexion n'est disponible pour cette application.",
   "js.oidc.decisionFailed": "La décision n'a pas pu être enregistrée.",
   "oidc.problem": "Problème de connexion",

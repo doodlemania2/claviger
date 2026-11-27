@@ -320,6 +320,7 @@
   "js.oidc.continueWith": "المتابعة باستخدام {provider}",
   "js.oidc.oauthFailed": "لم يكتمل تسجيل الدخول عبر {provider}.",
   "js.oidc.popupBlocked": "تم حظر نافذة تسجيل الدخول. اسمح بالنوافذ المنبثقة لهذا الموقع وحاول مرة أخرى.",
+  "js.oidc.cancel": "إلغاء",
   "js.oidc.noMethod": "لا توجد طريقة متاحة لتسجيل الدخول إلى هذا التطبيق.",
   "js.oidc.decisionFailed": "تعذّر حفظ القرار.",
   "oidc.problem": "مشكلة في تسجيل الدخول",
