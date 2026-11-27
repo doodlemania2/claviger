@@ -7,6 +7,7 @@ require (
 	ganigeorgiev.com/pocketbase/dbx v1.13.0
 	ganigeorgiev.com/pocketbase/ozzo-validation/v4 v4.4.1
 	ganigeorgiev.com/pocketbase/tygoja v0.2.0
+	github.com/beevik/etree v1.8.1
 	github.com/crewjam/saml v0.6.3
 	github.com/disintegration/imaging v1.6.2
 	github.com/domodwyer/mailyak/v3 v3.6.2
@@ -21,6 +22,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/prometheus/client_golang v1.25.0
+	github.com/russellhaering/goxmldsig v1.6.1
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/spf13/cast v1.10.0
 	github.com/spf13/cobra v1.10.2
@@ -47,7 +49,6 @@ require (
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
-	github.com/beevik/etree v1.8.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.10.4 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
@@ -85,7 +86,6 @@ require (
 	github.com/prometheus/procfs v0.22.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rs/cors v1.11.1 // indirect
-	github.com/russellhaering/goxmldsig v1.6.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
