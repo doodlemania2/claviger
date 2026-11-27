@@ -12,7 +12,7 @@ export async function orgsScene(browser: Browser, world: World, index: number): 
     const scene = await SceneRun.begin(browser, world, index, "orgs", "A diocese and its parish", "The instance operator creates the organization tree", [
         { name: "it", device: "desktop", label: "Diocesan IT (superuser)" },
     ]);
-    const { page, say } = scene.actor("it");
+    const { page, say, mark } = scene.actor("it");
     try {
         const p = world.people;
         await ensureAdmin(page, world.admin);
@@ -30,6 +30,8 @@ export async function orgsScene(browser: Browser, world: World, index: number): 
         await expect(page.getByRole("row", { name: new RegExp(DIOCESE.name) })).toBeVisible();
         const diocese = await orgBySlug(DIOCESE.slug);
 
+        // the short orgs clip (clip.mjs ... orgs orgs-start orgs-done): the parish created under the diocese
+        mark("orgs-start");
         await press(page.getByRole("button", { name: "New organization" }), page, 800);
         await typeIn(modal.getByLabel("Name", { exact: true }), PARISH_ORG.name);
         await typeIn(modal.getByLabel("Slug"), PARISH_ORG.slug);
@@ -40,6 +42,8 @@ export async function orgsScene(browser: Browser, world: World, index: number): 
         await press(modal.getByRole("button", { name: "Create", exact: true }), page, 1200);
         await expect(page.locator(".org-form-modal")).toHaveCount(0);
         await expect(page.getByRole("row", { name: new RegExp(PARISH_ORG.name) })).toBeVisible();
+        await beat(page, 1800);
+        mark("orgs-done");
 
         await ensureOrg(SECOND_PARISH.slug, { name: SECOND_PARISH.name, kind: "parish", parent: diocese.id, owner: p.hugo.email });
         await page.getByRole("button", { name: "Refresh" }).first().click();
