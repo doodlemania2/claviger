@@ -76,6 +76,7 @@ JavaScript hooks. Every feature below is off, or has no effect, until you config
 | Staff-assisted recovery | Short codes vouched for by staff: [docs/recovery.md](docs/recovery.md) |
 | Diocese hierarchy and transfers | Nested orgs, opt-in oversight rules, consented transfers, org-scoped role tags: [docs/orgs.md](docs/orgs.md) |
 | Pastoral notes | Locked rules, two-person break-glass access, expiring prayer requests: [docs/pastoral-notes.md](docs/pastoral-notes.md) |
+| Children's check-in | Family pickup codes, guardian passkey release, kiosks, do-not-release flags, an append-only log: [docs/checkin.md](docs/checkin.md) |
 | Permanent registers | Final entries cannot be edited; corrections are annotations: [docs/registers.md](docs/registers.md) |
 | SMS | Twilio or a generic webhook: [docs/sms.md](docs/sms.md) |
 
@@ -99,7 +100,6 @@ erasure all need local legal review. The guides say so where it applies.
 Not built yet. Labels and details are in the [issues](../../issues).
 
 - Register restriction flow ([#88](../../issues/88)).
-- Children's check-in ([#82](../../issues/82)).
 - Enterprise inbound SSO ([#92](../../issues/92)).
 - Built-in handover between instances is in, opt-in (`serve --handover`, see [docs/handover.md](docs/handover.md)); deleting the entrypoint's copy of it is what remains of [#72](../../issues/72).
 - Owner-held key vault ([#86](../../issues/86)). Design spike: [docs/spikes/86-6-owner-key-vault.md](docs/spikes/86-6-owner-key-vault.md).
