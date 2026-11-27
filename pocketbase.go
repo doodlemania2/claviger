@@ -13,6 +13,7 @@ import (
 	"github.com/doodlemania2/claviger/cmd"
 	"github.com/doodlemania2/claviger/core"
 	"github.com/doodlemania2/claviger/oidc"
+	"github.com/doodlemania2/claviger/tools/handover"
 	"github.com/doodlemania2/claviger/tools/hook"
 	"github.com/doodlemania2/claviger/tools/list"
 	"github.com/doodlemania2/claviger/tools/osutils"
@@ -141,6 +142,10 @@ func NewWithConfig(config Config) *PocketBase {
 
 	// fork-local (#71): the OpenID Connect provider (inert until a client is registered)
 	oidc.Register(pb.App)
+
+	// fork-local (#72): in-binary single-writer handover; binds nothing unless
+	// `serve --handover` or CLAVIGER_HANDOVER=binary is given
+	handover.Register(pb.App)
 
 	// hide the default help command (allow only `--help` flag)
 	pb.RootCmd.SetHelpCommand(&cobra.Command{Hidden: true})

@@ -6,6 +6,7 @@ import (
 
 	"github.com/doodlemania2/claviger/apis"
 	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/handover"
 	"github.com/spf13/cobra"
 )
 
@@ -15,6 +16,7 @@ func NewServeCommand(app core.App, showStartBanner bool) *cobra.Command {
 	var allowedOrigins []string
 	var httpAddr string
 	var httpsAddr string
+	var useHandover bool
 
 	command := &cobra.Command{
 		Use:          "serve [domain(s)]",
@@ -34,6 +36,10 @@ func NewServeCommand(app core.App, showStartBanner bool) *cobra.Command {
 				if httpAddr == "" {
 					httpAddr = "127.0.0.1:8090"
 				}
+			}
+
+			if (useHandover || handover.EnabledByEnv()) && !handover.Attached(app) {
+				app.Logger().Warn("--handover was requested but the app was not built with the handover registered (use pocketbase.New); serving without it")
 			}
 
 			err := apis.Serve(app, apis.ServeConfig{
@@ -71,6 +77,13 @@ func NewServeCommand(app core.App, showStartBanner bool) *cobra.Command {
 		"https",
 		"",
 		"TCP address to listen for the HTTPS server\n(if domain args are specified - default to 0.0.0.0:443, otherwise - default to empty string, aka. no TLS)\nThe incoming HTTP traffic also will be auto redirected to the HTTPS version",
+	)
+
+	command.PersistentFlags().BoolVar(
+		&useHandover,
+		"handover",
+		false,
+		"(Claviger) take part in the single-writer handover on a shared data dir: ask the previous replica to release it before opening the databases, and release it to the next one on request.\nAlso enabled by CLAVIGER_HANDOVER=binary. See docs/handover.md",
 	)
 
 	return command

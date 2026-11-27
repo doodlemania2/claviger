@@ -21,8 +21,29 @@ if [ -n "${PB_ENCRYPTION_KEY:-}" ]; then
     ENC_ARG="--encryptionEnv=PB_ENCRYPTION_KEY"
 fi
 
+# In-binary single-writer handover (#72). CLAVIGER_HANDOVER=binary makes
+# `claviger serve --handover` do what acquire_single_writer and the watcher below
+# do (tools/handover, same files, same env knobs, same event text), and this
+# script skips its own handover. The shell handover stays the default until the
+# binary one has run in production; deleting it is the follow-up to #72.
+#
+# Litestream is the one thing that cannot move yet: its restore and replicate
+# steps run in this script and must come AFTER the handover, which the binary
+# now does later than they would run. Such a deployment keeps the shell handover.
+BINARY_HANDOVER=0
+case "${CLAVIGER_HANDOVER:-}" in
+    binary|1|true|TRUE|True)
+        if [ -n "${LITESTREAM_REPLICA_URL:-}" ]; then
+            echo "[entrypoint] WARN: CLAVIGER_HANDOVER=binary is ignored while LITESTREAM_REPLICA_URL is set; using the shell handover."
+        else
+            BINARY_HANDOVER=1
+            CLAVIGER_HANDOVER_ARG="--handover"
+        fi
+        ;;
+esac
+
 # Default serve command arguments
-DEFAULT_SERVE_ARGS="serve --http=${HOST}:${PORT} --dir=${DATA_DIR} --publicDir=/pb_public --hooksDir=/pb_hooks${ENC_ARG:+ $ENC_ARG}"
+DEFAULT_SERVE_ARGS="serve --http=${HOST}:${PORT} --dir=${DATA_DIR} --publicDir=/pb_public --hooksDir=/pb_hooks${ENC_ARG:+ $ENC_ARG}${CLAVIGER_HANDOVER_ARG:+ $CLAVIGER_HANDOVER_ARG}"
 
 LITESTREAM_PID=""
 PB_PID=""
@@ -303,7 +324,7 @@ request_handover() {
 # Poll for a handover request from a replica that is not us, and hand the main
 # shell a USR1 so it releases /pb_data.
 start_handover_watcher() {
-    if multi_replica_on_postgres; then
+    if [ "$BINARY_HANDOVER" = "1" ] || multi_replica_on_postgres; then
         return 0
     fi
     (
@@ -335,6 +356,11 @@ start_handover_watcher() {
 }
 
 acquire_single_writer() {
+    if [ "$BINARY_HANDOVER" = "1" ]; then
+        echo "[entrypoint] single-writer handover is done by the binary (CLAVIGER_HANDOVER=binary)."
+        return 0
+    fi
+
     if multi_replica_on_postgres; then
         echo "[entrypoint] multi-replica mode on PostgreSQL: skipping the single-writer handover."
         return 0
@@ -548,6 +574,40 @@ preflight_field_keys() {
     return 0
 }
 
+# Binary-handover mode: the superuser bootstrap opens data.db and runs
+# migrations, so it must not run before the binary owns /pb_data (the shell path
+# runs it after acquire_single_writer). Run it once the server answers, which
+# means the handover is done and the migrations are applied. Without wget or
+# curl it is skipped with a WARN rather than risk a second writer.
+create_superuser_when_serving() {
+    if [ -z "$PB_ADMIN_EMAIL" ] || [ -z "$PB_ADMIN_PASSWORD" ]; then
+        return 0
+    fi
+    probe=""
+    if command -v wget >/dev/null 2>&1; then
+        probe="wget -q -T 2 -O /dev/null"
+    elif command -v curl >/dev/null 2>&1; then
+        probe="curl -sf -m 2 -o /dev/null"
+    else
+        echo "[entrypoint] WARN: neither wget nor curl found; skipping the superuser bootstrap in binary-handover mode."
+        return 0
+    fi
+    (
+        waited=0
+        limit=$((HANDOVER_TIMEOUT + 300))
+        while [ "$waited" -lt "$limit" ]; do
+            # shellcheck disable=SC2086 # probe is a fixed command word list
+            if $probe "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1; then
+                create_superuser
+                exit 0
+            fi
+            sleep 2
+            waited=$((waited + 2))
+        done
+    ) &
+    WATCHER_PID=$!
+}
+
 run_serve() {
     check_encryption_key
     preflight_field_keys
@@ -556,6 +616,11 @@ run_serve() {
 
     # Before anything opens data.db or auxiliary.db — ahead of the Litestream
     # restore and the superuser bootstrap below.
+    if [ "$BINARY_HANDOVER" = "1" ]; then
+        # one id for both: the binary reads it as PB_INSTANCE_ID
+        PB_INSTANCE_ID=$INSTANCE_ID
+        export PB_INSTANCE_ID
+    fi
     acquire_single_writer
     start_handover_watcher
     litestream_restore
@@ -568,7 +633,11 @@ run_serve() {
     if [ -n "$LITESTREAM_PID" ]; then
         sleep 2
     fi
-    create_superuser
+    if [ "$BINARY_HANDOVER" = "1" ]; then
+        create_superuser_when_serving
+    else
+        create_superuser
+    fi
     # shellcheck disable=SC2086
     "$PB_BIN" $DEFAULT_SERVE_ARGS "$@" &
     PB_PID=$!
