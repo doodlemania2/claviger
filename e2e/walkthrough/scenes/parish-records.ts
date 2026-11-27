@@ -51,6 +51,8 @@ export async function registerScene(browser: Browser, world: World, index: numbe
         await beat(maren.page, 800);
         await press(maren.page.locator(`tr[data-entry='${id}']`).getByRole("button", { name: /Open/ }), maren.page, 1000);
         await expect(maren.page.locator("#finalize")).toHaveText("Put forward for a second signature");
+        // the short register clip (clip.mjs ... register register-start register-done): two registrars sign, the entry is final
+        maren.mark("register-start");
         await maren.say("This register needs two signers. The first puts the entry forward, with a passkey");
         maren.page.once("dialog", (d) => void d.accept());
         await press(maren.page.locator("#finalize"), maren.page, 1500);
@@ -67,6 +69,8 @@ export async function registerScene(browser: Browser, world: World, index: numbe
         await expect(basil.page.locator("#pstatus")).toContainText("The entry is final.");
         await expect(basil.page.locator("#facts")).toContainText("Register number");
         await basil.say("Confirmed with his own passkey: the entry is final, numbered, and chained to the one before by a hash", 4500);
+        await beat(basil.page, 1200);
+        basil.mark("register-done");
 
         const form = basil.page.locator("#noteForm");
         await form.getByLabel("Kind of note").selectOption("correction");

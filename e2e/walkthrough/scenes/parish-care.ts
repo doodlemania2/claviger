@@ -34,6 +34,8 @@ export async function householdsScene(browser: Browser, world: World, index: num
 
         await ensureAdmin(it.page, world.admin);
         await open(it.page, `${world.base}/_/#/households?org=${world.ids.parish}`);
+        // the short households clip (clip.mjs ... households households-start households-done): the family is created
+        it.mark("households-start");
         await it.say("The parish office opens Households and creates a family");
         await press(it.page.getByRole("button", { name: "New household" }), it.page, 800);
         const m = modalOf(it.page);
@@ -44,6 +46,8 @@ export async function householdsScene(browser: Browser, world: World, index: num
         await press(m.getByRole("button", { name: "Create", exact: true }), it.page, 1200);
         await expect(it.page.locator("#household_detail")).toContainText(p.rosa.name);
         await it.say("The first person is the head of the household and a guardian");
+        await beat(it.page, 1500);
+        it.mark("households-done");
 
         // Rosa's login
         const detail = it.page.locator("#household_detail");
@@ -145,6 +149,8 @@ export async function safeguardingScene(browser: Browser, world: World, index: n
         await press(m.getByRole("button", { name: "Create", exact: true }), it.page, 1200);
         await expect(it.page.locator('tr[data-type-key="safe_environment"]')).toBeVisible();
 
+        // the short safeguarding clip (clip.mjs ... safeguarding safeguarding-start safeguarding-done): a credential is recorded and the roster opens
+        it.mark("safeguarding-start");
         await press(it.page.getByRole("button", { name: "Record credential" }), it.page, 800);
         const r = modalOf(it.page);
         await r.getByLabel("Holder").selectOption({ label: p.ellis.name });
@@ -162,6 +168,7 @@ export async function safeguardingScene(browser: Browser, world: World, index: n
         await apiCard(ellis, "The same request, now", "GET /api/collections/youth_roster/records", after.status, { totalItems: after.json.totalItems, items: after.json.items.map((i: any) => ({ child: i.child, pickup: i.pickup })) });
         await ellis.say("The rule found a current credential: the roster opens. When it expires, or a coordinator revokes it, it closes by itself", 5000);
         await beat(it.page, 500);
+        it.mark("safeguarding-done");
     } finally {
         await scene.end();
     }

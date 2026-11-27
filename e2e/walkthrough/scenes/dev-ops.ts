@@ -33,7 +33,7 @@ export async function auditScene(browser: Browser, world: World, index: number):
 /** Scene 9: encrypted fields, the ciphertext at rest, and the encryption keys page. */
 export async function fieldEncryptionScene(browser: Browser, world: World, index: number): Promise<void> {
     const scene = await SceneRun.begin(browser, world, index, "field-encryption", "Field encryption keys", "An encrypted field, its ciphertext at rest, and key rotation", tomasSpec);
-    const { page, say } = scene.actor("tomas");
+    const { page, say, mark } = scene.actor("tomas");
     try {
         await api("DELETE", "/api/collections/customers").catch(() => undefined);
         await api("POST", "/api/collections", { name: "customers", type: "base", fields: [{ name: "company", type: "text" }] });
@@ -57,6 +57,8 @@ export async function fieldEncryptionScene(browser: Browser, world: World, index
         await typeIn(page.getByRole("textbox", { name: "encryptedText", exact: true }), "contact: +1 555 0142");
         await press(page.getByRole("button", { name: "Create", exact: true }), page, 1200);
         await expect(page.getByRole("heading", { name: "Create customers record" })).toBeHidden();
+        // the short field-encryption clip (clip.mjs ... field-encryption field-encryption-start field-encryption-done)
+        mark("field-encryption-start");
         await say("The API and this screen read the value back in clear, for people who may");
 
         await open(page, `${world.base}/_/#/settings/sql`);
@@ -66,6 +68,7 @@ export async function fieldEncryptionScene(browser: Browser, world: World, index
         await press(page.getByRole("button", { name: "Execute" }), page, 1500);
         await expect(page.locator("body")).toContainText("enc:v1:");
         await say("enc:v1: followed by an AES-256-GCM sealed value. A stolen file or backup shows nothing", 4500);
+        mark("field-encryption-done");
 
         await open(page, `${world.base}/_/#/settings/encryption-keys`);
         const row = page.getByRole("row", { name: /customers\.encryptedText/ });

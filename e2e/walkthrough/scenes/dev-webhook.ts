@@ -43,6 +43,8 @@ export async function webhookScene(browser: Browser, world: World, index: number
         const row = tomas.page.getByRole("row", { name: /\/hook/ });
         await expect(row).toBeVisible();
 
+        // the short webhook clip (clip.mjs ... webhook webhook-start webhook-done): a test event, then a real one, both verified
+        tomas.mark("webhook-start");
         await tomas.say("A test event first");
         await press(row.getByRole("button", { name: "Send test event" }), tomas.page, 2500);
         await expect.poll(() => rig.deliveries.length, { timeout: 15_000 }).toBeGreaterThan(0);
@@ -55,6 +57,7 @@ export async function webhookScene(browser: Browser, world: World, index: number
         await crm.say("record.created arrives with the new record. Passwords and secrets are redacted by Claviger", 4000);
         await beat(crm.page, 2000);
         void mira;
+        tomas.mark("webhook-done");
 
         await tomas.page.reload();
         await tomas.page.waitForLoadState("networkidle").catch(() => undefined);

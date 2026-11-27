@@ -46,6 +46,8 @@ export async function oidcScene(browser: Browser, world: World, index: number): 
 
         // the app side
         const p = priya.page;
+        // the short OIDC clip (clip.mjs ... oidc oidc-start oidc-done): the app sends her to Claviger, a passkey, consent, signed in
+        priya.mark("oidc-start");
         await press(p.getByRole("link", { name: "Sign in with Claviger" }), p, 1000);
         await expect(p).toHaveURL(/\/oidc\/login/);
         await priya.say("Alder Notes sends Priya to Claviger's hosted sign-in. The app never sees her password");
@@ -58,6 +60,8 @@ export async function oidcScene(browser: Browser, world: World, index: number): 
         await press(p.getByRole("button", { name: "Allow" }), p, 1500);
         await expect(p.getByText("You are signed in")).toBeVisible();
         await priya.say("Back in the app, signed in. It received signed claims, no password");
+        await beat(p, 1200);
+        priya.mark("oidc-done");
 
         // the account chooser: a second account in the same browser
         await press(p.getByRole("link", { name: "Switch account" }), p, 1200);
