@@ -99,7 +99,7 @@ Not built yet. Labels and details are in the [issues](../../issues).
 - Children's check-in ([#82](../../issues/82)).
 - Church software SSO presets ([#85](../../issues/85)).
 - Enterprise inbound SSO ([#92](../../issues/92)).
-- Built-in handover between instances ([#72](../../issues/72)).
+- Built-in handover between instances is in, opt-in (`serve --handover`, see [docs/handover.md](docs/handover.md)); deleting the entrypoint's copy of it is what remains of [#72](../../issues/72).
 - Owner-held key vault ([#86](../../issues/86)).
 - Other data stores beyond SQLite and PostgreSQL ([#106](../../issues/106)).
 

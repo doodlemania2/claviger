@@ -27,6 +27,7 @@ cat > "$FAKE_PB" <<'EOF'
 for a in "$@"; do case "$a" in --dir=*) dir=${a#--dir=} ;; esac; done
 me=$PB_INSTANCE_ID
 mkdir -p "$dir/.serving"
+echo "$*" > "$dir/.args.$me"
 for other in "$dir"/.serving/*; do
     [ -e "$other" ] || continue
     echo "OVERLAP: $me started while $(basename "$other") was serving" >> "$dir/.ledger"
@@ -271,6 +272,24 @@ pb=$(start_replica "$D" "$B" "$NEW" $PG); PIDS="$PIDS $pb"
 wait_until 30 serving "$D" "$B" && pass "B serving" || fail "B never started"
 serving "$D" "$A" && fail "A still serving (the handover was skipped)" || pass "A stopped: handover unchanged"
 no_overlap "$D"
+cleanup_scenario
+
+echo "T13: CLAVIGER_HANDOVER=binary (#72) — the shell handover is skipped and the binary is asked to do it"
+D="$WORK/t13"; mkdir -p "$D"; PIDS=""
+pa=$(start_replica "$D" "$A" "$NEW" CLAVIGER_HANDOVER=binary); PIDS="$PIDS $pa"
+wait_until 10 serving "$D" "$A" && pass "A serving" || fail "A never started: $(tail -3 "$D/.console.$A")"
+grep -q -- "--handover" "$D/.args.$A" && pass "serve was passed --handover" || fail "no --handover in: $(cat "$D/.args.$A" 2>/dev/null)"
+grep -q "done by the binary" "$D/.console.$A" && pass "shell handover skipped" || fail "shell handover ran: $(tail -3 "$D/.console.$A")"
+[ -e "$D/.pb_owner" ] || [ -e "$D/.pb_handover" ] || [ -e "$D/.pb_singlewriter.lock" ] && fail "the shell wrote handover state" || pass "no handover state written by the shell"
+cleanup_scenario
+
+echo "T14: CLAVIGER_HANDOVER=binary with Litestream keeps the shell handover"
+D="$WORK/t14"; mkdir -p "$D"; PIDS=""
+pa=$(start_replica "$D" "$A" "$NEW" CLAVIGER_HANDOVER=binary LITESTREAM_REPLICA_URL=file:///nonexistent/replica); PIDS="$PIDS $pa"
+wait_until 10 serving "$D" "$A" && pass "A serving" || fail "A never started: $(tail -3 "$D/.console.$A")"
+grep -q -- "--handover" "$D/.args.$A" && fail "--handover passed alongside Litestream" || pass "no --handover"
+grep -q "using the shell handover" "$D/.console.$A" && pass "fallback WARN logged" || fail "no fallback WARN: $(tail -3 "$D/.console.$A")"
+[ -e "$D/.pb_owner" ] && pass "shell handover took the volume" || fail "shell handover did not run"
 cleanup_scenario
 
 echo
