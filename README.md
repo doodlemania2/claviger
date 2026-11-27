@@ -87,6 +87,7 @@ JavaScript hooks. Every feature below is off, or has no effect, until you config
 | Retention and legal holds | Daily retention job, holds that block deletion: [docs/retention.md](docs/retention.md) |
 | Erasure | Confirmed requests, a grace period, holds and registers respected, audit scrub, re-erasure after a restore: [docs/erasure.md](docs/erasure.md) |
 | Admin screens | Data map, requests, holds, retention and consent in the admin UI under Data protection |
+| Administrator guide and templates | Day-to-day guide for the parish data-protection lead, a DPIA template and an Article 30 record template (templates, not legal advice): [docs/gdpr/admin-guide.md](docs/gdpr/admin-guide.md) |
 
 Retention periods, pastoral disclosure and the interaction of permanent registers with
 erasure all need local legal review. The guides say so where it applies.
@@ -95,12 +96,12 @@ erasure all need local legal review. The guides say so where it applies.
 
 Not built yet. Labels and details are in the [issues](../../issues).
 
-- Register restriction flow, administrator guide and DPIA templates ([#88](../../issues/88)).
+- Register restriction flow ([#88](../../issues/88)).
 - Children's check-in ([#82](../../issues/82)).
 - Church software SSO presets ([#85](../../issues/85)).
 - Enterprise inbound SSO ([#92](../../issues/92)).
 - Built-in handover between instances ([#72](../../issues/72)).
-- Owner-held key vault ([#86](../../issues/86)).
+- Owner-held key vault ([#86](../../issues/86)). Design spike: [docs/spikes/86-6-owner-key-vault.md](docs/spikes/86-6-owner-key-vault.md).
 - Other data stores beyond SQLite and PostgreSQL ([#106](../../issues/106)).
 
 ## Quick start
