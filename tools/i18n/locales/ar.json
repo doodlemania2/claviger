@@ -330,6 +330,8 @@
   "oidc.login.continueToHtml": "للمتابعة إلى <strong>{client}</strong>",
   "oidc.consent.title": "السماح بالوصول",
   "oidc.brand.securedBy": "مؤمَّن بواسطة Claviger",
+  "oidc.oauth2Done.success": "يمكنك إغلاق هذه النافذة.",
+  "oidc.oauth2Done.failure": "لم يكتمل تسجيل الدخول. يمكنك إغلاق هذه النافذة والمحاولة مرة أخرى.",
   "oidc.consent.heading": "هل تريد السماح بالوصول؟",
   "oidc.consent.wantsHtml": "يريد <strong>{client}</strong> الوصول إلى حسابك{account}.",
   "oidc.consent.allow": "سماح",

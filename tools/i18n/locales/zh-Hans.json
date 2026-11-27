@@ -330,6 +330,8 @@
   "oidc.login.continueToHtml": "以继续前往 <strong>{client}</strong>",
   "oidc.consent.title": "允许访问",
   "oidc.brand.securedBy": "由 Claviger 保护",
+  "oidc.oauth2Done.success": "你可以关闭此窗口。",
+  "oidc.oauth2Done.failure": "登录未完成。你可以关闭此窗口后重试。",
   "oidc.consent.heading": "允许访问？",
   "oidc.consent.wantsHtml": "<strong>{client}</strong> 请求访问您的账号{account}。",
   "oidc.consent.allow": "允许",
