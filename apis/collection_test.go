@@ -47,7 +47,7 @@ func TestCollectionsList(t *testing.T) {
 			ExpectedContent: []string{
 				`"page":1`,
 				`"perPage":30`,
-				`"totalItems":57`,
+				`"totalItems":58`,
 				`"items":[{`,
 				`"name":"` + core.CollectionNameSuperusers + `"`,
 				`"name":"` + core.CollectionNameAuthOrigins + `"`,
@@ -87,13 +87,14 @@ func TestCollectionsList(t *testing.T) {
 			ExpectedContent: []string{
 				`"page":13`,
 				`"perPage":2`,
-				`"totalItems":57`,
+				`"totalItems":58`,
 				`"items":[{`,
-				// newest first (_erasureLog #88 88-4, _legalHolds and _retentionPolicies #88 88-3, _breakGlass and _pastoralHolds #86, _permanentCollections #87, the three consent collections #88 88-2, _orgTransfers #84, _recoveryCodes #83, _householdMembers and _households #80, _dataRequests #88 88-1, the two credential collections #81, _dataMap #88,
+				// newest first (_kiosks #82, _erasureLog #88 88-4, _legalHolds and _retentionPolicies #88 88-3, _breakGlass and _pastoralHolds #86, _permanentCollections #87, the three consent collections #88 88-2, _orgTransfers #84, _recoveryCodes #83, _householdMembers and _households #80, _dataRequests #88 88-1, the two credential collections #81, _dataMap #88,
 				// _orgClosure #84 and _oauthDeviceCodes come first), then _scimGroups and _scimTokens (#79c),
 				// _invitations (#79b) and the three org collections (#79a, same migration, order not
-				// asserted); page 13 holds _fieldKeys
-				`"name":"` + core.CollectionNameFieldKeys + `"`,
+				// asserted); page 13 holds _orgRoles and _orgs (one more collection, _kiosks, came first)
+				`"name":"` + core.CollectionNameOrgRoles + `"`,
+				`"name":"` + core.CollectionNameOrgs + `"`,
 			},
 			ExpectedEvents: map[string]int{
 				"*":                        0,
