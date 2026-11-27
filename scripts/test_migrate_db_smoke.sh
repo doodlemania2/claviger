@@ -109,7 +109,7 @@ BODY=$(curl -fs "http://127.0.0.1:$PORT/api/collections/notes/records?sort=@rowi
 echo "$BODY" | grep -q '"totalItems":2' || fail "expected 2 records, got: $BODY"
 echo "$BODY" | grep -q 'first note' || fail "missing the first record: $BODY"
 echo "$BODY" | grep -q 'second note' || fail "missing the second record: $BODY"
-curl -fs "http://127.0.0.1:$PORT/api/health" -H "authorization: $TOKEN" | grep -q postgres || fail "the server is not on Postgres"
+curl -fs "http://127.0.0.1:$PORT/api/health" -H "authorization: $TOKEN" | grep -qE "postgres|cockroach" || fail "the server is not on Postgres or CockroachDB"
 stop_server
 
 echo "migrate-db smoke test: OK"

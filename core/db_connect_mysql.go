@@ -69,7 +69,10 @@ func MySQLDBConnect(rawURL string) DBConnectFunc {
 		var version string
 		if err := sqlDB.QueryRowContext(ctx, "SELECT VERSION()").Scan(&version); err == nil &&
 			strings.Contains(strings.ToLower(version), "mariadb") {
-			driverName = dialect.MariaDBName
+			// MariaDB (11.4) has no functional indexes, which the partial and
+			// case insensitive unique indexes of the auth collections need
+			_ = sqlDB.Close()
+			return nil, errors.New("MariaDB is not supported yet (it has no functional indexes, see docs/datastores.md): use MySQL 8.0 or newer")
 		}
 
 		return dbx.NewFromDB(sqlDB, driverName), nil

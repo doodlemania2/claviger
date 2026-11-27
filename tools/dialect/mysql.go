@@ -466,6 +466,14 @@ func (d mysqlDialect) BuildIndexOn(db dbx.Builder, idx dbutils.Index) (string, e
 
 	where := strings.TrimSpace(idx.Where)
 
+	// a JSON column is compared with a string as a JSON value in MySQL (an
+	// array is never equal to '[]'): compare its text, like SQLite does
+	for col, typ := range types {
+		if typ == "json" && where != "" {
+			where = regexp.MustCompile("(?i)`?\\b"+regexp.QuoteMeta(col)+"\\b`?").ReplaceAllString(where, "CAST(`"+col+"` AS CHAR)")
+		}
+	}
+
 	var keys []string
 	for _, col := range idx.Columns {
 		name := strings.TrimSpace(col.Name)

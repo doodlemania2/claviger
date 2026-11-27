@@ -380,6 +380,25 @@ Upstream test files were touched only for fork-owned behaviour: none of the upst
 
 `migrate-db` reads the stored `_collections` rows and the system migration list (`core.SystemMigrations`): after a sync that adds a system migration or changes how `ImportCollections` treats system collections, run `go test ./cmd -run MigrateDB` against a Postgres (`CLAVIGER_TEST_PG_URL`). The `_migrations`, `_params` and `_collections` handling in `copyTable` / `copyMigrations` follows the upstream table layout.
 
+### CockroachDB and MySQL (#106)
+
+CockroachDB is the Postgres dialect with a flag (`postgresDialect{crdb: true}`, `tools/dialect/cockroach.go`); MySQL is its own dialect (`tools/dialect/mysql.go`, experimental). Fork-only files: `tools/dialect/{cockroach,mysql}.go`, `core/db_connect_mysql.go`, `tests/pgtests/engine_test.go`. Run the tagged suites against both after a sync (commands in `docs/datastores.md`). Upstream-owned hunks added by this work (the rest of the seam is listed above):
+
+| File | Change | Re-check when upstream touches |
+| --- | --- | --- |
+| `core/db_tx.go` | `runInTransaction` loops: a transaction that the server aborted with a retryable error (CockroachDB 40001, MySQL deadlock) runs again, up to `txMaxAttempts`. One attempt (the old code) on SQLite and PostgreSQL. | `runInTransaction`: keep the loop and the `afterFuncs` call per attempt. |
+| `core/collection_record_table_sync.go` | `dialect.BuildIndexFor` instead of `BuildIndex` (MySQL reads the column types); `DropIndexIfExists` instead of the raw `DROP INDEX IF EXISTS`; `FinishIndexDrops` at the end of `createCollectionIndexes`. | Index creation and drop code, `ConvertMultiplicity`. |
+| `core/collection_query.go`, `core/household.go` | `CAST(... AS TEXT)` takes the type from `TextCastType()` (MySQL: `CHAR`). | New raw `CAST(.. AS TEXT)`. |
+| `core/validators/db.go` | `normalizeMySQLUniqueError` after the Postgres one (`db_postgres.go`, `_stub.go`). | `NormalizeUniqueIndexError`. |
+| `core/multireplica.go` | The refusal names the engine. | |
+| `core/backup_create.go`, `core/backup_verify.go` | The manifest note names the engine's backup tool (`backupTool`); the verify skip accepts any non-SQLite `dataDatabase`. | |
+| `tools/search/filter.go` | `nullSafeCompare` (MySQL `<=>`) in the two direct comparisons of `resolveEqualExpr`; `noRows` replaces the two `NOT EXISTS (SELECT 1 ...)` of the multi match expressions (MySQL: `0 = (SELECT COUNT(*) ...)`, because `NOT EXISTS` over a correlated derived table with an outer join is wrong in MySQL 8.4). Byte for byte the old SQL on SQLite and PostgreSQL. | New operators and multi match code. |
+| `tools/search/dialect.go` | `adaptJSONOperands` types a NULL parameter and a NULL literal that is compared with a parameter (CockroachDB cannot infer the type of two placeholders). | |
+| `tools/search/sort.go` | `@random` asks the dialect (`RAND()` on MySQL). | |
+| `migrations/1640988000_init.go`, `migrations/1717233557_v0.23_migrate2.go` | `AdaptDDL` rewrites the hand written DDL for MySQL; `_collections.type` is `VARCHAR(100)` there; the pre 0.23 index migration does not repeat the index. | New hand written DDL in a system migration: it needs `AdaptDDL` and an indexable key. |
+| `cmd/migrate_db.go` | The target scheme may be `cockroach://`. | |
+| `tests/app_postgres.go` | MySQL and CockroachDB have no `CREATE DATABASE ... TEMPLATE`: every test app builds its own database from the fixture (`canTemplate`, `connectFunc`). | |
+
 ## CI
 
 | Workflow | File | Runs on |
