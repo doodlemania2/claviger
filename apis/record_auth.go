@@ -17,6 +17,10 @@ func bindRecordAuthApi(app core.App, rg *router.RouterGroup[*core.RequestEvent])
 		SkipSuccessActivityLog(), // skip success log as it could contain sensitive information in the url
 	)
 
+	// fork-local: the public page the sign-in window ends on (see oauth2_done.go)
+	rg.GET("/oauth2-done", oauth2DonePage)
+	rg.GET("/oauth2-done.js", oauth2DoneScript)
+
 	sub := rg.Group("/collections/{collection}")
 
 	sub.GET("/auth-methods", recordAuthMethods).Bind(

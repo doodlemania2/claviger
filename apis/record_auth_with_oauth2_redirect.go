@@ -9,13 +9,12 @@ import (
 
 	"github.com/doodlemania2/claviger/core"
 	"github.com/doodlemania2/claviger/tools/subscriptions"
-	"github.com/doodlemania2/claviger/ui"
 )
 
 const (
 	oauth2SubscriptionTopic               string = "@oauth2"
-	oauth2RedirectFailurePath             string = "../_/#/auth/oauth2-redirect-failure"
-	oauth2RedirectSuccessPath             string = "../_/#/auth/oauth2-redirect-success"
+	oauth2RedirectFailurePath             string = "oauth2-done?r=failure" // fork-local: was ../_/#/auth/oauth2-redirect-failure (admin UI)
+	oauth2RedirectSuccessPath             string = "oauth2-done?r=success" // fork-local: was ../_/#/auth/oauth2-redirect-success (admin UI)
 	oauth2RedirectAppleNameStoreKeyPrefix string = "@redirect_name_"
 )
 
@@ -117,20 +116,10 @@ func redirectStatusCode(e *core.RequestEvent) int {
 }
 
 func failureRedirect(e *core.RequestEvent) error {
-	// fallback if UI is not bundled
-	if ui.DistDirFS == nil {
-		return e.String(http.StatusOK, "Failed to authenticate. You can close this window and go back to the app to try again.")
-	}
-
 	return e.Redirect(redirectStatusCode(e), oauth2RedirectFailurePath)
 }
 
 func successRedirect(e *core.RequestEvent) error {
-	// fallback if UI is not bundled
-	if ui.DistDirFS == nil {
-		return e.HTML(http.StatusOK, "Auth completed. You can close this window and go back to the app.")
-	}
-
 	return e.Redirect(redirectStatusCode(e), oauth2RedirectSuccessPath)
 }
 
