@@ -6,7 +6,7 @@ The model is simple: one trunk (`master`), and upstream comes in by **merge**. N
 
 ## Sync Status
 
-**Current:** synced to upstream **v0.41.1** (`f70b24e1`) on 2026-10-30.
+**Current:** synced to upstream **v0.42.3** (`c5003ce6`) on 2026-11-26.
 
 > **The `**Current:**` line is machine-read — keep its shape.**
 > `.github/workflows/upstream-check.yml` parses the synced version from the first
@@ -391,6 +391,7 @@ A workflow only runs if its file exists on the branch being pushed. Keep that in
 
 ## History
 
+- **v0.42.3** (2026-11-26): adopted all of v0.41.1..v0.42.3 as Derek picked: the global `rejectUnknownToken` middleware (with a fork exemption, `carriesOwnBearer` in `apis/middlewares.go`: `/scim/v2/*`, `/api/metrics` and `/oidc/*` carry their own bearer and must not be 401'd; `TestCarriesOwnBearer`), the relaxed realtime subscription IP check (#7758) and OAuth2 redirect logging at WARN, the auto `VACUUM` of `auxiliary.db` after a large logs purge and `app.CountLogs()`, `modernc.org/sqlite` 1.62.0 (libc v1.80.1), `golang.org/x/*` bumps, the S3 `CompleteMultipartUpload` error check, the `cron.Stop` race guard, benign network errors logged as INFO, OAuth2 provider reordering, `.jxl`/`.webm` previews, optional `update` channel. Conflicts: Makefile (kept `release` and our targets), README (ours), `ui/.env` (our releases URL, `PB_VERSION` v0.42.3), `ui/src/pb.js` (kept our `getAllOAuth2Providers` wrapper, took upstream's authStore handling), go.mod/go.sum, generated types, `ui/dist` rebuilt.
 Condensed. The detailed per-sync notes from the rebase era were dropped when the model changed to merge-based sync.
 
 - **v0.41.1** (2026-10-30): first sync from the new host. v0.41.0 renamed upstream's module to `ganigeorgiev.com/pocketbase/pocketbase` (and moved `dbx`, `ozzo-validation/v4`, `tygoja`, `fexpr`), so all Go imports, the Dockerfile and `.goreleaser.yaml` ldflag were rewritten. Adopted: `Event.Extra`, `ServeEvent.StartBannerFunc`, thumbs `PB_THUMBS_MAX_SOURCE_PIXELS` default 100<<20, mailer fixes (upstream #7871), removal of the goja `nullObject` workaround. `plugins/update` now fetches from the new host.

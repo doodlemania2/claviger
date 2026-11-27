@@ -230,6 +230,16 @@ func loadAuthToken() *hook.Handler[*core.RequestEvent] {
 	}
 }
 
+// carriesOwnBearer reports whether the route authenticates its own Authorization
+// header with something other than a record token (fork-local): the SCIM bearer
+// token, the metrics token, and the OIDC provider's own access tokens
+// (userinfo, introspection, revocation). The global rejectUnknownToken
+// middleware must not turn those into a 401 before the route sees them.
+func carriesOwnBearer(path string) bool {
+	return strings.HasPrefix(path, "/scim/v2/") || path == "/api/metrics" ||
+		path == "/oidc" || strings.HasPrefix(path, "/oidc/")
+}
+
 func rejectUnknownToken() *hook.Handler[*core.RequestEvent] {
 	return &hook.Handler[*core.RequestEvent]{
 		Id:       DefaultRejectUnknownTokenMiddlewareId,
@@ -238,7 +248,7 @@ func rejectUnknownToken() *hook.Handler[*core.RequestEvent] {
 			// there is a token with the request but no associated auth record,
 			// meaning that most likely the token is unknown, invalid or expired
 			// (e.g. the user changed their password)
-			if e.Auth == nil && getAuthTokenFromRequest(e) != "" {
+			if e.Auth == nil && getAuthTokenFromRequest(e) != "" && !carriesOwnBearer(e.Request.URL.Path) {
 				return e.UnauthorizedError("", errors.New("unknown authorization token"))
 			}
 

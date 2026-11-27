@@ -532,9 +532,10 @@ func TestJWTPathUnaffectedByAPIKeys(t *testing.T) {
 	t.Parallel()
 	env := newAPIKeyEnv(t)
 
-	// an invalid JWT is still just a guest (no hard 401), exactly as before
-	if s, _ := env.do("GET", "/api/collections/demo2/records", "", "eyJhbGciOiJIUzI1NiJ9.invalid.token"); s != 200 {
-		t.Fatalf("invalid JWT should remain a guest request, got %d", s)
+	// since upstream v0.42.0 an unknown or invalid JWT is rejected with a 401 by the global
+	// rejectUnknownToken middleware (it used to be treated as a guest)
+	if s, _ := env.do("GET", "/api/collections/demo2/records", "", "eyJhbGciOiJIUzI1NiJ9.invalid.token"); s != 401 {
+		t.Fatalf("invalid JWT should be rejected with 401, got %d", s)
 	}
 	if s, _ := env.do("GET", "/api/collections/users/records/"+akUserId, "", auditUserToken); s != 200 {
 		t.Fatalf("valid JWT, got %d", s)
