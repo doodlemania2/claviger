@@ -320,6 +320,7 @@
   "js.oidc.continueWith": "Magpatuloy gamit ang {provider}",
   "js.oidc.oauthFailed": "Hindi natapos ang pag-sign in gamit ang {provider}.",
   "js.oidc.popupBlocked": "Na-block ang sign-in window. Payagan ang mga pop-up para sa site na ito at subukan muli.",
+  "js.oidc.cancel": "Kanselahin",
   "js.oidc.noMethod": "Walang available na paraan ng pag-sign in para sa application na ito.",
   "js.oidc.decisionFailed": "Hindi ma-save ang desisyon.",
   "oidc.problem": "Problema sa pag-sign in",

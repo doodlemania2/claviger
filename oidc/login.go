@@ -92,6 +92,7 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
 <div id="oauthBox" hidden>
 <div class="or"><span>{{.Text.T "js.or"}}</span></div>
 <div id="oauthList"></div>
+<p id="oauthWait" hidden><button id="oauthCancel" type="button" class="secondary">{{.Text.T "js.oidc.cancel"}}</button></p>
 </div>
 <div id="passkeyBox" hidden>
 <div class="or"><span>{{.Text.T "js.or"}}</span></div>

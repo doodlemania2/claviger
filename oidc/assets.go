@@ -179,6 +179,13 @@ function secondFactor(body) {
 // exchanged for the ordinary Claviger token at auth-with-oauth2. The window is
 // opened in the click itself, so a pop-up blocker lets it through.
 const OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
+// Microsoft (and others) answer with Cross-Origin-Opener-Policy, which severs the
+// opener's handle on the window: popup.closed then reads true while the person is
+// still signing in. So a closed window is only a hint: wait this long for the code
+// before giving up, and let the person cancel explicitly.
+const OAUTH_CLOSED_GRACE_MS = 90 * 1000;
+const oauthWait = root.querySelector("#oauthWait");
+const oauthCancel = root.querySelector("#oauthCancel");
 
 function fmt(key, vars) {
   return t(key).replace(/\{(\w+)\}/g, (m, k) => (Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : m));
@@ -237,11 +244,18 @@ async function oauthSignIn(name, label) {
         try { resolve(JSON.parse(m.data)); } catch (e) { reject(e); }
       });
       setTimeout(() => reject(new Error("timeout")), OAUTH_TIMEOUT_MS);
-      // the person closed the window without finishing: give a late message a moment, then stop
+      oauthCancel.onclick = () => reject(new Error("cancelled"));
+      // a window that reads as closed may only be cut off from this page (COOP): keep the
+      // connection open and wait a long grace period for the code instead of stopping at once
+      let graceStarted = false;
       watcher = setInterval(() => {
-        if (popup.closed) { clearInterval(watcher); setTimeout(() => reject(new Error("closed")), 1500); }
+        if (popup.closed && !graceStarted) {
+          graceStarted = true;
+          setTimeout(() => reject(new Error("closed")), OAUTH_CLOSED_GRACE_MS);
+        }
       }, 500);
     });
+    oauthWait.hidden = false;
 
     const sub = await fetch("/api/realtime", {
       method: "POST",
@@ -268,6 +282,8 @@ async function oauthSignIn(name, label) {
     fail(fmt("js.oidc.oauthFailed", { provider: label }));
   } finally {
     clearInterval(watcher);
+    oauthWait.hidden = true;
+    oauthCancel.onclick = null;
     if (es) es.close();
     try { popup.close(); } catch (e) { /* already closed */ }
     buttons.forEach((b) => { b.disabled = false; });
