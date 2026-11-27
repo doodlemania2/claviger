@@ -4,7 +4,7 @@ An organization (#79) can connect its own identity provider, prove that it owns 
 
 With no connection created nothing changes: the new collections stay empty, the sign-in page asks nothing extra, and no password sign-in is refused.
 
-This wave ships OpenID Connect. SAML 2.0 plugs into the same engine later (see [Adding a connection type](#adding-a-connection-type)).
+Two connection types are built: OpenID Connect (`oidc`) and SAML 2.0 (`saml`, see [SAML 2.0](#saml-20)). Both run through the same engine (see [Adding a connection type](#adding-a-connection-type)).
 
 ## How it fits together
 
@@ -113,9 +113,78 @@ A connection that is **disabled** (or whose organization is archived) does not r
 
 Any other provider with a discovery document, the authorization code flow, PKCE and asymmetric ID-token signatures works with the "Other OpenID Connect provider" preset (Keycloak, Authentik, Auth0, ...).
 
+## SAML 2.0
+
+The `saml` type is a SAML 2.0 **service provider**: SP-initiated Web Browser SSO, the AuthnRequest sent over HTTP-Redirect and the response received over HTTP-POST at the assertion consumer service (ACS). The XML signature and assertion checks are done by [github.com/crewjam/saml](https://github.com/crewjam/saml) v0.6.3 (with goxmldsig); Claviger writes no signature code.
+
+### What is checked
+
+A response is accepted only when all of this holds, otherwise the sign-in fails with `sso_error=invalid_token` and nothing is created:
+
+- the Response or the Assertion is **signed** by a certificate from the identity provider's metadata (unsigned, or signed by another key, is refused; a signature wrapping (XSW) document is refused, because only the element the signature covers is read);
+- Issuer is the identity provider's entity id; Destination and the SubjectConfirmation Recipient are the ACS URL; the Audience is the SP entity id;
+- InResponseTo is the id of the AuthnRequest **this very sign-in** made (the id is derived from the flow's nonce), so a response cannot be carried to another sign-in, and IdP-initiated (unsolicited) responses are refused;
+- NotBefore and NotOnOrAfter hold, with 60 seconds of clock skew, and the response is not older than the library's issue delay;
+- the assertion id has **not been seen** before (an in-memory replay cache per connection; on top of that the sign-in state is single-use, so a response can only ever be posted once);
+- the name id is not transient (a transient id differs at every sign-in, so no account could be linked).
+
+### Setting it up
+
+1. Create the connection with `type: "saml"` and a `config` (below), and claim and verify the domain as for OIDC.
+2. Give the identity provider the **SP metadata** of the connection: `GET <application URL>/api/sso/{connection}/saml/metadata` (public, served even while the connection is disabled). It carries the **entity id** (default `<application URL>/api/sso/{connection}/saml/metadata`, overridable with `spEntityId`) and the **ACS URL** `<application URL>/api/sso/callback` (HTTP-POST binding; the same URL as the OIDC redirect URI).
+3. Give Claviger the identity provider: pasted metadata XML (`metadataXml`), a metadata URL (`metadataUrl`) or, when there is no metadata, `idpEntityId` + `idpSsoUrl` + `idpCertificate` (PEM). Exactly one of the three. `POST /api/orgs/{id}/sso/connections/{cid}/test` fetches the URL (or parses what is stored) and reports `{ok}`.
+4. Enable the connection.
+
+`config` keys:
+
+| Key | Meaning |
+|---|---|
+| `preset` | `okta`, `entra` or `google`: the default attribute names below |
+| `metadataXml` / `metadataUrl` / `idpEntityId`, `idpSsoUrl`, `idpCertificate` | the identity provider (one of the three forms). The sign-on endpoint must offer the HTTP-Redirect binding |
+| `spEntityId` | override of the SP entity id (what the identity provider calls "Audience" or "Identifier") |
+| `emailAttribute`, `nameAttribute`, `groupsAttribute` | attribute names (the `groupsClaim` column is the fallback for the groups attribute) |
+| `emailAuthoritative` | `true` when the identity provider is **authoritative for the connection's verified domains** (see below) |
+
+The metadata URL is fetched with the same client as OIDC discovery: it refuses private, loopback and link-local addresses (see [Provider URLs and the network](#provider-urls-and-the-network)), needs `https`, and is cached for ten minutes; pasting the XML needs no network at all. Metadata is not itself signature-checked: fetch it over https from the provider, or paste it, and watch for a certificate rotation (the sign-in fails with "untrusted signing certificate" until the metadata is refreshed; a URL refreshes within ten minutes, pasted XML must be replaced).
+
+### Attributes and the vouched email
+
+The person's id is the **NameID**. The email is the `emailAttribute` value, or the NameID when that contains an `@`. Name and groups come from `nameAttribute` and `groupsAttribute` (several values for groups); every attribute is also kept in the identity's raw claims.
+
+SAML has no `email_verified`. The sign-in goes through the same provisioning as OIDC (the email's domain must be a **verified** claim of this connection). An existing account is linked to the SAML identity by email, and an account is created already verified, **only when `emailAuthoritative` is `true`**: set it when the organization controls the identity provider and the identity provider only asserts addresses of its own domains (the usual case for a corporate Okta, Entra tenant or Workspace). Leave it `false` (the default) when the identity provider could assert an address it does not own; then an address that already has an account is refused with `email_unverified`, and new accounts are created unverified.
+
+| | Okta | Microsoft Entra ID | Google Workspace |
+|---|---|---|---|
+| Create | SAML 2.0 app | Enterprise application, "Create your own", SAML | Apps > Web and mobile apps > Add custom SAML app |
+| Provider side | Single sign-on URL = the ACS URL; Audience URI = the entity id; Name ID format EmailAddress, Application username Email | Identifier (Entity ID) = the entity id; Reply URL = the ACS URL; unique user identifier `user.mail` | ACS URL = the ACS URL; Entity ID = the entity id; Name ID format EMAIL, Name ID Primary email |
+| Attributes | `email`, `name`, `groups` (an attribute statement per name; group attribute statement with a filter) | the claims under their long URIs: `.../claims/emailaddress`, `.../identity/claims/displayname`, `.../2008/06/identity/claims/groups` (the `entra` preset knows them). Groups are **object ids**; over 150 groups Entra sends none (overage) | add the mapped attributes `email`, `name`, and a `groups` attribute for the Google groups to send |
+| Metadata | the app's Identity Provider metadata URL, or its XML | the application's **App Federation Metadata Url** (not the tenant-wide one) | download the IdP metadata XML in the console and paste it (Google has no stable public URL) |
+| `preset` | `okta` | `entra` | `google` |
+
+`GET /api/orgs/{id}/sso/presets` lists the three as `okta-saml`, `entra-saml` and `google-saml` with their notes.
+
+A minimal Entra connection:
+
+```json
+{
+  "name": "Contoso Entra", "type": "saml", "enabled": true, "jit": true,
+  "defaultRole": "member",
+  "roleMapping": {"3f2c...-group-object-id": "admin"},
+  "config": {
+    "preset": "entra",
+    "metadataUrl": "https://login.microsoftonline.com/<tenant>/federationmetadata/2007-06/federationmetadata.xml?appid=<app>",
+    "emailAuthoritative": true
+  }
+}
+```
+
+### The browser binding cookie
+
+A SAML identity provider returns the browser with a **cross-site POST**, which a `SameSite=Lax` cookie does not ride on. So the binding cookie of a **SAML** sign-in is set `SameSite=None; Secure; HttpOnly` (so the application URL must be `https`), while the cookie of an OIDC sign-in stays `SameSite=Lax`. The weaker attribute costs nothing the flow relied on: the cookie only proves that the browser finishing the sign-in is the one that started it; the single-use state, the InResponseTo tie and the signed assertion are all still required, and the one-time exchange code is useless without the cookie. Tests prove that a different browser, even with a valid response and state, gets `other_browser`.
+
 ## Provider URLs and the network
 
-The server fetches the provider's discovery document, keys and token endpoint, and an organization administrator supplies the URL. So the fetches must not become a way into the internal network: the HTTP client **refuses to connect to loopback, private, link-local (including the cloud metadata address), CGNAT and other reserved addresses**, checked on the address actually dialed (so a name that resolves or rebinds to one is refused), follows at most 3 redirects, and the issuer and every endpoint in the discovery document must be `https`. For an on-premises provider on a private address, or a development setup over plain `http` on loopback, set `CLAVIGER_SSO_ALLOW_PRIVATE_NETWORKS=true` (an operator decision, not an organization one).
+The server fetches the provider's discovery document, keys and token endpoint (and a SAML connection's metadata URL), and an organization administrator supplies the URL. So the fetches must not become a way into the internal network: the HTTP client **refuses to connect to loopback, private, link-local (including the cloud metadata address), CGNAT and other reserved addresses**, checked on the address actually dialed (so a name that resolves or rebinds to one is refused), follows at most 3 redirects, and the issuer and every endpoint in the discovery document must be `https`. For an on-premises provider on a private address, or a development setup over plain `http` on loopback, set `CLAVIGER_SSO_ALLOW_PRIVATE_NETWORKS=true` (an operator decision, not an organization one).
 
 ## Audit
 
@@ -150,11 +219,13 @@ type Provider interface {
 - `Complete` verifies what came back (`CompleteInput.Query` for a redirect, `CompleteInput.Form` for a POST such as a SAML assertion consumer; the callback route accepts `GET` and `POST`, and reads the state from `state` or `RelayState`) and returns an `Identity` (subject, email, whether the provider vouches for it, name, groups, raw claims).
 - Everything else is shared: the state and the browser binding, domain routing, `ssoRequired`, account linking, JIT, role mapping, the one-time exchange code, audit.
 - Type-specific settings that need no column (IdP metadata, entity id, certificates) go in `Connection.Config` (the `config` JSON field); nothing about the collections changes. The `type` select already accepts `saml`.
-- A SAML ACS is a **cross-site POST**, and the binding cookie is `SameSite=Lax`, which the browser withholds from it. The SAML type must either set the cookie `SameSite=None; Secure` (change `ssoSetBind` in `apis/sso.go`) or bind through the `RelayState` round trip. Decide this in the SAML wave; it is the one place the seam is not purely protocol.
+- A SAML ACS is a **cross-site POST**, which a `SameSite=Lax` cookie does not ride on, so `ssoStart` sets the binding cookie `SameSite=None; Secure` for a `saml` connection (`ssoSetBind` in `apis/sso.go`) and leaves OIDC at Lax. A new type that returns the browser by cross-site POST must be added to that check.
 
-## Limits (this wave)
+## Limits
 
-- OpenID Connect only; SAML is the next wave.
+- SAML: SP-initiated only (no IdP-initiated responses), HTTP-Redirect AuthnRequest and HTTP-POST response only (no artifact or SOAP binding); AuthnRequests are not signed and encrypted assertions are not supported (publish none of the encryption options at the identity provider; the SP metadata lists no keys). Single logout is not implemented.
+- The SAML assertion replay cache is in memory (per process, cleared on restart): the single-use sign-in state and the InResponseTo tie cover the restart case. A multi-replica deployment (PostgreSQL) shares the state through the database, so a replay would also have to match a live flow.
+- IdP metadata is not signature-verified, and a metadata URL is fetched at most every ten minutes.
 - No admin UI yet; the routes above are the interface.
 - Domain claims are verified once. A TXT record that is later removed does not revoke the claim (release it with `DELETE`).
 - The provider's groups are read from the ID token only (no userinfo or Graph lookup), so Entra's group overage and Google's missing groups are not bridged.

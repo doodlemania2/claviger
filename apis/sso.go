@@ -37,6 +37,7 @@ import (
 //	GET  /api/sso/start      ?connection=&returnTo=&login_hint=: go to the provider
 //	GET|POST /api/sso/callback   the provider's redirect URI
 //	POST /api/sso/exchange   {code}: the one-time code for the auth response
+//	GET  /api/sso/{connection}/saml/metadata   SP metadata of a SAML connection (entity id, ACS URL)
 func bindSSOApi(app core.App, rg *router.RouterGroup[*core.RequestEvent], orgs *router.RouterGroup[*core.RequestEvent]) {
 	orgs.GET("/{id}/sso/presets", ssoPresets)
 	orgs.GET("/{id}/sso/connections", ssoConnectionsList)
@@ -56,6 +57,7 @@ func bindSSOApi(app core.App, rg *router.RouterGroup[*core.RequestEvent], orgs *
 	pub.GET("/callback", ssoCallback)
 	pub.POST("/callback", ssoCallback)
 	pub.POST("/exchange", ssoExchange)
+	pub.GET("/{connection}/saml/metadata", ssoSAMLMetadata)
 
 	bindSSORequired(app)
 }
@@ -397,6 +399,19 @@ func ssoConnectionsTest(e *core.RequestEvent) error {
 		return err
 	}
 
+	if rec.GetString("type") == core.SSOTypeSAML {
+		conn, err := sso.LoadConnection(e.App, rec)
+		if err != nil {
+			return e.BadRequestError(err.Error(), nil)
+		}
+
+		if err := sso.TestSAML(e.Request.Context(), conn); err != nil {
+			return e.JSON(http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+		}
+
+		return e.JSON(http.StatusOK, map[string]any{"ok": true})
+	}
+
 	if rec.GetString("type") != core.SSOTypeOIDC {
 		return e.BadRequestError("This connection type has no test.", nil)
 	}
@@ -533,12 +548,28 @@ func ssoNoStore(e *core.RequestEvent) {
 	e.Response.Header().Set("Cache-Control", "no-store")
 }
 
-func ssoSetBind(e *core.RequestEvent, value string, maxAge int) {
-	e.SetCookie(&http.Cookie{
+// ssoSetBind sets (or, with a negative maxAge, clears) the browser binding
+// cookie. It is SameSite=Lax, which is enough for OIDC: the provider returns
+// the browser with a top-level GET, and Lax cookies ride along. A SAML
+// identity provider returns it with a cross-site POST to the assertion
+// consumer, which does NOT carry a Lax cookie, so a SAML sign-in gets
+// SameSite=None; Secure instead (crossSite). The cookie is HttpOnly and scoped
+// to /api/sso, and it only proves "this is the browser that started the
+// sign-in": the state and the assertion are still required, and the cookie
+// is checked against the flow's stored hash in sso.Callback.
+func ssoSetBind(e *core.RequestEvent, value string, maxAge int, crossSite bool) {
+	c := &http.Cookie{
 		Name: ssoBindCookie, Value: value, Path: "/api/sso", MaxAge: maxAge,
 		HttpOnly: true, SameSite: http.SameSiteLaxMode,
 		Secure: strings.HasPrefix(ssoCallbackURL(e), "https://"),
-	})
+	}
+
+	if crossSite {
+		c.SameSite = http.SameSiteNoneMode
+		c.Secure = true // required by browsers for SameSite=None
+	}
+
+	e.SetCookie(c)
 }
 
 func ssoBindValue(e *core.RequestEvent) string {
@@ -608,7 +639,12 @@ func ssoStart(e *core.RequestEvent) error {
 		return ssoErr(e, err)
 	}
 
-	ssoSetBind(e, res.BindValue, int(sso.FlowLifetime.Seconds()))
+	crossSite := false
+	if rec, err := e.App.FindRecordById(core.CollectionNameSSOConnections, connection); err == nil {
+		crossSite = rec.GetString("type") == core.SSOTypeSAML
+	}
+
+	ssoSetBind(e, res.BindValue, int(sso.FlowLifetime.Seconds()), crossSite)
 
 	return e.Redirect(http.StatusFound, res.RedirectURL)
 }
@@ -628,7 +664,7 @@ func ssoCallback(e *core.RequestEvent) error {
 	// the binding cookie stays until the exchange when there is a code to
 	// exchange; a failed sign-in has nothing left to bind
 	if res.Err != nil {
-		ssoSetBind(e, "", -1)
+		ssoSetBind(e, "", -1, e.Request.Method == http.MethodPost)
 	}
 
 	if res.ReturnTo == "" {
@@ -640,6 +676,33 @@ func ssoCallback(e *core.RequestEvent) error {
 	}
 
 	return e.Redirect(http.StatusSeeOther, res.URL())
+}
+
+// ssoSAMLMetadata serves the SP metadata of a SAML connection: the entity id
+// and the assertion consumer service the identity provider is configured with.
+// It holds nothing secret and is served whether or not the connection is
+// enabled yet, so it can be given to the identity provider first.
+func ssoSAMLMetadata(e *core.RequestEvent) error {
+	rec, err := e.App.FindRecordById(core.CollectionNameSSOConnections, e.Request.PathValue("connection"))
+	if err != nil || rec.GetString("type") != core.SSOTypeSAML {
+		return e.NotFoundError("Connection not found.", nil)
+	}
+
+	conn, err := sso.LoadConnection(e.App, rec)
+	if err != nil {
+		return e.InternalServerError("", err)
+	}
+
+	data, err := sso.SAMLServiceProviderMetadata(conn, ssoCallbackURL(e))
+	if err != nil {
+		return e.InternalServerError("", err)
+	}
+
+	e.Response.Header().Set("Content-Type", "application/samlmetadata+xml; charset=utf-8")
+
+	_, err = e.Response.Write(data)
+
+	return err
 }
 
 // ssoExchange trades the one-time code of a finished sign-in for the ordinary
@@ -659,7 +722,7 @@ func ssoExchange(e *core.RequestEvent) error {
 		return ssoErr(e, err)
 	}
 
-	ssoSetBind(e, "", -1)
+	ssoSetBind(e, "", -1, false)
 
 	return RecordAuthResponse(e, user, core.MFAMethodOAuth2, map[string]any{"sso": true})
 }
