@@ -15,8 +15,9 @@ export async function auditScene(browser: Browser, world: World, index: number):
         await open(page, `${world.base}/_/#/audit`);
         await expect(page.getByRole("table")).toContainText("create");
         await say("Every write is an audit entry: action, collection, record, actor and address. Passwords and tokens are redacted", 4500);
-        await typeIn(page.getByLabel("Collection"), "users");
-        await page.getByLabel("Collection").press("Enter");
+        const collectionFilter = page.locator("#audit_filter_collection");
+        await typeIn(collectionFilter, "users");
+        await collectionFilter.press("Enter");
         await beat(page, 1500);
         await say("Filtered to the users collection");
         const row = page.locator("tbody tr", { hasText: "users" }).first();
