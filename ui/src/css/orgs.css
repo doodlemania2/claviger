@@ -48,3 +48,20 @@
         white-space: pre-wrap;
     }
 }
+
+/* Fork-local (Claviger #92): single sign-on section of the organizations page */
+.page-orgs {
+    .org-sso-connections-table,
+    .org-sso-domains-table {
+        width: 100%;
+    }
+}
+.sso-modal {
+    .sso-preset-notes ul {
+        margin: 5px 0 0 var(--spacing);
+        list-style: disc;
+    }
+    .sso-callback code {
+        word-break: break-all;
+    }
+}

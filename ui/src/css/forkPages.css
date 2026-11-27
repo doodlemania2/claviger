@@ -7,3 +7,8 @@
     .page-table-wrapper > :not(table, .responsive-table, :has(table)) {
     padding-inline: var(--spacing);
 }
+
+/* #92: the single sign-on section holds its own headings next to its tables */
+.page-orgs .org-sso > :not(table, .responsive-table) {
+    padding-inline: var(--spacing);
+}
