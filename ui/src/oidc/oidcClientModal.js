@@ -43,8 +43,142 @@ function oidcClientModal(client, settings) {
         clientId: "",
         secret: "",
         createdClientId: "",
+        templates: [],
+        templateId: "",
+        ackClaims: false,
+        appliedTemplate: "",
         errors: {},
     });
+
+    // values for the {placeholders} of the chosen template (plain object: the inputs are rebuilt per template)
+    let placeholderValues = {};
+
+    const currentTemplate = () => data.templates.find((tpl) => tpl.id == data.templateId);
+
+    async function loadTemplates() {
+        try {
+            data.templates = await app.pb.send("/api/oidc/client-templates", { requestKey: "oidc_templates" });
+        } catch (err) {
+            data.templates = [];
+        }
+    }
+
+    function fillPlaceholders(text) {
+        return text.replace(/\{([a-z][a-z0-9_]*)\}/g, (m, key) => (placeholderValues[key] || "").trim() || m);
+    }
+
+    function missingPlaceholders(tpl) {
+        return (tpl.placeholders || []).filter((p) => !(placeholderValues[p.key] || "").trim());
+    }
+
+    function applyTemplate() {
+        const tpl = currentTemplate();
+        if (!tpl || !data.ackClaims || missingPlaceholders(tpl).length) {
+            return;
+        }
+        data.name = data.name.trim() || tpl.name;
+        data.public = !!tpl.public;
+        data.firstParty = !!tpl.firstParty;
+        data.requirePkce = !!tpl.requirePkce;
+        data.redirectUris = (tpl.redirectUris || []).map(fillPlaceholders).join("\n");
+        data.postLogoutUris = (tpl.postLogoutUris || []).map(fillPlaceholders).join("\n");
+        data.scopes = (tpl.scopes || []).join(" ");
+        data.accessTokenType = tpl.accessTokenType || "jwt";
+        data.signingAlg = tpl.signingAlg || "RS256";
+        data.idTokenSeconds = tpl.idTokenSeconds ? String(tpl.idTokenSeconds) : "";
+        data.appliedTemplate = tpl.name;
+    }
+
+    function templatePanel() {
+        const tpl = currentTemplate();
+        if (!tpl) {
+            return null;
+        }
+        return t.div(
+            { className: "oidc-template-panel m-b-10" },
+            t.p({ className: "txt-hint" }, tpl.description),
+            !tpl.verified
+                ? t.div(
+                    { className: "alert warning m-b-10" },
+                    "Not yet verified end to end. This preset is written from the vendor's public documentation. Test it with a non-production account first.",
+                )
+                : null,
+            ...(tpl.placeholders || []).map((p) =>
+                t.div(
+                    { className: "field m-b-10" },
+                    t.input({
+                        type: "text",
+                        id: "oidc_ph_" + p.key,
+                        placeholder: p.example || "",
+                        value: placeholderValues[p.key] || "",
+                        oninput: (e) => {
+                            placeholderValues[p.key] = e.target.value;
+                        },
+                    }),
+                    t.label({ htmlFor: "oidc_ph_" + p.key }, p.label),
+                    p.hint ? t.div({ className: "field-help" }, p.hint) : null,
+                )
+            ),
+            t.div({ className: "txt-bold m-b-5" }, "Claims sent to " + (tpl.vendor || tpl.name)),
+            t.ul(
+                { className: "oidc-template-claims m-b-10" },
+                ...(tpl.claims || []).map((c) =>
+                    t.li(null, t.code(null, c.name), " (scope ", t.code(null, c.scope), "): ", c.description)
+                ),
+            ),
+            t.div(
+                { className: "field m-b-10" },
+                t.input({
+                    type: "checkbox",
+                    id: "oidc_ackClaims",
+                    className: "switch",
+                    checked: () => data.ackClaims,
+                    onchange: (e) => data.ackClaims = e.target.checked,
+                }),
+                t.label(
+                    { htmlFor: "oidc_ackClaims" },
+                    "I understand these details about each member who signs in leave Claviger for this third party",
+                ),
+            ),
+            t.button(
+                {
+                    type: "button",
+                    className: "btn secondary",
+                    disabled: () => !data.ackClaims,
+                    onclick: applyTemplate,
+                },
+                t.span({ className: "txt" }, "Apply template"),
+            ),
+        );
+    }
+
+    function templatePicker() {
+        return t.div(
+            { className: "col-12 oidc-template-picker" },
+            t.div(
+                { className: "field" },
+                t.select(
+                    {
+                        id: "oidc_template",
+                        value: () => data.templateId,
+                        onchange: (e) => {
+                            data.templateId = e.target.value;
+                            data.ackClaims = false;
+                            placeholderValues = {};
+                        },
+                    },
+                    t.option({ value: "" }, "Blank client"),
+                    () => data.templates.map((tpl) => t.option({ value: tpl.id }, tpl.name)),
+                ),
+                t.label({ htmlFor: "oidc_template" }, "Start from a template"),
+                t.div({ className: "field-help" }, "Presets for common church software. Review the claims, then the form below is filled in."),
+            ),
+            () => templatePanel(),
+            () => data.appliedTemplate
+                ? t.div({ className: "alert success m-b-10" }, `Template "${data.appliedTemplate}" applied. Review the fields below, then create the client.`)
+                : null,
+        );
+    }
 
     async function loadCollections() {
         try {
@@ -138,6 +272,9 @@ function oidcClientModal(client, settings) {
             className: "modal oidc-modal",
             onbeforeopen: (el) => {
                 loadCollections();
+                if (isNew) {
+                    loadTemplates();
+                }
                 settings.onbeforeopen?.(el);
             },
             onafteropen: (el) => settings.onafteropen?.(el),
@@ -179,6 +316,7 @@ function oidcClientModal(client, settings) {
                         save();
                     },
                 },
+                isNew ? templatePicker() : null,
                 field(
                     "name",
                     "Name",

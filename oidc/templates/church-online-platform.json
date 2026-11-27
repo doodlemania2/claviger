@@ -1,0 +1,29 @@
+{
+  "id": "church-online-platform",
+  "name": "Church Online Platform (Subsplash)",
+  "vendor": "Subsplash",
+  "description": "Admin sign-in to the Church Online Platform through its Integrations, OpenID Connect page. Once active, all of that product's users must sign in through the provider.",
+  "verified": false,
+  "guide": "docs/sso/church-online-platform.md",
+  "placeholders": [
+    {"key": "callback_url", "label": "Callback URL shown by the product", "hint": "Admin, Integrations, OpenID Connect, Set Up shows the callback URL(s). Paste the first one; add the others to the client afterwards.", "example": "https://your-church.online.church/auth/openid/callback"}
+  ],
+  "redirectUris": ["{callback_url}"],
+  "postLogoutUris": [],
+  "scopes": ["openid", "profile", "email"],
+  "public": false,
+  "firstParty": false,
+  "requirePkce": false,
+  "accessTokenType": "jwt",
+  "signingAlg": "RS256",
+  "idTokenSeconds": 0,
+  "claims": [
+    {"name": "sub", "scope": "openid", "description": "A stable account identifier (the Claviger record id)."},
+    {"name": "collection", "scope": "openid", "description": "The name of the auth collection the account belongs to."},
+    {"name": "email", "scope": "email", "description": "The member's email address."},
+    {"name": "email_verified", "scope": "email", "description": "Whether the email address is verified."},
+    {"name": "name", "scope": "profile", "description": "The member's display name, when the collection has a name field."},
+    {"name": "preferred_username", "scope": "profile", "description": "The username, when the collection has a username field."},
+    {"name": "updated_at", "scope": "profile", "description": "When the account was last changed."}
+  ]
+}

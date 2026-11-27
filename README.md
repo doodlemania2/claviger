@@ -43,6 +43,7 @@ JavaScript hooks. Every feature below is off, or has no effect, until you config
 | Passkeys (WebAuthn) | Register, sign in, manage and revoke per auth collection; counts as an MFA factor. See [Passkey API](#passkey-api). |
 | Passkey-only collections, step-up, passkey reset | Collections that accept no password, a fresh passkey check for sensitive actions, email recovery that clears passkeys ([#73](../../issues/73)) |
 | OpenID Connect provider | Authorization code, refresh and device flows under `/oidc`, plus the account chooser: [docs/oidc.md](docs/oidc.md) |
+| Church software SSO presets | Client templates and setup guides for Church Online Platform, MinistryPlatform, Blackbaud ID and a generic app, with a vendor survey. The guides are written from public documentation and are **not yet verified end to end**: [docs/sso](docs/sso/README.md) ([#85](../../issues/85)) |
 | TOTP and backup codes | Authenticator-app second factor for users and superusers, enforced once enrolled ([#90](../../issues/90)) |
 | Captcha and persistent rate limits | Turnstile, hCaptcha or reCAPTCHA; counters survive restarts. See [Captcha and rate limits](#captcha-and-rate-limits) |
 | Bans, session revocation, impersonation | Superuser tools, audited ([#93](../../issues/93)) |
@@ -97,7 +98,6 @@ Not built yet. Labels and details are in the [issues](../../issues).
 
 - Register restriction flow, administrator guide and DPIA templates ([#88](../../issues/88)).
 - Children's check-in ([#82](../../issues/82)).
-- Church software SSO presets ([#85](../../issues/85)).
 - Enterprise inbound SSO ([#92](../../issues/92)).
 - Built-in handover between instances ([#72](../../issues/72)).
 - Owner-held key vault ([#86](../../issues/86)).
