@@ -112,8 +112,22 @@ docker compose up --build
 Then open the dashboard at `http://127.0.0.1:8090/_/` and check
 `http://127.0.0.1:8090/api/health`.
 
-A published container image is not available yet. The release workflow builds one when a
-version tag is pushed. Until then, use `docker compose up --build` above.
+### Container image
+
+Each version tag publishes a multi-arch image (linux/amd64, linux/arm64) to
+`ghcr.io/doodlemania2/claviger`:
+
+| Tag | Points at |
+|---|---|
+| `1.2.3` | that release |
+| `1.2` | the newest patch of 1.2 |
+| `latest` | the newest stable release (pre-releases such as `1.2.3-rc.1` get only their exact tag) |
+
+Pin by digest in production (`ghcr.io/doodlemania2/claviger@sha256:...`). The image runs
+`/usr/local/bin/claviger` through `entrypoint.sh`, with data in `/pb_data` and the handover
+described below. It serves at the root path of its host name: it cannot run under a URL
+path prefix such as `https://example.org/auth/`, so give it its own host name. Until the
+first release is tagged, build it yourself with `docker compose up --build` above.
 
 Or build and run the binary directly (Go 1.27+):
 
