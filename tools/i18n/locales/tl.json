@@ -329,6 +329,7 @@
   "oidc.signedOut.message": "Maaari mo nang isara ang window na ito.",
   "oidc.login.continueToHtml": "upang magpatuloy sa <strong>{client}</strong>",
   "oidc.consent.title": "Payagan ang access",
+  "oidc.brand.securedBy": "Pinoprotektahan ng Claviger",
   "oidc.oauth2Done.success": "Maaari mo nang isara ang window na ito.",
   "oidc.oauth2Done.failure": "Hindi natapos ang pag-sign in. Maaari mong isara ang window na ito at subukan muli.",
   "oidc.consent.heading": "Payagan ang access?",

@@ -48,7 +48,7 @@ func loginCSP(cfg core.CaptchaConfig) string {
 	return strings.Replace(csp, "frame-ancestors 'none'", "frame-src"+frame+"; frame-ancestors 'none'", 1)
 }
 
-func (m *module) pageHeaders(e *core.RequestEvent, page string) {
+func (m *module) pageHeaders(e *core.RequestEvent, page string, b brand) {
 	h := e.Response.Header()
 
 	csp := pagesCSP
@@ -56,7 +56,7 @@ func (m *module) pageHeaders(e *core.RequestEvent, page string) {
 		csp = loginCSP(m.app.Settings().Captcha)
 	}
 
-	h.Set("Content-Security-Policy", csp)
+	h.Set("Content-Security-Policy", withLogoOrigin(csp, b.LogoURL))
 	h.Set("Cache-Control", "no-store")
 	h.Set("Referrer-Policy", "no-referrer")
 	h.Set("X-Content-Type-Options", "nosniff")
@@ -71,10 +71,12 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
 <title>{{.Title}}</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/oidc/assets/oidc.css">
-{{.Text.A11yHead}}{{if .Script}}{{.Text.DataBlock}}{{end}}</head>
+{{if .Brand.AccentURL}}<link rel="stylesheet" href="{{.Brand.AccentURL}}">
+{{end}}{{.Text.A11yHead}}{{if .Script}}{{.Text.DataBlock}}{{end}}</head>
 <body>
 {{.Text.A11yBar}}
 <main class="card" id="app" data-page="{{.Page}}" data-request="{{.RequestID}}" data-collection="{{.Collection}}"{{if .Finish}} data-finish="{{.Finish}}"{{end}}{{if .LoginHint}} data-login-hint="{{.LoginHint}}"{{end}}>
+<div class="brandbar"><picture><source media="(prefers-color-scheme: dark)" srcset="/oidc/assets/brand/claviger-mark-dark.svg"><img src="/oidc/assets/brand/claviger-mark.svg" alt="Claviger" width="28" height="28"></picture>{{if .Brand.LogoURL}}<span class="x" aria-hidden="true">+</span><img class="clientlogo" src="{{.Brand.LogoURL}}" alt="{{.ClientName}}" height="28" referrerpolicy="no-referrer">{{end}}</div>
 <h1>{{.Heading}}</h1>
 {{if .Message}}<p class="msg {{.MessageClass}}" id="pageMsg" role="{{if eq .MessageClass "ok"}}status{{else}}alert{{end}}">{{.Message}}</p>{{end}}
 {{if eq .Page "login"}}
@@ -110,6 +112,7 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
 <p id="status" class="msg err" role="alert" hidden></p>
 {{end}}
 </main>
+<p class="powered muted">{{.Text.T "oidc.brand.securedBy"}}</p>
 {{if .Script}}<script type="module" src="{{.Script}}"></script>{{end}}
 </body>
 </html>`))
@@ -121,6 +124,7 @@ type pageData struct {
 	Message, MessageClass, Script                                    string
 	Finish, LoginHint                                                string // sign-in page: where the token goes (default /oidc/login/finish), prefilled identity
 	Scopes                                                           []scopeInfo
+	Brand                                                            brand // fork-local: the calling client's logo and accent
 
 	// fork-local (#97): the language of the page; render fills it in when the caller did not
 	Text        *apis.PageText
@@ -128,7 +132,7 @@ type pageData struct {
 }
 
 func (m *module) render(e *core.RequestEvent, status int, d pageData) error {
-	m.pageHeaders(e, d.Page)
+	m.pageHeaders(e, d.Page, d.Brand)
 
 	if d.Text == nil {
 		d.Text = apis.NewPageText(e, "")
@@ -180,6 +184,8 @@ func (m *module) bindPages(se *core.ServeEvent) {
 		}
 	}
 
+	se.Router.GET(mountPath+"/assets/accent.css", m.serveAccent)
+	se.Router.GET(mountPath+"/assets/brand/{name}", serveBrandSVG)
 	se.Router.GET(mountPath+"/assets/oidc.css", asset("text/css; charset=utf-8", oidcCSS))
 	se.Router.GET(mountPath+"/assets/login.js", asset("application/javascript; charset=utf-8", loginJS))
 	se.Router.GET(mountPath+"/assets/consent.js", asset("application/javascript; charset=utf-8", consentJS))
@@ -318,7 +324,7 @@ func (m *module) loginPage(e *core.RequestEvent) error {
 
 	return m.render(e, http.StatusOK, pageData{
 		Title: text.T("js.signIn"), Heading: text.T("js.signIn"), Page: "login", RequestID: id,
-		Collection: col.Name, ClientName: client.Name, Script: mountPath + "/assets/login.js", Text: text,
+		Collection: col.Name, ClientName: client.Name, Brand: m.brandOf(client), Script: mountPath + "/assets/login.js", Text: text,
 		LoginHint: req.d.LoginHint,
 	})
 }
@@ -631,7 +637,7 @@ func (m *module) consentPage(e *core.RequestEvent) error {
 
 	d := pageData{
 		Title: text.T("oidc.consent.title"), Heading: text.T("oidc.consent.heading"), Page: "consent", RequestID: id,
-		ClientName: client.Name, Script: mountPath + "/assets/consent.js", Text: text,
+		ClientName: client.Name, Brand: m.brandOf(client), Script: mountPath + "/assets/consent.js", Text: text,
 	}
 
 	if account != nil {

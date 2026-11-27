@@ -328,6 +328,7 @@
   "oidc.signedOut.message": "You can close this window.",
   "oidc.login.continueToHtml": "to continue to <strong>{client}</strong>",
   "oidc.consent.title": "Allow access",
+  "oidc.brand.securedBy": "Secured by Claviger",
   "oidc.oauth2Done.success": "You can close this window.",
   "oidc.oauth2Done.failure": "Sign-in did not complete. You can close this window and try again.",
   "oidc.consent.heading": "Allow access?",

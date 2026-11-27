@@ -81,7 +81,7 @@ func (m *module) renderChooser(e *core.RequestEvent, v chooserView) error {
 
 	d := extData{
 		Page: "chooser", Title: text.T("oidc.chooser.title"), Heading: text.T("oidc.chooser.heading"), Ref: v.ref, Flow: v.flow,
-		ClientName: v.client.Name, Script: mountPath + "/assets/chooser.js", Other: v.other,
+		ClientName: v.client.Name, Brand: m.brandOf(v.client), Script: mountPath + "/assets/chooser.js", Other: v.other,
 		SelectURL: mountPath + "/account/select", SignoutURL: mountPath + "/account/signout", Text: text,
 	}
 
@@ -252,6 +252,7 @@ type extData struct {
 	Accounts                                                                        []chooserAccount
 	Other, SelectURL, SignoutURL                                                    string
 	Scopes                                                                          []scopeInfo
+	Brand                                                                           brand
 	Account, UserCode, Action                                                       string
 	Text                                                                            *apis.PageText // the language of the page; renderExt fills it in when the caller did not
 	AccountHTML                                                                     template.HTML
@@ -268,14 +269,17 @@ var extTemplate = template.Must(template.New("ext").Parse(`
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/oidc/assets/oidc.css">
 <link rel="stylesheet" href="/oidc/assets/chooser.css">
-{{.Text.A11yHead}}{{if .Script}}{{.Text.DataBlock}}{{end}}</head>
+{{if .Brand.AccentURL}}<link rel="stylesheet" href="{{.Brand.AccentURL}}">
+{{end}}{{.Text.A11yHead}}{{if .Script}}{{.Text.DataBlock}}{{end}}</head>
 <body>
 {{.Text.A11yBar}}
 <main class="card" id="app" data-page="{{.Page}}" data-flow="{{.Flow}}" data-request="{{.Ref}}" data-other="{{.Other}}" data-select="{{.SelectURL}}" data-signout="{{.SignoutURL}}">
+<div class="brandbar"><picture><source media="(prefers-color-scheme: dark)" srcset="/oidc/assets/brand/claviger-mark-dark.svg"><img src="/oidc/assets/brand/claviger-mark.svg" alt="Claviger" width="28" height="28"></picture>{{if .Brand.LogoURL}}<span class="x" aria-hidden="true">+</span><img class="clientlogo" src="{{.Brand.LogoURL}}" alt="{{.ClientName}}" height="28" referrerpolicy="no-referrer">{{end}}</div>
 <h1>{{.Heading}}</h1>
 {{if .Message}}<p class="msg {{.MessageClass}}" id="pageMsg" role="{{if eq .MessageClass "ok"}}status{{else}}alert{{end}}">{{.Message}}</p>{{end}}
 {{end}}
 {{define "foot"}}</main>
+<p class="powered muted">{{.Text.T "oidc.brand.securedBy"}}</p>
 {{if .Script}}<script type="module" src="{{.Script}}"></script>{{end}}
 </body>
 </html>{{end}}
@@ -321,7 +325,7 @@ var extTemplate = template.Must(template.New("ext").Parse(`
 
 // renderExt renders a page of extTemplate with the strict page policy.
 func (m *module) renderExt(e *core.RequestEvent, status int, d extData) error {
-	m.pageHeaders(e, d.Page)
+	m.pageHeaders(e, d.Page, d.Brand)
 
 	if d.Text == nil {
 		d.Text = apis.NewPageText(e, "")

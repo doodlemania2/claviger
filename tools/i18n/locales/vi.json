@@ -329,6 +329,7 @@
   "oidc.signedOut.message": "Bạn có thể đóng cửa sổ này.",
   "oidc.login.continueToHtml": "để tiếp tục đến <strong>{client}</strong>",
   "oidc.consent.title": "Cho phép truy cập",
+  "oidc.brand.securedBy": "Được bảo mật bởi Claviger",
   "oidc.oauth2Done.success": "Bạn có thể đóng cửa sổ này.",
   "oidc.oauth2Done.failure": "Đăng nhập chưa hoàn tất. Bạn có thể đóng cửa sổ này và thử lại.",
   "oidc.consent.heading": "Cho phép truy cập?",
