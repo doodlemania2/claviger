@@ -70,7 +70,8 @@ export async function registerScene(browser: Browser, world: World, index: numbe
         await expect(basil.page.locator("#facts")).toContainText("Register number");
         await basil.say("Confirmed with his own passkey: the entry is final, numbered, and chained to the one before by a hash", 4500);
         await beat(basil.page, 1200);
-        basil.mark("register-done");
+        // set by maren, not basil: clip.mjs needs both marks on one actor, and the scene clock is shared (row layout)
+        maren.mark("register-done");
 
         const form = basil.page.locator("#noteForm");
         await form.getByLabel("Kind of note").selectOption("correction");
