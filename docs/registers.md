@@ -77,17 +77,62 @@ Annotations can never be changed or deleted, by anyone, including superusers (a 
 
 The annotation audit entry is `register_annotate`.
 
-## Restriction and erasure requests
+## Restriction of processing
 
-`restricted` is the one default mutable field. It lets a registrar stop an entry from being shown outside the registrar role while the entry stays.
+A person can ask for erasure (GDPR Article 17) or for restriction (Article 18) of an entry about them. A final entry is never deleted, so the answer in both cases is **restriction**: the entry stays exactly as it is, in the same place in the hash chain, and its content is hidden. This is the default for every register (owner decision 2026-11-12). Whether keeping the entry is lawful for your church and country is for the controller and a lawyer to decide (`docs/erasure.md`).
 
-A final entry is **retained** when a person asks for erasure, for the reason recorded in the data map. The erasure job (88-4, `docs/erasure.md`) calls
+`restricted` is a mutable field and is not part of the chain hash, so restricting and lifting never break verification. It cannot be changed by a plain write (the records API, `app.Save`, a hook): it changes only through the functions and routes below, so a restriction always comes with a marginal note, an audit entry and a reason.
 
-```go
-core.AnnotateErasureRequest(app, ctx, entry, reason)
+**How an entry becomes restricted**
+
+- **An erasure request** (`docs/erasure.md`). For each final entry about the person, the erasure job calls `core.AnnotateErasureRequest(app, ctx, entry, reason)`: it adds a `data_subject_note` annotation, sets `restricted`, and writes a `register_erasure_note` audit entry. The erasure result lists the entry as retained, with the legal reason and the statement that it is restricted.
+- **A direct request.** A registrar restricts an entry (for example when a person disputes its accuracy):
+
+  ```
+  POST /api/registers/{collection}/{id}/restrict     {"reason": "..."}
+  POST /api/registers/{collection}/{id}/unrestrict   {"reason": "..."}
+  ```
+
+  Both need a **registrar** of the entry's org and a fresh passkey; a superuser can never do them, like annotating (owner decision 2026-11-12). They apply to **final** entries of registers whose `mutableFields` include `restricted` (the default). Each adds a marginal note (restrict: `data_subject_note`; lift: `legal_note`, both with the reason) and writes `register_restrict` or `register_unrestrict`. Restricting a restricted entry, or lifting an unrestricted one, answers 409. Lifting also works on a restriction that the erasure job set; it is the registrar's decision, with a reason.
+
+**What is hidden**
+
+| Read | Restricted entry |
+|---|---|
+| Records API (`/api/collections/<register>/records`, realtime) | Everyone except a superuser sees only `id`, `org`, `restricted`, the finalize time and `seq`. A registrar who needs the content uses the register routes. |
+| `GET /api/registers/{collection}?org=` (lists) | `redacted: true`, the same few fields. No names, no annotations. |
+| `GET /api/registers/{collection}/{id}` | Redacted without a reason. A **registrar** of the org, or a **superuser**, adds `?reason=...` and gets the entry and its annotations. Owners and admins without the tag cannot reveal it, with or without a reason. `canReveal` says whether the caller could. |
+| `GET /api/registers/{collection}/{id}/certificate` | 403 unless revealed the same way (`?reason=`). |
+
+Every reveal writes a `register_restricted_read` audit entry with the reason and the reader. A superuser who works in the admin UI sees the records API unredacted (the admin UI is a superuser's own tool; raw access is outside the guarantee, as for the audit log), so use the register routes with a reason when the read should be on record. A person's own data export (`docs/erasure.md`, Article 15) still contains their entries: restriction limits processing, it does not take away their right of access.
+
+## Anonymization
+
+**Off by default, per register.** For churches whose regulator or court requires it (spec 10.7, open question 15), a register can replace the personal values of entries by **keyed pseudonyms** after a retention period. Turn it on with the `anonymize` and `anonymizeAfterDays` (1 to 36500) fields of the register's `_permanentCollections` row, or when creating one from the template (`"anonymize": true, "anonymizeAfterDays": 36500`). Turning it on adds two fields to the register, `anonymizedAt` and `anonDigest`; the finalize routes manage them, nobody writes them directly.
+
+```
+POST /api/registers/{collection}/{id}/anonymize   {"reason": "..."}
+POST /api/registers/{collection}/anonymize        {"org": "<id>", "reason": "..."}   every due entry of the org
 ```
 
-which adds a `data_subject_note` annotation with the reason, sets `restricted` when the register has that mutable field, and writes a `register_erasure_note` audit entry. It does not change or anonymize anything else. Anonymizing the personal fields of a final entry, with two approvers, is not built; build it only when a regulator or court makes a church need it.
+A **registrar** of the entry's org with a fresh passkey (never a superuser; no two-approver rule, because the owner decision of 2026-11-12 limits signing to registrars). An entry qualifies when it is final, `anonymizeAfterDays` have passed since `finalizedAt`, it is not under a legal hold (`docs/retention.md`) and it is not anonymized yet. Otherwise 409. The batch route skips entries that do not qualify and returns the ids it anonymized.
+
+What happens, in one transaction:
+
+1. Every field in the register's `personalFields` and every `subjectPaths` link is replaced: text-like fields (text, email, url, editor, encrypted text) by `anon-` and 20 hex characters, JSON fields by `{"anonymized": "anon-..."}`, dates, relations and selects cleared, numbers set to 0. The pseudonym is an HMAC-SHA-256, under the install's erasure secret, of the register, the entry id, the field and the old value. Two entries never share a pseudonym.
+2. `anonymizedAt` and `anonDigest` are set.
+3. A `legal_note` annotation records it: author, reason, the fields, the kept chain link and the digest. The note is the signed marginal note: it is append-only and names the registrar.
+4. A `register_anonymize` audit entry is written.
+
+This is **pseudonymization** in the sense of Article 4(5), not irreversible anonymization: the old values are gone from the database, but whoever holds the secret and a candidate value can test it. Backups and replicas taken earlier still contain the old values until they rotate (`docs/erasure.md`). Destroying the secret as well makes the pseudonyms unlinkable, and also affects the keyed pseudonyms of the audit log, so treat that as a deliberate decision.
+
+**How verification treats an anonymized entry.** The chain hashes the entry's content, so after the personal fields are gone the entry's own hash cannot be recomputed. The stored `hash` is **kept unchanged**: it is still the link the next entry's hash was computed from, so every other entry verifies as before. For the anonymized entry itself, `claviger registers verify` checks instead
+
+```
+anonDigest = SHA-256( prevHash + "\n" + hash + "\n" + canonical(anonymized entry) + "\n" + anonymizedAt )
+```
+
+where `prevHash` is the verified hash of the previous entry of the chain, `canonical` is the form described under [Hash chain](#hash-chain), read from the anonymized fields, and `anonymizedAt` has millisecond precision in UTC. A change to the tombstone, to its kept hash or number, to its predecessor, or to the date of anonymization is a break. What verification can no longer prove is that the removed values were the ones originally signed; that is the effect of anonymizing. A register without a chain gets the digest check only. An anonymized entry stays immutable like any final entry, and it can still be restricted and annotated.
 
 ## Hash chain
 
@@ -97,7 +142,7 @@ With `chain` on, finalizing gives the entry the next number `seq` (from 1) and
 hash(n) = SHA-256( hash(n-1) + "\n" + canonical(entry n) )      hash(0) = ""
 ```
 
-`canonical` is the JSON of the entry's non-empty fields (keys sorted), without the autodate fields, the mutable fields, the pending-request fields and the hash. It includes the id, the finalize time, the signers and `seq`. Empty values are left out, so adding a field to the collection does not change old hashes.
+`canonical` is the JSON of the entry's non-empty fields (keys sorted), without the autodate fields, the mutable fields, the pending-request fields, the anonymization fields and the hash. It includes the id, the finalize time, the signers and `seq`. Empty values are left out, so adding a field to the collection does not change old hashes.
 
 ```
 claviger registers verify
@@ -145,4 +190,4 @@ Both collections are registered with `retain` and the stated reason, so an expor
 
 ## Not built yet
 
-Webhook events, per-org certificate wording, and anonymization.
+Webhook events, per-org certificate wording, and a two-approver rule for anonymization.

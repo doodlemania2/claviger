@@ -19,6 +19,8 @@ func registerRefuse(format string, args ...any) error {
 }
 
 func (app *BaseApp) registerPermanentHooks() {
+	app.registerEnrichHook() // restricted entries (88-7)
+
 	guardPriority := -90000 // after the audit guards, before everything else
 
 	guard := &hook.Handler[*ModelEvent]{Id: "__clvRegisterGuard__", Func: registerModelGuard, Priority: guardPriority}
@@ -59,6 +61,22 @@ func (app *BaseApp) registerPermanentHooks() {
 		Func: func(e *RecordEvent) error {
 			if err := validatePermanentConfig(e.App, e.Record); err != nil {
 				return err
+			}
+
+			return e.Next()
+		},
+	})
+
+	// turning anonymization on adds its two fields to the register
+	app.OnRecordUpdateExecute(CollectionNamePermanentCollections).Bind(&hook.Handler[*RecordEvent]{
+		Id: "__clvRegisterConfigAnon__",
+		Func: func(e *RecordEvent) error {
+			if cfg := permanentConfigFromRecord(e.Record); cfg.Anonymize {
+				if reg, err := e.App.FindCollectionByNameOrId(cfg.Collection); err == nil {
+					if err := ensureRegisterFields(e.App, reg, cfg); err != nil {
+						return err
+					}
+				}
 			}
 
 			return e.Next()
@@ -143,7 +161,23 @@ func guardRegisterEntry(me *ModelEvent, cfg *PermanentConfig, rec *Record) error
 		changed := registerChangedFields(stored, rec)
 
 		if cfg.IsFinalized(stored) {
+			anon := registerAnonAllowed(me)
+			if anon && registerIsAnonymized(stored) {
+				return registerRefuse("This entry is already anonymized.")
+			}
+
 			for _, f := range changed {
+				if anon && cfg.anonymizableField(f) {
+					continue
+				}
+
+				// a restriction always comes with a marginal note: it is changed
+				// through RestrictRegisterEntry, LiftRegisterRestriction or the
+				// erasure flow, never by a plain save (88-7)
+				if f == "restricted" && !registerWriteAllowed(me) {
+					return registerRefuse("The restriction of an entry is changed with the restrict and unrestrict routes, which add the marginal note.")
+				}
+
 				if !cfg.isMutable(f) {
 					return registerRefuse("This entry is final. The field %q cannot change; add an annotation instead.", f)
 				}
@@ -387,13 +421,17 @@ func validatePermanentConfig(app App, rec *Record) error {
 		rec.Set("annotationCollection", rec.GetString("collection")+"_annotations")
 	}
 
-	if !rec.IsNew() {
-		return nil // the immutable fields are guarded; the rest is free text
-	}
-
 	cfg := permanentConfigFromRecord(rec)
 	errs := validation.Errors{}
 	bad := func(field, code, msg string) { errs[field] = validation.NewError(code, msg) }
+
+	if cfg.Anonymize && (cfg.AnonymizeAfterDays < 1 || cfg.AnonymizeAfterDays > 36500) {
+		bad("anonymizeAfterDays", "validation_invalid", "Anonymization needs a retention period of 1 to 36500 days.")
+	}
+
+	if !rec.IsNew() {
+		return errs.Filter() // the immutable fields are guarded; the rest is free text
+	}
 
 	col, err := app.FindCollectionByNameOrId(cfg.Collection)
 

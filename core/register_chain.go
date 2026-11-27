@@ -22,6 +22,9 @@ import (
 // signers and seq are part of it. Empty values are left out, so adding a new
 // field to the collection later does not change the hash of old entries.
 //
+// An entry that was anonymized (88-7) is verified differently: see
+// register_anonymize.go. Its stored hash stays the link to the next entry.
+//
 // A chain does not prove who wrote an entry and it cannot see that the last
 // entries were removed; keep the head (see VerifyRegister) somewhere else if
 // that matters. It detects an entry that was changed, removed from the
@@ -49,7 +52,7 @@ type RegisterVerification struct {
 func (v *RegisterVerification) OK() bool { return len(v.Breaks) == 0 }
 
 func registerCanonical(rec *Record, cfg *PermanentConfig, withFinal bool) []byte {
-	skip := []string{"hash", "pendingBy", "pendingAt", "pendingHash"}
+	skip := []string{"hash", "pendingBy", "pendingAt", "pendingHash", registerAnonAtField, registerAnonDigestField}
 	if !withFinal {
 		skip = append(skip, cfg.FinalizeField, "finalizedBy", "secondSigner", "seq")
 	}
@@ -127,6 +130,12 @@ func VerifyRegister(app App, cfg *PermanentConfig) (*RegisterVerification, error
 	res.Finalized = len(rows)
 
 	if !cfg.Chain {
+		for _, r := range rows {
+			if brk := verifyAnonymized(r, cfg, ""); brk != "" {
+				res.Breaks = append(res.Breaks, RegisterBreak{Collection: cfg.Collection, Entry: r.Id, Problem: brk})
+			}
+		}
+
 		return res, nil
 	}
 
@@ -148,7 +157,14 @@ func VerifyRegister(app App, cfg *PermanentConfig) (*RegisterVerification, error
 			brk(fmt.Sprintf("expected number %d, found %d (an entry was removed, inserted or renumbered)", expected, seq))
 		}
 
-		if want := registerChainHash(prev, r, cfg); want != r.GetString("hash") {
+		if registerIsAnonymized(r) {
+			// the personal fields are gone, so the hash cannot be recomputed; the
+			// digest written at anonymization binds the kept hash, the
+			// predecessor's hash and the remaining content (register_anonymize.go)
+			if problem := verifyAnonymized(r, cfg, prev); problem != "" {
+				brk(problem)
+			}
+		} else if want := registerChainHash(prev, r, cfg); want != r.GetString("hash") {
 			brk("hash does not match: the entry or its predecessor was changed outside the application")
 		}
 

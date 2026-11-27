@@ -57,7 +57,7 @@ The job reads the **data map**, not a list in code. A collection that holds pers
 
 ### Registers
 
-A permanent register entry (a baptism, say) is **retained** by default and the erasure ends `partial` with the reason (spec 10.7). For each **final** entry about the person the job adds a `data_subject_note` annotation to the entry (`core.AnnotateErasureRequest`) and sets `restricted = true`, so it is no longer shown outside the registrar role. Nothing else of the entry changes. A **draft** entry is not final: it is kept and listed, without an annotation, for a registrar to decide. Anonymizing a final entry (with two approvers) is the later milestone 88-7 and is not built.
+A permanent register entry (a baptism, say) is **retained** by default and the erasure ends `partial` with the reason (spec 10.7). For each **final** entry about the person the job adds a `data_subject_note` annotation to the entry (`core.AnnotateErasureRequest`) and **restricts** it (GDPR Article 18): the entry stays unchanged and in the hash chain, but it is hidden from the records API, the register lists and views, and the certificate, except to a registrar or superuser who states a reason (audited). A registrar can lift the restriction. See `docs/registers.md`, "Restriction of processing". A **draft** entry is not final: it is kept and listed, without an annotation, for a registrar to decide. A register can also be set up to **anonymize** old entries by keyed pseudonyms after a retention period (off by default; `docs/registers.md`, "Anonymization"); that is a registrar's separate action, not part of the erasure job.
 
 ### Legal holds
 
@@ -142,6 +142,6 @@ The admin UI has a **Data protection** section (superusers). **Data requests** (
 
 ## Not built
 
-- Anonymizing a final register entry with two approvers (88-7).
+- A two-approver rule for anonymizing a register entry (the anonymization itself, `docs/registers.md`, is built and off by default).
 - Per-collection hold reasons in the result (they are left out on purpose).
 - An outbound SCIM client. Claviger is the SCIM *target*: the memberships that came from SCIM are suspended before they are removed, and an administrator tells the identity provider.

@@ -322,10 +322,17 @@ func TestRegisterFinalEntryIsImmutable(t *testing.T) {
 		t.Fatal("deleting a final entry must fail")
 	}
 
-	// the mutable field is the one thing that still changes
+	// the mutable field changes only through the restriction functions (88-7),
+	// which add the marginal note; a plain save is refused
 	e = w.fresh(t, d)
 	e.Set("restricted", true)
-	must(t, w.app.Save(e))
+
+	if err := w.app.Save(e); err == nil {
+		t.Fatal("a plain save must not change restricted")
+	}
+
+	_, err := core.RestrictRegisterEntry(w.app, w.ctx, w.user["reg1"], "baptisms", d.Id, "test")
+	must(t, err)
 
 	if !w.fresh(t, d).GetBool("restricted") || w.fresh(t, d).GetString("surname") != "Smith" {
 		t.Fatal("restricted should be set and the surname untouched")
@@ -646,16 +653,15 @@ func TestRegisterChainDetectsTampering(t *testing.T) {
 	}
 
 	// restricted is outside the hash
-	r := mustFresh(t, w.app, "baptisms", ids[1])
-	r.Set("restricted", true)
-	must(t, w.app.Save(r))
+	_, err := core.RestrictRegisterEntry(w.app, w.ctx, w.user["reg1"], "baptisms", ids[1], "test")
+	must(t, err)
 
 	if !verify().OK() {
 		t.Fatal("setting restricted must not break the chain")
 	}
 
 	// raw SQL changes an entry
-	_, err := w.app.NonconcurrentDB().NewQuery("UPDATE baptisms SET surname = 'Forged' WHERE id = {:id}").Bind(dbx.Params{"id": ids[1]}).Execute()
+	_, err = w.app.NonconcurrentDB().NewQuery("UPDATE baptisms SET surname = 'Forged' WHERE id = {:id}").Bind(dbx.Params{"id": ids[1]}).Execute()
 	must(t, err)
 
 	v = verify()
