@@ -1061,7 +1061,7 @@ func (rc *erasureRun) stepRegister(col *Collection, cfg *PermanentConfig, rows [
 		}
 
 		res.retain(ErasureRetained{Collection: col.Name, Count: 1, Code: "register", Ids: []string{r.Id},
-			Reason: "Entries in a church register are permanent. " + reasonText})
+			Reason: "Entries in a church register are permanent. The entry is restricted instead: it stays unchanged and is hidden from normal reads (GDPR Article 18). " + reasonText})
 
 		done, err := hasErasureAnnotation(rc.app, cfg, r, reason)
 		if err != nil {

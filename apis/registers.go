@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/doodlemania2/claviger/core"
@@ -24,6 +25,13 @@ import (
 //	DELETE /api/registers/{collection}/{id}/finalize      withdraw a pending finalization
 //	POST   /api/registers/{collection}/{id}/annotations   {kind, text, reason, supersedes?}; registrar (never a superuser); fresh passkey
 //	GET    /api/registers/{collection}/{id}/certificate   HTML page with print CSS; registrar, owner, admin
+//	POST   /api/registers/{collection}/{id}/restrict      {reason}; registrar (never a superuser); fresh passkey; restriction of processing (88-7)
+//	POST   /api/registers/{collection}/{id}/unrestrict    {reason}; registrar (never a superuser); fresh passkey
+//	POST   /api/registers/{collection}/{id}/anonymize     {reason}; registrar; fresh passkey; only when the register has anonymization on and the retention period has passed
+//	POST   /api/registers/{collection}/anonymize          {org, reason}; the same for every due entry of the org
+//
+// A restricted entry is redacted in lists and views, and its certificate is refused, unless a registrar or a
+// superuser adds ?reason= to the read (audited as register_restricted_read).
 //
 // The routes need a signed-in person. API keys are refused: finalizing and
 // annotating are acts of a named person.
@@ -38,6 +46,10 @@ func bindRegistersApi(rg *router.RouterGroup[*core.RequestEvent]) {
 	g.DELETE("/{collection}/{id}/finalize", registerWithdraw)
 	g.POST("/{collection}/{id}/annotations", registerAnnotate).Bind(refuseSuperuserSigning(), RequireFreshPasskey(webauthnStepUpMaxAge))
 	g.GET("/{collection}/{id}/certificate", registerCertificate)
+	g.POST("/{collection}/{id}/restrict", registerRestrict).Bind(refuseSuperuserSigning(), RequireFreshPasskey(webauthnStepUpMaxAge))
+	g.POST("/{collection}/{id}/unrestrict", registerUnrestrict).Bind(refuseSuperuserSigning(), RequireFreshPasskey(webauthnStepUpMaxAge))
+	g.POST("/{collection}/{id}/anonymize", registerAnonymize).Bind(refuseSuperuserSigning(), RequireFreshPasskey(webauthnStepUpMaxAge))
+	g.POST("/{collection}/anonymize", registerAnonymizeDue).Bind(refuseSuperuserSigning(), RequireFreshPasskey(webauthnStepUpMaxAge))
 }
 
 // refuseSuperuserSigning answers a superuser with a clear 403 before the
@@ -60,6 +72,9 @@ type registerCreateBody struct {
 	Name         string `json:"name" form:"name"`
 	Signers      int    `json:"signers" form:"signers"`
 	RetainReason string `json:"retainReason" form:"retainReason"`
+	// Anonymize turns on the optional anonymization after AnonymizeAfterDays (88-7). Default off.
+	Anonymize          bool `json:"anonymize" form:"anonymize"`
+	AnonymizeAfterDays int  `json:"anonymizeAfterDays" form:"anonymizeAfterDays"`
 }
 
 // registerCreate makes a register from a template. An existing collection is
@@ -82,7 +97,7 @@ func registerCreate(e *core.RequestEvent) error {
 		return e.Error(http.StatusConflict, "That register already exists.", nil)
 	}
 
-	cfg, err := core.CreateSacramentalRegister(e.App, core.SacramentalRegisterOpts{Name: body.Name, Signers: body.Signers, RetainReason: body.RetainReason})
+	cfg, err := core.CreateSacramentalRegister(e.App, core.SacramentalRegisterOpts{Name: body.Name, Signers: body.Signers, RetainReason: body.RetainReason, Anonymize: body.Anonymize, AnonymizeAfterDays: body.AnonymizeAfterDays})
 	if err != nil {
 		return e.BadRequestError("Failed to create the register.", err)
 	}
@@ -101,8 +116,40 @@ func registerGate(e *core.RequestEvent) error {
 	return nil
 }
 
+// registerEntryJSON is the entry as the routes show it. A restricted entry is
+// redacted to its id, org, state and chain position; revealRestricted shows it
+// in full (the caller has checked the right and written the audit entry).
 func registerEntryJSON(app core.App, cfg *core.PermanentConfig, entry *core.Record) map[string]any {
+	return registerEntryJSONAs(app, cfg, entry, false)
+}
+
+func registerEntryJSONAs(app core.App, cfg *core.PermanentConfig, entry *core.Record, revealRestricted bool) map[string]any {
+	if core.RegisterRestricted(entry) && !revealRestricted {
+		full := entry.PublicExport()
+		record := map[string]any{}
+
+		for _, k := range core.RegisterRedactedFields(cfg) {
+			if v, ok := full[k]; ok {
+				record[k] = v
+			}
+		}
+
+		return map[string]any{
+			"collection": cfg.Collection,
+			"id":         entry.Id,
+			"org":        entry.GetString("org"),
+			"state":      core.RegisterState(cfg, entry),
+			"signers":    cfg.Signers,
+			"chain":      cfg.Chain,
+			"restricted": true,
+			"redacted":   true,
+			"record":     record,
+		}
+	}
+
 	return map[string]any{
+		"restricted": core.RegisterRestricted(entry),
+		"anonymized": entry.Collection().Fields.GetByName("anonymizedAt") != nil && !entry.GetDateTime("anonymizedAt").IsZero(),
 		"collection": cfg.Collection,
 		"id":         entry.Id,
 		"org":        entry.GetString("org"),
@@ -136,22 +183,28 @@ func registerView(e *core.RequestEvent) error {
 		return err
 	}
 
-	cfg, entry, _, err := core.RegisterStaff(e.App, e.Request.PathValue("collection"), e.Request.PathValue("id"), e.Auth)
+	read, err := core.ReadRegisterEntry(e.App, auditContext(e), e.Auth, e.Request.PathValue("collection"), e.Request.PathValue("id"),
+		e.Request.URL.Query().Get("reason"))
 	if err != nil {
 		return orgHTTP(e, err)
 	}
 
-	notes, err := core.RegisterAnnotations(e.App, cfg, entry)
-	if err != nil {
-		return e.InternalServerError("", err)
+	out := registerEntryJSONAs(e.App, read.Config, read.Entry, read.Revealed)
+	out["canReveal"] = read.CanReveal
+
+	items := []map[string]any{}
+
+	if read.Revealed {
+		notes, err := core.RegisterAnnotations(e.App, read.Config, read.Entry)
+		if err != nil {
+			return e.InternalServerError("", err)
+		}
+
+		for _, a := range notes {
+			items = append(items, registerAnnotationJSON(e.App, a))
+		}
 	}
 
-	items := make([]map[string]any, 0, len(notes))
-	for _, a := range notes {
-		items = append(items, registerAnnotationJSON(e.App, a))
-	}
-
-	out := registerEntryJSON(e.App, cfg, entry)
 	out["annotations"] = items
 
 	return e.JSON(http.StatusOK, out)
@@ -303,9 +356,16 @@ func registerCertificate(e *core.RequestEvent) error {
 		return err
 	}
 
-	cfg, entry, org, err := core.RegisterStaff(e.App, e.Request.PathValue("collection"), e.Request.PathValue("id"), e.Auth)
+	read, err := core.ReadRegisterEntry(e.App, auditContext(e), e.Auth, e.Request.PathValue("collection"), e.Request.PathValue("id"),
+		e.Request.URL.Query().Get("reason"))
 	if err != nil {
 		return orgHTTP(e, err)
+	}
+
+	cfg, entry, org := read.Config, read.Entry, read.Org
+
+	if !read.Revealed {
+		return e.ForbiddenError("This entry is restricted. A registrar can issue its certificate with ?reason=, which is audited.", nil)
 	}
 
 	if !cfg.IsFinalized(entry) {
@@ -427,4 +487,79 @@ func certificateValue(entry *core.Record, f core.Field) string {
 	}
 
 	return ""
+}
+
+// ---- restriction and anonymization (88-7) ------------------------------------------
+
+type registerReasonBody struct {
+	Org    string `json:"org" form:"org"`
+	Reason string `json:"reason" form:"reason"`
+}
+
+func registerReasonRoute(e *core.RequestEvent, do func(reason string) (*core.Record, error)) error {
+	if err := registerGate(e); err != nil {
+		return err
+	}
+
+	var body registerReasonBody
+	if err := e.BindBody(&body); err != nil {
+		return e.BadRequestError("Failed to read the request data.", err)
+	}
+
+	entry, err := do(body.Reason)
+	if err != nil {
+		return orgHTTP(e, err)
+	}
+
+	cfg := core.PermanentConfigFor(e.App, e.Request.PathValue("collection"))
+
+	return e.JSON(http.StatusOK, registerEntryJSONAs(e.App, cfg, entry, false))
+}
+
+func registerRestrict(e *core.RequestEvent) error {
+	return registerReasonRoute(e, func(reason string) (*core.Record, error) {
+		return core.RestrictRegisterEntry(e.App, auditContext(e), e.Auth, e.Request.PathValue("collection"), e.Request.PathValue("id"), reason)
+	})
+}
+
+func registerUnrestrict(e *core.RequestEvent) error {
+	return registerReasonRoute(e, func(reason string) (*core.Record, error) {
+		return core.LiftRegisterRestriction(e.App, auditContext(e), e.Auth, e.Request.PathValue("collection"), e.Request.PathValue("id"), reason)
+	})
+}
+
+func registerAnonymize(e *core.RequestEvent) error {
+	return registerReasonRoute(e, func(reason string) (*core.Record, error) {
+		return core.AnonymizeRegisterEntry(e.App, auditContext(e), e.Auth, e.Request.PathValue("collection"), e.Request.PathValue("id"), reason)
+	})
+}
+
+func registerAnonymizeDue(e *core.RequestEvent) error {
+	if err := registerGate(e); err != nil {
+		return err
+	}
+
+	var body registerReasonBody
+	if err := e.BindBody(&body); err != nil {
+		return e.BadRequestError("Failed to read the request data.", err)
+	}
+
+	if body.Org == "" {
+		return e.BadRequestError("Say which organization with org.", nil)
+	}
+
+	if strings.TrimSpace(body.Reason) == "" {
+		return e.BadRequestError("A reason is required.", nil)
+	}
+
+	done, err := core.AnonymizeDueRegisterEntries(e.App, auditContext(e), e.Auth, e.Request.PathValue("collection"), body.Org, body.Reason)
+	if err != nil {
+		return orgHTTP(e, err)
+	}
+
+	if done == nil {
+		done = []string{}
+	}
+
+	return e.JSON(http.StatusOK, map[string]any{"anonymized": done, "count": len(done)})
 }

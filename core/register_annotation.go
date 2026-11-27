@@ -147,12 +147,12 @@ func AnnotateErasureRequest(app App, ctx context.Context, entry *Record, reason 
 		if cfg.isMutable("restricted") && stored.Collection().Fields.GetByName("restricted") != nil {
 			stored.Set("restricted", true)
 
-			if err := txApp.SaveWithContext(ctx, stored); err != nil {
+			if err := txApp.SaveWithContext(registerWriteContext(ctx), stored); err != nil {
 				return wrapOrgSaveErr(err)
 			}
 		}
 
-		return writeRegisterAudit(txApp, ctx, AuditActionRegisterErasureNote, cfg, stored, map[string]any{"annotation": rec.Id})
+		return writeRegisterAudit(txApp, ctx, AuditActionRegisterErasureNote, cfg, stored, map[string]any{"annotation": rec.Id, "restricted": stored.GetBool("restricted")})
 	})
 	if err != nil {
 		return nil, err

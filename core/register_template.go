@@ -69,6 +69,11 @@ func ensureRegisterFields(app App, reg *Collection, cfg *PermanentConfig) error 
 	add(&TextField{Name: "pendingHash", Max: 64})
 	add(&BoolField{Name: "restricted"})
 
+	if cfg.Anonymize {
+		add(&DateField{Name: registerAnonAtField})
+		add(&TextField{Name: registerAnonDigestField, Max: 64})
+	}
+
 	if cfg.Chain {
 		add(&NumberField{Name: "seq", OnlyInt: true, Min: types.Pointer(0.0)})
 		add(&TextField{Name: "hash", Max: 64})
@@ -208,6 +213,10 @@ type SacramentalRegisterOpts struct {
 	RetainReason string
 	// NoChain turns the hash chain off (it is on for the template).
 	NoChain bool
+	// Anonymize turns on the optional anonymization of entries older than
+	// AnonymizeAfterDays (default off, see docs/registers.md).
+	Anonymize          bool
+	AnonymizeAfterDays int
 }
 
 // CreateSacramentalRegister creates a base collection for a sacramental
@@ -302,6 +311,8 @@ func createSacramentalRegister(app App, opts SacramentalRegisterOpts) (*Permanen
 	rec.Set("subjectPaths", paths)
 	rec.Set("personalFields", []string{"surname", "givenNames", "eventDate", "eventPlace", "details"})
 	rec.Set("retainReason", opts.RetainReason)
+	rec.Set("anonymize", opts.Anonymize)
+	rec.Set("anonymizeAfterDays", opts.AnonymizeAfterDays)
 
 	if err := app.Save(rec); err != nil {
 		return nil, err

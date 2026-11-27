@@ -49,6 +49,10 @@ const (
 	AuditActionRegisterAnnotate         = "register_annotate"
 	AuditActionRegisterCertificate      = "register_certificate"
 	AuditActionRegisterErasureNote      = "register_erasure_note"
+	AuditActionRegisterRestrict         = "register_restrict"
+	AuditActionRegisterUnrestrict       = "register_unrestrict"
+	AuditActionRegisterRestrictedRead   = "register_restricted_read"
+	AuditActionRegisterAnonymize        = "register_anonymize"
 
 	// annotation kinds
 	RegisterKindCorrection     = "correction"
@@ -71,7 +75,7 @@ var RegisterAnnotationKinds = []string{
 
 // registerManagedBase are the fields next to the finalize field that only the
 // finalize functions may write.
-var registerManagedBase = []string{"finalizedBy", "secondSigner", "pendingBy", "pendingAt", "pendingHash", "seq", "hash"}
+var registerManagedBase = []string{"finalizedBy", "secondSigner", "pendingBy", "pendingAt", "pendingHash", "seq", "hash", registerAnonAtField, registerAnonDigestField}
 
 var registerNameRegex = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{0,99}$`)
 
@@ -101,6 +105,10 @@ type PermanentConfig struct {
 	SubjectPaths   []string
 	PersonalFields []string
 	RetainReason   string
+	// Anonymize turns on the optional anonymization of old entries (88-7,
+	// register_anonymize.go); AnonymizeAfterDays is the retention period.
+	Anonymize          bool
+	AnonymizeAfterDays int
 }
 
 // Managed returns the fields that only the finalize functions may write.
@@ -121,6 +129,8 @@ func permanentConfigFromRecord(r *Record) *PermanentConfig {
 		Chain:                r.GetBool("chain"),
 		Signers:              r.GetInt("signers"),
 		RetainReason:         r.GetString("retainReason"),
+		Anonymize:            r.GetBool("anonymize"),
+		AnonymizeAfterDays:   r.GetInt("anonymizeAfterDays"),
 	}
 
 	if c.FinalizeField == "" {
