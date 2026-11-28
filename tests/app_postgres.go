@@ -33,6 +33,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -101,8 +102,14 @@ func NormalizeQuotes(sql string) string {
 		return sql
 	}
 
+	if isMSSQLURL(os.Getenv(TestPGURLEnv)) {
+		return mssqlBracketIdent.ReplaceAllString(sql, "`$1`")
+	}
+
 	return strings.ReplaceAll(sql, `"`, "`")
 }
+
+var mssqlBracketIdent = regexp.MustCompile(`\[([^\[\]]+)\]`)
 
 type testPostgres struct {
 	adminURL string
@@ -580,6 +587,11 @@ func rawCollections(app core.App) ([]map[string]any, error) {
 		}
 		delete(m, "options")
 
+		// SQL Server: a window function needs an ORDER BY (the fixture's one is SQLite SQL)
+		if q, ok := m["viewQuery"].(string); ok && IsPostgres() && isMSSQLURL(os.Getenv(TestPGURLEnv)) {
+			m["viewQuery"] = strings.NewReplacer("OVER()", "OVER (ORDER BY (SELECT NULL))", "OVER ()", "OVER (ORDER BY (SELECT NULL))").Replace(q)
+		}
+
 		result = append(result, m)
 	}
 
@@ -637,6 +649,11 @@ func copyFixtureRows(src, dst core.App, collections []*core.Collection) error {
 						continue // a column that the Postgres table doesn't have
 					}
 					params[col] = adaptFixtureValue(vals[i], typ)
+
+					// SQL Server: the stored view queries of the fixture are SQLite SQL too
+					if str, ok := params[col].(string); ok && table == "_collections" && col == "options" && isMSSQLURL(os.Getenv(TestPGURLEnv)) {
+						params[col] = strings.NewReplacer("OVER()", "OVER (ORDER BY (SELECT NULL))", "OVER ()", "OVER (ORDER BY (SELECT NULL))").Replace(str)
+					}
 				}
 
 				if _, err := txApp.DB().Insert(table, params).Execute(); err != nil {

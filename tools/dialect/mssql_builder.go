@@ -69,6 +69,11 @@ func lastDistinct(sql string) int {
 // BuildOrderByAndLimit pages a SELECT DISTINCT that has no ORDER BY: SQL Server
 // refuses the ORDER BY (SELECT NULL) that dbx adds to it, as it is not in the select list.
 func (q *mssqlQueryBuilder) BuildOrderByAndLimit(sql string, cols []string, limit int64, offset int64) string {
+	// dbx leaves the offset of a query at 0, not -1: nothing is paged
+	if limit < 0 && offset <= 0 {
+		offset = -1
+	}
+
 	if len(cols) == 0 && (limit >= 0 || offset > 0) {
 		if at := lastDistinct(sql); at >= 0 {
 			if offset <= 0 {

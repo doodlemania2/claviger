@@ -199,14 +199,14 @@ func buildResolversExpr(
 		if len(right.Params) == 0 {
 			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(false), likeContains(d, d.AsText(right.Identifier))), left.Params)
 		} else {
-			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(false), right.Identifier), mergeParams(left.Params, wrapLikeParams(right.Params)))
+			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(false), right.Identifier), mergeParams(left.Params, wrapLikeParams(right.Params, likeExtraChars(d)...)))
 		}
 	case fexpr.SignNlike, fexpr.SignAnyNlike:
 		// the right side is a column and therefor wrap it with "%" for not-contains like behavior
 		if len(right.Params) == 0 {
 			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(true), likeContains(d, d.AsText(right.Identifier))), left.Params)
 		} else {
-			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(true), right.Identifier), mergeParams(left.Params, wrapLikeParams(right.Params)))
+			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(true), right.Identifier), mergeParams(left.Params, wrapLikeParams(right.Params, likeExtraChars(d)...)))
 		}
 	case fexpr.SignLt, fexpr.SignAnyLt:
 		expr = dbx.NewExp(fmt.Sprintf("%s < %s", left.Identifier, right.Identifier), mergeParams(left.Params, right.Params))
@@ -502,7 +502,7 @@ func mergeParams(params ...dbx.Params) dbx.Params {
 //
 // wrapLikeParams wraps each provided param value string with `%`
 // if the param doesn't contain an explicit wildcard (`%`) character already.
-func wrapLikeParams(params dbx.Params) dbx.Params {
+func wrapLikeParams(params dbx.Params, extraEscapes ...rune) dbx.Params {
 	result := dbx.Params{}
 
 	for k, v := range params {
@@ -511,6 +511,10 @@ func wrapLikeParams(params dbx.Params) dbx.Params {
 			// note: this is done to minimize the breaking changes and to preserve the original autoescape behavior
 			vStr = escapeUnescapedChars(vStr, '\\', '%', '_')
 			vStr = "%" + vStr + "%"
+		}
+		// fork (#106): characters that only some engines treat as a pattern ([ on SQL Server)
+		if len(extraEscapes) > 0 {
+			vStr = escapeUnescapedChars(vStr, extraEscapes...)
 		}
 		result[k] = vStr
 	}

@@ -307,3 +307,13 @@ func LateralJoin(d dialect.Dialect) string {
 
 	return ""
 }
+
+// likeExtraChars returns the characters, besides % and _, that the dialect's
+// LIKE treats as a pattern (SQL Server: [ starts a character class).
+func likeExtraChars(d dialect.Dialect) []rune {
+	if c, ok := d.(interface{ LikeSpecialChars() []rune }); ok {
+		return c.LikeSpecialChars()
+	}
+
+	return nil
+}

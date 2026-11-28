@@ -165,6 +165,9 @@ func (mssqlDialect) LikeOp(not bool) string {
 	return "COLLATE " + mssqlCICollation + " LIKE"
 }
 
+// LikeSpecialChars are the characters that a LIKE pattern needs escaped besides % and _.
+func (mssqlDialect) LikeSpecialChars() []rune { return []rune{'['} }
+
 // Concat concatenates SQL text expressions (a NULL operand gives NULL, like ||).
 func (mssqlDialect) Concat(parts ...string) string { return strings.Join(parts, " + ") }
 
