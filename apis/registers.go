@@ -364,12 +364,14 @@ func registerCertificate(e *core.RequestEvent) error {
 
 	cfg, entry, org := read.Config, read.Entry, read.Org
 
-	if !read.Revealed {
-		return e.ForbiddenError("This entry is restricted. A registrar can issue its certificate with ?reason=, which is audited.", nil)
-	}
-
+	// a draft never has a certificate, restricted or not (its state is not
+	// redacted, so answering this first reveals nothing)
 	if !cfg.IsFinalized(entry) {
 		return e.Error(http.StatusConflict, "Only a final entry has a certificate.", nil)
+	}
+
+	if !read.Revealed {
+		return e.ForbiddenError("This entry is restricted. A registrar can issue its certificate with ?reason=, which is audited.", nil)
 	}
 
 	notes, err := core.RegisterAnnotations(e.App, cfg, entry)
