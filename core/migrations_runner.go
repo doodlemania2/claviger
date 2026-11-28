@@ -259,6 +259,10 @@ func (r *MigrationsRunner) initMigrationsTable() error {
 		r.tableName,
 		dialectOf(r.app).Int64Type(),
 	)
+	if dialectOf(r.app).Name() == dialect.MSSQLName {
+		// fork (#106): no CREATE TABLE IF NOT EXISTS, and VARCHAR needs the binary collation
+		rawQuery = dialectOf(r.app).AdaptDDL(strings.NewReplacer("(file ", "([[file]] ", ", applied ", ", [[applied]] ").Replace(rawQuery))
+	}
 
 	var err error
 	if d := dialectOf(r.app); dialect.IsPostgres(d) {
@@ -325,7 +329,7 @@ func (r *MigrationsRunner) lastAppliedMigrations(limit int) ([]string, error) {
 		Where(dbx.Not(dbx.HashExp{"applied": nil})).
 		AndWhere(dbx.HashExp{"file": names}).
 		// unify microseconds and seconds applied time for backward compatibility
-		OrderBy("substr(applied||'0000000000000000', 0, 17) DESC").
+		OrderBy(r.appliedOrderExpr() + " DESC").
 		AndOrderBy("file DESC").
 		Limit(int64(limit)).
 		Column(&files)
@@ -335,4 +339,14 @@ func (r *MigrationsRunner) lastAppliedMigrations(limit int) ([]string, error) {
 	}
 
 	return files, nil
+}
+
+// appliedOrderExpr unifies the microseconds and seconds applied times.
+func (r *MigrationsRunner) appliedOrderExpr() string {
+	if dialectOf(r.app).Name() == dialect.MSSQLName {
+		// fork (#106): SQL Server concatenates with + and numbers need a cast
+		return "SUBSTRING(CAST([applied] AS NVARCHAR(32)) + '0000000000000000', 1, 16)"
+	}
+
+	return "substr(applied||'0000000000000000', 0, 17)"
 }

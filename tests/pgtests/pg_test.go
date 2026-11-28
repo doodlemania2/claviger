@@ -46,6 +46,9 @@ func adminURL(t testing.TB) string {
 
 // textCast is the type that CAST(x AS ...) uses for text on the test server.
 func textCast(t testing.TB) string {
+	if isMSSQLServer(t) {
+		return "NVARCHAR(MAX)"
+	}
 	if isMySQLServer(t) {
 		return "CHAR"
 	}
@@ -61,11 +64,27 @@ func isMySQLServer(t testing.TB) bool {
 		strings.HasPrefix(strings.ToLower(adminURL(t)), "mariadb://")
 }
 
+// isMSSQLServer reports whether the test server URL is a SQL Server one
+// (sqlserver://user:pass@host:1433?database=claviger).
+func isMSSQLServer(t testing.TB) bool {
+	t.Helper()
+	l := strings.ToLower(adminURL(t))
+	return strings.HasPrefix(l, "sqlserver://") || strings.HasPrefix(l, "mssql://")
+}
+
 // adminSQL opens the admin connection of the test server.
 func adminSQL(t testing.TB) *sql.DB {
 	t.Helper()
 
 	raw := adminURL(t)
+
+	if isMSSQLServer(t) {
+		db, err := sql.Open("sqlserver", raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return db
+	}
 
 	if isMySQLServer(t) {
 		u, err := url.Parse(raw)
@@ -105,7 +124,11 @@ func serverVersion(t testing.TB) string {
 	defer db.Close()
 
 	var v string
-	if err := db.QueryRow("SELECT version()").Scan(&v); err != nil {
+	query := "SELECT version()"
+	if isMSSQLServer(t) {
+		query = "SELECT @@VERSION"
+	}
+	if err := db.QueryRow(query).Scan(&v); err != nil {
 		t.Fatal(err)
 	}
 	return v
@@ -113,7 +136,7 @@ func serverVersion(t testing.TB) string {
 
 // isCockroach reports whether the test server is CockroachDB.
 func isCockroach(t testing.TB) bool {
-	return !isLibSQLServer(t) && !isMySQLServer(t) && strings.Contains(serverVersion(t), "CockroachDB")
+	return !isLibSQLServer(t) && !isMySQLServer(t) && !isMSSQLServer(t) && strings.Contains(serverVersion(t), "CockroachDB")
 }
 
 // skipUnlessPostgres skips a test of a feature that only PostgreSQL has.
@@ -124,6 +147,9 @@ func skipUnlessPostgres(t testing.TB, why string) {
 	}
 	if isMySQLServer(t) {
 		t.Skip("known_gap(mysql): " + why)
+	}
+	if isMSSQLServer(t) {
+		t.Skip("known_gap(mssql): " + why)
 	}
 	if isCockroach(t) {
 		t.Skip("known_gap(cockroach): " + why)
@@ -147,6 +173,10 @@ func freshDatabase(t testing.TB) string {
 
 	create := `CREATE DATABASE "` + name + `"`
 	drop := `DROP DATABASE IF EXISTS "` + name + `" WITH (FORCE)`
+	if isMSSQLServer(t) {
+		create = "CREATE DATABASE [" + name + "] COLLATE Latin1_General_100_BIN2; ALTER DATABASE [" + name + "] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE"
+		drop = "IF DB_ID(N'" + name + "') IS NOT NULL BEGIN ALTER DATABASE [" + name + "] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [" + name + "] END"
+	}
 	if isMySQLServer(t) {
 		create = "CREATE DATABASE `" + name + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin"
 		drop = "DROP DATABASE IF EXISTS `" + name + "`"
@@ -168,6 +198,12 @@ func freshDatabase(t testing.TB) string {
 	u, err := url.Parse(admin)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if isMSSQLServer(t) {
+		q := u.Query()
+		q.Set("database", name)
+		u.RawQuery = q.Encode()
+		return u.String()
 	}
 	u.Path = "/" + name
 
@@ -215,6 +251,9 @@ func TestDialectSelection(t *testing.T) {
 	}
 	if isCockroach(t) {
 		want = dialect.CockroachName
+	}
+	if isMSSQLServer(t) {
+		want = dialect.MSSQLName
 	}
 	if isMySQLServer(t) {
 		want = dialect.MySQLName
@@ -332,10 +371,14 @@ func TestIntrospection(t *testing.T) {
 	if _, ok := byName[dialect.RowIDColumn]; ok {
 		t.Error("the hidden row id column must not be listed")
 	}
-	if id := byName["id"]; id == nil || id.PK != 1 || !id.NotNull || id.Type != "text" {
+	wantID, wantFields := "text", "jsonb"
+	if isMSSQLServer(t) {
+		wantID, wantFields = "nvarchar(255)", "nvarchar(max)"
+	}
+	if id := byName["id"]; id == nil || id.PK != 1 || !id.NotNull || id.Type != wantID {
 		t.Errorf("unexpected id column info: %+v", id)
 	}
-	if f := byName["fields"]; f == nil || f.Type != "jsonb" || !f.NotNull {
+	if f := byName["fields"]; f == nil || f.Type != wantFields || !f.NotNull {
 		t.Errorf("unexpected fields column info: %+v", f)
 	}
 	if info[0].Name != "id" || info[0].Index != 0 {
@@ -412,6 +455,12 @@ func TestCollectionLifecycle(t *testing.T) {
 		"id": "text", "title": "text", "views": "double precision", "pub": "boolean",
 		"meta": "jsonb", "when": "text", "tag": "text", "created": "text",
 	}
+	if isMSSQLServer(t) {
+		wantTypes = map[string]string{
+			"id": "nvarchar(255)", "title": "nvarchar(max)", "views": "float", "pub": "bit",
+			"meta": "nvarchar(max)", "when": "nvarchar(max)", "tag": "nvarchar(max)", "created": "nvarchar(max)",
+		}
+	}
 	if isMySQLServer(t) {
 		wantTypes = map[string]string{
 			"id": "varchar(255)", "title": "longtext", "views": "double", "pub": "tinyint(1)",
@@ -429,7 +478,7 @@ func TestCollectionLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !isMySQLServer(t) {
+	if !isMySQLServer(t) && !isMSSQLServer(t) {
 		var pgDef string
 		if err := app.DB().NewQuery("SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_posts_title_nocase'").Row(&pgDef); err != nil || !strings.Contains(pgDef, "lower(") {
 			t.Errorf("expected a lower() index in the catalog, got %q (%v)", pgDef, err)

@@ -22,7 +22,7 @@ func TestPostgresHarness(t *testing.T) {
 	defer app.Cleanup()
 
 	// postgres, or cockroach / mysql when the test server is one of those
-	if got := core.DialectOf(app).Name(); got != "postgres" && got != "cockroach" && got != "mysql" {
+	if got := core.DialectOf(app).Name(); got != "postgres" && got != "cockroach" && got != "mysql" && got != "mssql" {
 		t.Fatalf("dialect = %s", got)
 	}
 	if app.PostgresURL() == "" {

@@ -24,6 +24,11 @@ func (r *RecordFieldResolver) Dialect() dialect.Dialect {
 // condition (a cross join, or a lateral set returning function) needs an
 // explicit "ON TRUE" on Postgres.
 func (r *RecordFieldResolver) leftJoin(query *dbx.SelectQuery, join *search.Join) {
+	if apply := search.LateralJoin(r.Dialect()); join.On == nil && apply != "" {
+		query.Join(apply, join.TableName+" "+join.TableAlias, nil)
+		return
+	}
+
 	on := join.On
 	if on == nil {
 		if cond := r.Dialect().JoinOn(); cond != "" {
@@ -48,7 +53,8 @@ var (
 // groups by the first value of the joined column in the requested order,
 // which is a deterministic pick among the related rows.
 func (r *RecordFieldResolver) groupJoinedOrderBy(query *dbx.SelectQuery) {
-	if !r.Dialect().StrictTypes() || r.baseCollection == nil || r.baseCollection.IsView() {
+	mssql := r.Dialect().Name() == dialect.MSSQLName
+	if (!r.Dialect().StrictTypes() && !mssql) || r.baseCollection == nil || r.baseCollection.IsView() {
 		return
 	}
 
@@ -69,7 +75,7 @@ func (r *RecordFieldResolver) groupJoinedOrderBy(query *dbx.SelectQuery) {
 		terms[i] = term
 
 		// not part of the select list either, but fine with a GROUP BY
-		if strings.EqualFold(strings.TrimSpace(term), "RANDOM()") {
+		if strings.EqualFold(strings.TrimSpace(term), "RANDOM()") || (mssql && strings.EqualFold(strings.TrimSpace(term), "NEWID()")) {
 			rewritten = true
 			continue
 		}
@@ -99,7 +105,16 @@ func (r *RecordFieldResolver) groupJoinedOrderBy(query *dbx.SelectQuery) {
 			nulls = "NULLS " + strings.ToUpper(m[3])
 		}
 
-		terms[i] = "(ARRAY_AGG(" + m[1] + " ORDER BY " + m[1] + " " + dir + " " + nulls + "))[1] " + dir + " " + nulls
+		if mssql {
+			// the smallest (ASC) or largest (DESC) value of the related rows
+			agg := "MIN"
+			if dir == "DESC" {
+				agg = "MAX"
+			}
+			terms[i] = agg + "(" + m[1] + ") " + dir
+		} else {
+			terms[i] = "(ARRAY_AGG(" + m[1] + " ORDER BY " + m[1] + " " + dir + " " + nulls + "))[1] " + dir + " " + nulls
+		}
 		rewritten = true
 	}
 
@@ -108,7 +123,20 @@ func (r *RecordFieldResolver) groupJoinedOrderBy(query *dbx.SelectQuery) {
 	}
 
 	query.Distinct(false)
-	query.GroupBy("[[" + base + ".id]]")
+	if mssql {
+		// SQL Server has no functional dependence: group by every column that "SELECT base.*" selects
+		cols := dialect.MSSQLAllColumns(r.app.DB(), r.baseCollection.Name)
+		groups := make([]string, 0, len(cols))
+		for _, col := range cols {
+			groups = append(groups, "[["+base+"."+col+"]]")
+		}
+		if len(groups) == 0 {
+			groups = append(groups, "[["+base+".id]]")
+		}
+		query.GroupBy(groups...)
+	} else {
+		query.GroupBy("[[" + base + ".id]]")
+	}
 	query.OrderBy(terms...)
 }
 

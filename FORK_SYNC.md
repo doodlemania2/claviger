@@ -416,6 +416,23 @@ A separate dialect, `libsqlDialect` (`tools/dialect/libsql.go`: the SQLite diale
 
 The code that means "a local data.db file" (zip backup and restore, backup verification, several replicas) compares `Name()` with `SQLiteName` and therefore treats `libsql` as a remote engine on purpose.
 
+### SQL Server (#106, experimental)
+
+SQL Server is its own dialect (`tools/dialect/mssql.go`, plus `mssql_builder.go` for the DDL and paging that dbx's mssql builder gets wrong). Fork-only files: `tools/dialect/mssql*.go`, `core/db_connect_mssql.go`. Run the tagged suites against it after a sync (commands in `docs/datastores.md`; `go test -tags postgres ./tests/pgtests/...` with `CLAVIGER_TEST_PG_URL=sqlserver://...&encrypt=disable`). Upstream-owned hunks added by this work (the rest of the seam is listed above):
+
+| File | Change | Re-check when upstream touches |
+| --- | --- | --- |
+| `core/migrations_runner.go` | `initMigrationsTable` rewrites its `CREATE TABLE IF NOT EXISTS` with `AdaptDDL` (and quotes `file`, a T-SQL keyword) on SQL Server; the `lastAppliedMigrations` ordering expression comes from `appliedOrderExpr()` (`SUBSTRING(CAST(.. AS NVARCHAR) + ..)` there, the old `substr(applied\|\|..)` elsewhere). | `initMigrationsTable`, `lastAppliedMigrations`. |
+| `core/record_field_resolver.go`, `core/record_field_resolver_runner.go`, `core/session.go` | `TRUE`/`FALSE` literals go through `boolSQL(app, v)` (SQL Server has none; the text is unchanged elsewhere). | New raw `= TRUE` in rules or queries. |
+| `core/record_field_resolver_replace_expr.go` | The condition that replaces the `:changed` placeholder is wrapped in `CASE WHEN .. THEN 1 ELSE 0 END` on SQL Server (a condition is not a value there). | `replaceWithExpression`. |
+| `core/validators/db.go` | `normalizeMSSQLUniqueError` after the MySQL one (`db_postgres.go`, `_stub.go`). | `NormalizeUniqueIndexError`. |
+| `tools/search/filter.go` | The two `'%' \|\| x \|\| '%'` LIKE patterns go through `likeContains` (SQL Server concatenates with `+`). Same text elsewhere. | The LIKE operators. |
+| `tools/search/multi_match_subquery.go`, `core/record_field_resolver_dialect.go` | A join without a condition is `OUTER APPLY table alias` on SQL Server (`search.LateralJoin`), `groupJoinedOrderBy` also runs there (GROUP BY every column, `MIN`/`MAX`), and `leftJoin` writes the APPLY. | Multi match subquery building, `registerJoin`. |
+| `migrations/1640988000_init.go`, `migrations/1717233557_v0.23_migrate2.go` | `_collections.type` is `NVARCHAR(100)` and the pre 0.23 index migration does not repeat the index on SQL Server, like MySQL. | New hand written DDL in a system migration: `AdaptDDL` rewrites `TEXT`, `VARCHAR(n)`, `BOOLEAN`, `DEFAULT FALSE`, `IF NOT EXISTS`. |
+| `core/backup_create.go` | `backupTool` names `BACKUP DATABASE`. | |
+| `go.mod` | `github.com/microsoft/go-mssqldb` (pure Go). | |
+| `tests/app_postgres.go`, `tests/postgres_harness_test.go` | SQL Server test databases (`withDatabase` sets the `database` parameter, `COLLATE Latin1_General_100_BIN2`, snapshot isolation), the fixture's `OVER()` views get an `ORDER BY`. | |
+
 ## CI
 
 | Workflow | File | Runs on |

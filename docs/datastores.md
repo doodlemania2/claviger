@@ -12,6 +12,7 @@ One variable chooses the engine, `CLAVIGER_DB_URL`; the URL scheme says which. U
 | [PostgreSQL](#postgresql) | `postgres://` or `postgresql://` | Supported. | Yes, opt-in | Yes | 16, 17 |
 | [CockroachDB](#cockroachdb) | `cockroach://` or `cockroachdb://`; a `postgres://` URL that reaches CockroachDB is detected | Supported, with the limits listed in its section. | **Refused** (no `LISTEN`/`NOTIFY`, no advisory locks) | Yes | v25.4 (single node) |
 | [MySQL](#mysql-experimental) | `mysql://` | **Experimental.** Passes the tagged suites, not the regular ones (see the section). | **Refused** | No | 8.4 |
+| [SQL Server](#sql-server-experimental) | `sqlserver://` (or `mssql://`) | **Experimental.** Passes the tagged suites, not the regular ones (see the section). | **Refused** | No | 2019 (Azure SQL Edge, 15.0); 2022 untested here |
 | MariaDB | `mysql://` or `mariadb://` | **Refused at startup** (no functional indexes in 11.4, which the partial and case insensitive unique indexes need). | n/a | n/a | n/a |
 | [libSQL](#libsql-experimental) | `libsql://`, `http://` or `https://` (a sqld or Turso server) | **Experimental.** The tagged suite and samples of the regular suites pass; the only pure Go client is deprecated upstream (see the section). | **Refused** (one primary, no coordination) | No (a dump path, see the section) | sqld 0.24.33 |
 
@@ -534,7 +535,89 @@ Skipped on libSQL (each prints `known_gap(libsql)`): the eight multi replica tes
 
 The regular suites were run on these samples, **not in full**; the full `./core` and `./apis` suites on libSQL (thousands of namespace forks) were not run.
 
-## CI for CockroachDB, MySQL and libSQL (for the conductor)
+## SQL Server (experimental)
+
+Status: **experimental** (issue #106). A SQL Server 2019+ / Azure SQL dialect (`dialect.MSSQL`, name `mssql`, `tools/dialect/mssql.go`) exists and the tagged suites (`tests/pgtests`) pass against SQL Server 15.0 (Azure SQL Edge, see [Running the tests](#running-the-tests-3): 430 pass, 0 fail, 26 skips), but the regular `core`/`apis` suites were run only on a sample (same section), `migrate-db` does not target SQL Server, several replicas are refused, and SQLite semantics are approximated in places (list below). Do not use it for data you cannot lose. Nothing here needs SQL Server 2022 or newer (no `IS DISTINCT FROM`, `GREATEST`, `JSON_ARRAY`, `ISJSON(.., type)`), so Azure SQL Database and Managed Instance should behave the same; they were not run.
+
+### Turning it on
+
+```sh
+CLAVIGER_DB_URL='sqlserver://user:password@host:1433?database=claviger'     # mssql:// is accepted too
+```
+
+- **Create the database yourself with a binary collation**: `CREATE DATABASE claviger COLLATE Latin1_General_100_BIN2`. Text columns are compared as bytes, case and accent sensitive, like SQLite's `BINARY` (and every literal, parameter and JSON value follows the database default). Claviger **refuses to start** on a database whose collation does not end in `_BIN2`, and says so. A consequence: identifiers are case sensitive too (`INFORMATION_SCHEMA.TABLES`, not `information_schema.tables`).
+- Recommended: `ALTER DATABASE claviger SET READ_COMMITTED_SNAPSHOT ON`, so that readers do not block on writers (the test databases have it).
+- The driver is `github.com/microsoft/go-mssqldb` (pure Go). Its URL options work as documented there (`encrypt=`, `TrustServerCertificate=`, `app name=`, ...). Go 1.23+ rejects the self signed certificate of the SQL Server containers (negative serial number): use `encrypt=disable` on a local test server (or `TrustServerCertificate=true` with `GODEBUG=x509negativeserial=1`), or a real certificate. Without any of them the connection fails with `x509: negative serial number`.
+- A `[]byte` parameter is sent as text (the driver would send `VARBINARY`, which SQL Server stores in an `NVARCHAR` column as raw UTF-16). Claviger stores no binary data.
+- `auxiliary.db` (logs) stays a local SQLite file.
+
+### How data is stored
+
+| What | SQL Server |
+| --- | --- |
+| Text | `NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2`. Defaults are literals: `DEFAULT ''`. |
+| Ids | `NVARCHAR(255)` with the same collation, default `'r' + LOWER(CONVERT(NVARCHAR(14), CRYPT_GEN_RANDOM(7), 2))`. |
+| Dates | `NVARCHAR(MAX)` in the same `2006-01-02 15:04:05.000Z` format, UTC (`CONVERT(NVARCHAR(23), SYSUTCDATETIME(), 121) + 'Z'`). |
+| Numbers, booleans | `FLOAT`, `BIT`. |
+| JSON | `NVARCHAR(MAX)` text, as written (no `json` type before SQL Server 2025). Read with `ISJSON`, `OPENJSON` and `STRING_ESCAPE`. |
+| Insertion order | A hidden `_rowid_ BIGINT IDENTITY` column, like PostgreSQL's. |
+| JSON paths in filters | `meta.a.b` is read with `OPENJSON(..., '$.a')` and returns a `sql_variant`: a number is a float, `true`/`false` are 1 and 0, a JSON null is NULL, a string is text, an object or array is its JSON text (cut at 4000 characters). The variant compares numbers with numbers and text with text and never fails a conversion, which is what SQLite's dynamic typing gives; `ORDER BY` puts NULL, numbers, then text (`JSONOrderTerm`). |
+| Multi value fields (`tags ?= 'x'`, `:each`, back relations) | `OUTER APPLY OPENJSON(...)`: SQL Server cannot `LEFT JOIN` a function over a column of an earlier table. `search.LateralJoin` and `RecordFieldResolver.leftJoin` write it. |
+| Indexes | SQL Server cannot index an `NVARCHAR(MAX)`, has no partial or functional indexes, and a unique index treats NULLs as equal. A key that needs it is materialized as a hidden computed column named `_pbx_<index>_<n>` (persisted): a SHA2-256 hash for a unique key on text, `LOWER()` for `COLLATE NOCASE`, a `CASE WHEN <condition>` for a partial index, a 450 character prefix for a plain index on text. Rows that SQLite would skip in a unique index (a NULL key, a partial index whose condition is false) get a key of their own made from their row number, because a filtered index cannot test a computed column. The portable definition is kept in an extended property (`claviger_index`), and `TableIndexes` returns it, so collections export and import the same indexes on every engine. A partial non unique index is created without its `WHERE`. The hidden columns do not show in `TableInfo`/`TableColumns` and are dropped with their index. |
+| Unique errors | Errors 2601 and 2627 are mapped to the `validation_not_unique` error of the field whose name the index contains (the primary key is `id`). |
+| DDL | Transactional, like PostgreSQL. A column with a default is dropped together with its default constraint (the builder looks it up); tables and columns are renamed with `sp_rename`. |
+| Transactions | Deadlock victims (1205) and snapshot update conflicts (3960) are retried like CockroachDB's `40001`. `Try` uses `SAVE TRANSACTION`. Migrations are serialized with `sp_getapplock`. |
+
+### Differences from SQLite
+
+Besides the PostgreSQL list above (most of it applies in spirit), these are the cases that the suites show differ on SQL Server (each is a `known_gap(mssql)` or an `engineGaps` entry in `tests/pgtests/engine_test.go`):
+
+- `~` and `:lower` fold the case of non ASCII letters (accents stay significant): `title ~ "école"` matches `ÉCOLE`.
+- A JSON number compares with a number and a JSON string with text, but a JSON string sorts **before** a number (the variant hierarchy), where SQLite orders text after numbers: `meta.n > 5` is false for `{"n": "5"}`. A JSON boolean is 1 or 0, as in SQLite.
+- `strftime()` supports `%Y %m %d %e %H %I %k %l %M %S %f %j %p %u %w %s %U %W %V %F %T %R %%`, a julian day or unix time number (`unixepoch`), and the modifiers `start of day|month|year`, `[+-]N second|minute|hour|day|month|year`, `weekday N`, `utc`, `subsec`. **Not supported** (rejected when the filter is built): `%G %g %P`, fractional unit modifiers (`+2.5 days`), `localtime`. A month overflow clamps like PostgreSQL's (`DATEADD`), not forward like SQLite's.
+- Sorting by a field of a related record (`sort=author.name`, a multi relation or a back relation) groups the base table by all its columns and sorts by the smallest (`ASC`) or largest (`DESC`) value of the related rows (`MIN`/`MAX`), as PostgreSQL does. `MIN`/`MAX` do not take a `BIT`, so sorting by a related **bool** field fails.
+- `JSON_VALUE` and `OPENJSON` raise an error on text that is not JSON: the filter SQL checks `ISJSON` first, **your own SQL** (views, `/api/sql`) must too.
+- A query can have at most 2100 bound parameters (the driver's limit): a filter with more values than that fails.
+- The `info` of a table (`app.TableInfo`) reports SQL Server's spellings (`nvarchar(max)`, `float`, `bit`).
+- A view query is Transact-SQL, as written (`CASE WHEN a > 5 THEN 1 ELSE 0 END`, `+` for concatenation, `ROW_NUMBER() OVER (ORDER BY ...)`, no `||`, no boolean expression as a value); a comparison column is typed as a number.
+- The superuser SQL endpoint (`/api/sql`) runs Transact-SQL as written and classifies writes with the generic guess (as on MySQL); the PostgreSQL oriented test of it is skipped.
+- Several replicas, zip backups of the database (as on PostgreSQL: use `BACKUP DATABASE` or point-in-time recovery) and `migrate-db` to SQL Server are not available.
+- `TestTryUsesSavepoints` passes (SQL Server dooms some failed batches, so `Try` rolls back to a savepoint).
+
+### Refusals
+
+| Request | Result |
+| --- | --- |
+| `CLAVIGER_MULTI_REPLICA=true` | Refused at startup: several replicas need `LISTEN`/`NOTIFY` and advisory locks (PostgreSQL). |
+| A database without a `_BIN2` collation | Refused at startup, with the `CREATE DATABASE` statement to use. |
+| SQL Server older than 2019 (`ProductMajorVersion` < 15) | Refused at startup. |
+| `claviger migrate-db --to='sqlserver://...'` | Refused: the target must be PostgreSQL or CockroachDB. |
+| A zip backup of the database | The archive holds the storage files and the logs database only; its manifest says the data is in SQL Server. |
+| The `no_default_driver` build tag | The URL is refused (`SQL Server support is not compiled in`). |
+
+### Running the tests
+
+SQL Server 2022 has no arm64 image. On Apple Silicon under Colima the amd64 image only runs through Rosetta (a separate profile: `colima start claviger-mssql --cpu 4 --memory 6 --disk 30 --vm-type vz --vz-rosetta`; the default 2 GiB VM is too small). On the Mac that this was developed on the Rosetta share was not attached to the VM, so the image ran under QEMU and died at start with "Invalid mapping of address ... in reserved address space". **Azure SQL Edge** (`mcr.microsoft.com/azure-sql-edge`, a SQL Server 15.0 engine, native arm64, retired by Microsoft) is the fallback that the results below were measured on. Its limits: it is the 2019 engine (compatibility level 150), so nothing newer was exercised, and it has no full text search or CLR integration (nothing here needs them).
+
+```sh
+docker run -d --name mssql-test -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD='Test_Passw0rd!' -p 1433:1433 \
+  mcr.microsoft.com/mssql/server:2022-latest          # or mcr.microsoft.com/azure-sql-edge on arm64
+
+CLAVIGER_TEST_PG_URL='sqlserver://sa:Test_Passw0rd!@127.0.0.1:1433?database=master&encrypt=disable' \
+  go test -tags postgres -count=1 -v ./tests/pgtests/...           # about 2.5 minutes
+```
+
+Every test creates and drops its own database (`CREATE DATABASE ... COLLATE Latin1_General_100_BIN2`, read committed snapshot on), so the `sa` user is needed; the database in the URL only has to exist (`master` does). The regular suites need `CLAVIGER_TEST_DB=postgres` plus the same URL and build one database per test app from the fixture (about 8 seconds on SQL Server, the fixture's views are adapted: `OVER()` becomes `OVER (ORDER BY (SELECT NULL))`), so a full run takes hours and was **not** run. What was run (skip list: `tests/postgres_skip.txt`, as `scripts/test_postgres_suites.sh` builds it):
+
+| Run | Result |
+| --- | --- |
+| `./core -run '^TestRecord'` | 310 tests pass. |
+| `./core -run '^TestCollection'` | 235 tests pass (`TestCollectionDelete/view_with_reference` too: DDL is transactional here). |
+| `./apis -run '^TestRecordCrud'` | 253 tests pass. |
+
+Bugs that these runs found, fixed since: dbx's mssql builder leaves the offset of every unpaged query at 0 and emits `ORDER BY (SELECT NULL) OFFSET 0 ROWS` for it (the query builder is replaced, see `tools/dialect/mssql_builder.go`); the same builder cannot page a `SELECT DISTINCT` without an `ORDER BY`; the fixture's stored view queries (`OVER()`) are SQLite SQL.
+
+## CI for CockroachDB, MySQL, libSQL and SQL Server (for the conductor)
 
 Nothing here is wired into `.github/workflows/test.yml` yet. Two jobs would do it, each after the `test` job, on the same runner tier as the `postgres` job. The service container syntax of GitHub Actions cannot pass arguments to the CockroachDB image, so that one is started with a `docker run` step.
 
@@ -579,6 +662,31 @@ Nothing here is wired into `.github/workflows/test.yml` yet. Two jobs would do i
         with: { go-version-file: go.mod }
       - run: go test -tags postgres -count=1 -v ./tests/pgtests/... | tee mysql.log   # expect about 420 PASS, 0 FAIL
 ```
+
+The SQL Server job (`mcr.microsoft.com/mssql/server:2022-latest` needs 2 GiB or more, and an amd64 runner):
+
+```yaml
+  mssql:
+    needs: test
+    runs-on: ${{ vars.RUNNER_LIGHT || 'tdp-k3s-claviger' }}
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env: { ACCEPT_EULA: "Y", MSSQL_SA_PASSWORD: "Test_Passw0rd!" }
+        ports: ["1433:1433"]
+        options: >-
+          --memory 3g --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Test_Passw0rd! -Q 'SELECT 1'"
+          --health-interval 5s --health-retries 30
+    env:
+      CLAVIGER_TEST_PG_URL: sqlserver://sa:Test_Passw0rd!@127.0.0.1:1433?database=master&encrypt=disable
+    steps:
+      - uses: actions/checkout@<sha>
+      - uses: actions/setup-go@<sha>
+        with: { go-version-file: go.mod }
+      - run: go test -tags postgres -count=1 -v ./tests/pgtests/... | tee mssql.log   # expect about 430 PASS, 0 FAIL
+```
+
+On the `tdp-k3s` tier the job must not start before the CockroachDB and MySQL ones have finished if the node is small: SQL Server takes 2 GiB at idle.
 
 Check the counts the way the `postgres` job does (`grep -c -- '--- PASS'` against a minimum, any `--- SKIP` that is not `known_gap` or a multi replica test fails the job). The regular suites on these engines are not part of this proposal: they build one database per test app (4 to 7 seconds), so a full run takes hours; run a sample (`./core -run '^TestRecord'`, `./apis -run '^TestRecordCrud'`) with `CLAVIGER_TEST_DB=postgres` if you want one.
 

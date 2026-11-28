@@ -66,7 +66,7 @@ JavaScript hooks. Every feature below is off, or has no effect, until you config
 | SQLite-safe rollouts | `entrypoint.sh` hands the database from the outgoing to the incoming container |
 | Container packaging | Multi-stage `Dockerfile`, `docker-compose.yml`, optional Litestream replication |
 | PostgreSQL | Supported, opt-in data store (16 and 17); several replicas only on PostgreSQL; no zip backups: [docs/datastores.md](docs/datastores.md) |
-| CockroachDB, MySQL | CockroachDB (`cockroach://`) is supported on one replica; MySQL 8 (`mysql://`) is experimental; MariaDB is not supported yet: [docs/datastores.md](docs/datastores.md) |
+| CockroachDB, MySQL, SQL Server | CockroachDB (`cockroach://`) is supported on one replica; MySQL 8 (`mysql://`) and SQL Server 2019+ / Azure SQL (`sqlserver://`) are experimental; MariaDB is not supported yet: [docs/datastores.md](docs/datastores.md) |
 | libSQL (sqld, Turso) | Experimental data store over HTTP, no shared file system for the data database (`libsql://` or `http(s)://`, token in `CLAVIGER_DB_AUTH_TOKEN`); one replica; no zip backups: [docs/datastores.md](docs/datastores.md) |
 
 ### Congregations
@@ -104,7 +104,7 @@ Not built yet. Labels and details are in the [issues](../../issues).
 - Enterprise inbound SSO ([#92](../../issues/92)).
 - Built-in handover between instances is in, opt-in (`serve --handover`, see [docs/handover.md](docs/handover.md)); deleting the entrypoint's copy of it is what remains of [#72](../../issues/72).
 - Owner-held key vault ([#86](../../issues/86)). Design spike: [docs/spikes/86-6-owner-key-vault.md](docs/spikes/86-6-owner-key-vault.md).
-- Data stores beyond SQLite, PostgreSQL and CockroachDB: MySQL and libSQL are experimental, MariaDB is not supported yet ([#106](../../issues/106)).
+- Data stores beyond SQLite, PostgreSQL and CockroachDB: MySQL, SQL Server and libSQL are experimental, MariaDB is not supported yet ([#106](../../issues/106)).
 
 ## Quick start
 

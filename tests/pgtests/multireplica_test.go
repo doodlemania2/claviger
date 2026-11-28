@@ -672,7 +672,11 @@ func TestMultiReplicaOffByDefault(t *testing.T) {
 	}
 
 	var n int
-	err := app.DB().NewQuery("SELECT count(*) FROM information_schema.tables WHERE table_name LIKE '\\_claviger\\_%'").Row(&n)
+	query := "SELECT count(*) FROM information_schema.tables WHERE table_name LIKE '\\_claviger\\_%'"
+	if isMSSQLServer(t) {
+		query = "SELECT count(*) FROM sys.tables WHERE name LIKE '[_]claviger[_]%'"
+	}
+	err := app.DB().NewQuery(query).Row(&n)
 	if err != nil || n != 0 {
 		t.Fatalf("shared tables created without the mode: %d (err %v)", n, err)
 	}

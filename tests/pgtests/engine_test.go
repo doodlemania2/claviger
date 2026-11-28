@@ -15,7 +15,7 @@ var (
 	engineName string
 )
 
-// testEngine is the dialect name of the test server: postgres, cockroach, mysql or mariadb.
+// testEngine is the dialect name of the test server: postgres, cockroach, mysql, mariadb or mssql.
 func testEngine(t testing.TB) string {
 	t.Helper()
 
@@ -23,6 +23,8 @@ func testEngine(t testing.TB) string {
 		switch {
 		case isLibSQLServer(t):
 			engineName = dialect.LibSQLName
+		case isMSSQLServer(t):
+			engineName = dialect.MSSQLName
 		case isMySQLServer(t):
 			engineName = dialect.MySQLName
 			if strings.Contains(strings.ToLower(serverVersion(t)), "mariadb") {
@@ -60,6 +62,11 @@ var engineGaps = map[string]map[string]string{
 		"unicode like is ascii only":  "CockroachDB's ILIKE and lower() fold the case of non ASCII letters, SQLite's only ASCII",
 		"unicode lower is ascii only": "CockroachDB's ILIKE and lower() fold the case of non ASCII letters, SQLite's only ASCII",
 	},
+	dialect.MSSQLName: {
+		"unicode like is ascii only":  "SQL Server's case insensitive collation folds the case of non ASCII letters (accents stay significant), SQLite's LIKE only ASCII",
+		"unicode lower is ascii only": "SQL Server's LOWER() and its case insensitive LIKE fold non ASCII letters, SQLite's only ASCII",
+		"json type ordering":          "a JSON string sorts before a number (sql_variant orders the type families numbers first), SQLite orders text after numbers",
+	},
 	dialect.MySQLName: {
 		"unicode like is ascii only":  "MySQL's case insensitive collation folds the case of non ASCII letters (accents stay significant), SQLite's LIKE only ASCII",
 		"unicode lower is ascii only": "MySQL's LOWER() and its case insensitive LIKE fold non ASCII letters, SQLite's only ASCII",
@@ -81,5 +88,5 @@ var engineGaps = map[string]map[string]string{
 // is not an error.
 func engineMayAgree(t testing.TB) bool {
 	t.Helper()
-	return testEngine(t) == dialect.MySQLName || testEngine(t) == dialect.MariaDBName || testEngine(t) == dialect.LibSQLName
+	return testEngine(t) == dialect.MySQLName || testEngine(t) == dialect.MariaDBName || testEngine(t) == dialect.LibSQLName || testEngine(t) == dialect.MSSQLName
 }

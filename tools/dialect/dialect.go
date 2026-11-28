@@ -31,6 +31,8 @@ const (
 	// (experimental): the same code with a few differences.
 	MySQLName   = "mysql"
 	MariaDBName = "mariadb"
+	// MSSQLName is the SQL Server 2019+ / Azure SQL dialect (experimental).
+	MSSQLName = "mssql"
 )
 
 // RowIDColumn is the name under which every record table can be ordered by
@@ -337,6 +339,8 @@ var (
 		"cockroach": Cockroach,
 		"mysql":     MySQL,
 		"mariadb":   MariaDB,
+		"mssql":     MSSQL,
+		"sqlserver": MSSQL,
 	}
 )
 

@@ -838,9 +838,10 @@ func (r *runner) finalizeActivePropsProcessing(collection *Collection, prop stri
 	if field.GetName() == FieldNameEmail && !r.resolver.allowHiddenFields && collection.IsAuth() {
 		result.AfterBuild = func(expr dbx.Expression) dbx.Expression {
 			return dbx.Enclose(dbx.And(expr, dbx.NewExp(fmt.Sprintf(
-				"[[%s.%s]] = TRUE",
+				"[[%s.%s]] = %s",
 				r.activeTableAlias,
 				FieldNameEmailVisibility,
+				boolSQL(r.resolver.app, true),
 			))))
 		}
 	}

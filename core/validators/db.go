@@ -64,6 +64,9 @@ func NormalizeUniqueIndexError(err error, tableOrAlias string, fieldNames []stri
 	if myErrs := normalizeMySQLUniqueError(err, fieldNames, indexes); myErrs != nil {
 		return myErrs
 	}
+	if msErrs := normalizeMSSQLUniqueError(err, fieldNames, indexes); msErrs != nil {
+		return msErrs
+	}
 
 	msg := strings.ToLower(err.Error())
 

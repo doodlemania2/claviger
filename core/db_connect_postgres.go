@@ -124,6 +124,8 @@ func applyEnvDBConfig(config *BaseAppConfig) {
 		config.DBConnect = MySQLDBConnect(url)
 	} else if isLibSQLURL(url) {
 		config.DBConnect = LibSQLDBConnect(url)
+	} else if isMSSQLURL(url) {
+		config.DBConnect = MSSQLDBConnect(url)
 	} else {
 		config.DBConnect = PostgresDBConnect(url)
 	}

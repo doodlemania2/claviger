@@ -540,6 +540,8 @@ func backupTool(dialectName string) string {
 		return "mysqldump"
 	case dialect.LibSQLName:
 		return "the sqld data directory snapshot (or `sqlite3 .dump` / `turso db shell .dump`)"
+	case dialect.MSSQLName:
+		return "BACKUP DATABASE (T-SQL)"
 	}
 	return "pg_dump"
 }

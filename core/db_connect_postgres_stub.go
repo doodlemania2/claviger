@@ -39,3 +39,10 @@ func LibSQLDBConnect(url string) DBConnectFunc {
 
 // DBAuthTokenEnv is the libSQL token variable (see db_connect_libsql.go).
 const DBAuthTokenEnv = "CLAVIGER_DB_AUTH_TOKEN"
+
+// MSSQLDBConnect is not available without the default drivers.
+func MSSQLDBConnect(url string) DBConnectFunc {
+	return func(_ string) (*dbx.DB, error) {
+		return nil, errors.New("SQL Server support is not compiled in (no_default_driver build tag)")
+	}
+}

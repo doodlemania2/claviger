@@ -16,10 +16,18 @@ type viewDef struct {
 	pg     string
 	// mysql is the MySQL spelling (empty: the SQLite one is valid there too)
 	mysql string
+	// mssql is the SQL Server spelling (empty: the SQLite one is valid there too)
+	mssql string
 }
 
 // forEngine is the view query in the SQL of the test server.
 func (v viewDef) forEngine(t testing.TB) string {
+	if isMSSQLServer(t) {
+		if v.mssql != "" {
+			return v.mssql
+		}
+		return v.sqlite
+	}
 	if isMySQLServer(t) {
 		if v.mysql != "" {
 			return v.mysql
@@ -50,6 +58,7 @@ var testViews = []viewDef{
 		sqlite: "SELECT id, (views * 2) AS doubled, (views > 5) AS big, (title || '!') AS shout, json_extract(meta, '$.n') AS n, CAST(views AS INTEGER) AS whole FROM posts",
 		pg:     `SELECT id, (views * 2) AS doubled, (views > 5) AS big, (title || '!') AS shout, (meta -> 'n') AS n, CAST(views AS INTEGER) AS whole FROM posts`,
 		mysql:  "SELECT id, (views * 2) AS doubled, (views > 5) AS big, (title || '!') AS shout, json_extract(meta, '$.n') AS n, CAST(views AS SIGNED) AS whole FROM posts",
+		mssql:  "SELECT id, (views * 2) AS doubled, (CASE WHEN views > 5 THEN 1 ELSE 0 END) AS big, (title + '!') AS shout, (CASE WHEN ISJSON(meta) = 1 THEN JSON_VALUE(meta, '$.n') END) AS n, CAST(views AS INT) AS whole FROM posts",
 	},
 	{
 		// the quoted camelCase alias is the Postgres spelling of an identifier with capitals
@@ -61,6 +70,7 @@ var testViews = []viewDef{
 		name:   "v_rowid",
 		sqlite: "SELECT (ROW_NUMBER() OVER()) AS id, title FROM posts",
 		pg:     `SELECT (ROW_NUMBER() OVER ()) AS id, title FROM posts`,
+		mssql:  "SELECT (ROW_NUMBER() OVER (ORDER BY (SELECT NULL))) AS id, title FROM posts",
 	},
 }
 
@@ -107,6 +117,12 @@ func TestViewCollections(t *testing.T) {
 		if isMySQLServer(t) {
 			// MySQL types a comparison as an integer, not a boolean
 			wantViews["v_expr"]["big"] = "number"
+		}
+		if isMSSQLServer(t) {
+			// SQL Server has no boolean expression: the CASE is an integer, and its
+			// JSON_VALUE and the string concatenation are text
+			wantViews["v_expr"]["big"] = "number"
+			wantViews["v_expr"]["n"] = "text"
 		}
 		for view, want := range wantViews {
 			col, err := pgApp.FindCollectionByNameOrId(view)

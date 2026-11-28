@@ -139,6 +139,7 @@ func TestRecordFilters(t *testing.T) {
 		{name: "text like case insensitive ascii", filter: `title ~ "HELLO"`, want: 3},
 		{name: "text not like", filter: `title !~ "hello"`, want: 5},
 		{name: "text like wildcard", filter: `title ~ "He%ld"`, want: 2},
+		{name: "text like bracket is literal", filter: `title ~ "[ab]"`, want: 0},
 		{name: "text like escapes percent", filter: `title ~ "t_p"`, want: 0},
 		{name: "text like literal percent", filter: `title ~ "post%"`, want: 0},
 		{name: "text like literal underscore", filter: `title ~ "h_u"`, want: 0},
