@@ -13,6 +13,7 @@ import (
 	"github.com/doodlemania2/claviger/tools/dbutils"
 	"github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5/pgconn"
+	mssql "github.com/microsoft/go-mssqldb"
 )
 
 // pgUniqueViolation is the SQLSTATE of a unique constraint violation.
@@ -106,6 +107,70 @@ func normalizeMySQLUniqueError(err error, fieldNames []string, indexes []string)
 	for _, name := range fieldNames {
 		if regexp.MustCompile(`(^|[^\w])` + regexp.QuoteMeta(strings.ToLower(name)) + `($|[^\w])`).MatchString(index) {
 			normalizedErrs[name] = validation.NewError("validation_not_unique", "Value must be unique")
+		}
+	}
+
+	if len(normalizedErrs) == 0 {
+		return nil
+	}
+
+	return normalizedErrs
+}
+
+var (
+	mssqlDupIndex = regexp.MustCompile(`with unique index '([^']*)'`)
+	mssqlDupKey   = regexp.MustCompile(`(?i)(?:PRIMARY KEY|UNIQUE KEY|UNIQUE) constraint '([^']*)'`)
+)
+
+// normalizeMSSQLUniqueError converts a SQL Server unique violation (2601 for
+// a unique index, 2627 for a primary key or unique constraint) into
+// validation errors. Like MySQL's, the error names the index, not its
+// columns: the primary key is the id, any other index is matched to the
+// fields in the collection's index definitions or to the fields whose name it
+// contains.
+func normalizeMSSQLUniqueError(err error, fieldNames []string, indexes []string) validation.Errors {
+	var me mssql.Error
+	if !errors.As(err, &me) || (me.Number != 2601 && me.Number != 2627) {
+		return nil
+	}
+
+	normalizedErrs := validation.Errors{}
+
+	var name string
+	if m := mssqlDupIndex.FindStringSubmatch(me.Message); m != nil {
+		name = m[1]
+	} else if m := mssqlDupKey.FindStringSubmatch(me.Message); m != nil {
+		name = m[1]
+		if strings.HasPrefix(strings.ToUpper(name), "PK__") || strings.HasPrefix(strings.ToUpper(name), "PK_") {
+			normalizedErrs["id"] = validation.NewError("validation_not_unique", "Value must be unique")
+			return normalizedErrs
+		}
+	} else {
+		return nil
+	}
+
+	for _, def := range indexes {
+		parsed := dbutils.ParseIndex(def)
+		if !strings.EqualFold(parsed.IndexName, name) {
+			continue
+		}
+		for _, col := range parsed.Columns {
+			colName := strings.Trim(strings.TrimSpace(col.Name), "`\"[]")
+			for _, field := range fieldNames {
+				if strings.EqualFold(colName, field) || regexp.MustCompile(`(?i)(^|[^\w])`+regexp.QuoteMeta(field)+`($|[^\w])`).MatchString(colName) {
+					normalizedErrs[field] = validation.NewError("validation_not_unique", "Value must be unique")
+				}
+			}
+		}
+		if len(normalizedErrs) > 0 {
+			return normalizedErrs
+		}
+	}
+
+	lower := strings.ToLower(name)
+	for _, field := range fieldNames {
+		if regexp.MustCompile(`(^|[^\w])` + regexp.QuoteMeta(strings.ToLower(field)) + `($|[^\w])`).MatchString(lower) {
+			normalizedErrs[field] = validation.NewError("validation_not_unique", "Value must be unique")
 		}
 	}
 

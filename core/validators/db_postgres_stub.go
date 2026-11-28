@@ -17,3 +17,7 @@ func normalizePostgresUniqueError(err error, fieldNames []string) validation.Err
 func normalizeMySQLUniqueError(err error, fieldNames []string, indexes []string) validation.Errors {
 	return nil
 }
+
+func normalizeMSSQLUniqueError(err error, fieldNames []string, indexes []string) validation.Errors {
+	return nil
+}

@@ -27,6 +27,16 @@ type mssqlQueryBuilder struct {
 // QueryBuilder returns the query builder supporting the current DB.
 func (b *mssqlBuilder) QueryBuilder() dbx.QueryBuilder { return b.qb }
 
+// Select returns a new SelectQuery that is built with this builder.
+func (b *mssqlBuilder) Select(cols ...string) *dbx.SelectQuery {
+	return dbx.NewSelectQuery(b, b.db).Select(cols...)
+}
+
+// Model returns a new ModelQuery that is built with this builder.
+func (b *mssqlBuilder) Model(model interface{}) *dbx.ModelQuery {
+	return dbx.NewModelQuery(model, b.db.FieldMapper, b.db, b)
+}
+
 // lastDistinct returns the index right after the last top level "SELECT DISTINCT "
 // of the statement (outside parentheses and quotes), or -1.
 func lastDistinct(sql string) int {

@@ -338,10 +338,14 @@ func TestIntrospection(t *testing.T) {
 	if _, ok := byName[dialect.RowIDColumn]; ok {
 		t.Error("the hidden row id column must not be listed")
 	}
-	if id := byName["id"]; id == nil || id.PK != 1 || !id.NotNull || id.Type != "text" {
+	wantID, wantFields := "text", "jsonb"
+	if isMSSQLServer(t) {
+		wantID, wantFields = "nvarchar(255)", "nvarchar(max)"
+	}
+	if id := byName["id"]; id == nil || id.PK != 1 || !id.NotNull || id.Type != wantID {
 		t.Errorf("unexpected id column info: %+v", id)
 	}
-	if f := byName["fields"]; f == nil || f.Type != "jsonb" || !f.NotNull {
+	if f := byName["fields"]; f == nil || f.Type != wantFields || !f.NotNull {
 		t.Errorf("unexpected fields column info: %+v", f)
 	}
 	if info[0].Name != "id" || info[0].Index != 0 {
@@ -417,6 +421,12 @@ func TestCollectionLifecycle(t *testing.T) {
 		"id": "text", "title": "text", "views": "double precision", "pub": "boolean",
 		"meta": "jsonb", "when": "text", "tag": "text", "created": "text",
 	}
+	if isMSSQLServer(t) {
+		wantTypes = map[string]string{
+			"id": "nvarchar(255)", "title": "nvarchar(max)", "views": "float", "pub": "bit",
+			"meta": "nvarchar(max)", "when": "nvarchar(max)", "tag": "nvarchar(max)", "created": "nvarchar(max)",
+		}
+	}
 	if isMySQLServer(t) {
 		wantTypes = map[string]string{
 			"id": "varchar(255)", "title": "longtext", "views": "double", "pub": "tinyint(1)",
@@ -434,7 +444,7 @@ func TestCollectionLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !isMySQLServer(t) {
+	if !isMySQLServer(t) && !isMSSQLServer(t) {
 		var pgDef string
 		if err := app.DB().NewQuery("SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_posts_title_nocase'").Row(&pgDef); err != nil || !strings.Contains(pgDef, "lower(") {
 			t.Errorf("expected a lower() index in the catalog, got %q (%v)", pgDef, err)

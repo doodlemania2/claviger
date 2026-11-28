@@ -18,6 +18,9 @@ func TestSQLEndpoint(t *testing.T) {
 	if isMySQLServer(t) {
 		t.Skip("known_gap(mysql): the statements of this test are PostgreSQL SQL (quoted camelCase, WITH ... DELETE RETURNING); the endpoint runs MySQL SQL as written there")
 	}
+	if isMSSQLServer(t) {
+		t.Skip("known_gap(mssql): the statements of this test are PostgreSQL SQL (quoted camelCase, WITH ... DELETE RETURNING); the endpoint runs Transact-SQL as written there, and classifies writes with the generic guess")
+	}
 	app := newApp(t)
 	seedRecords(t, app)
 	c := newAPIClient(t, app)

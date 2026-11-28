@@ -1055,3 +1055,13 @@ func (d mssqlDialect) DropIndexIfExists(db dbx.Builder, table, name string) erro
 }
 
 func (mssqlDialect) FinishIndexDrops(db dbx.Builder) error { return nil }
+
+// MSSQLAllColumns returns every column of the table, the hidden ones (row id,
+// computed index keys) included: the columns that "SELECT table.*" selects.
+func MSSQLAllColumns(db dbx.Builder, table string) []string {
+	var cols []string
+	_ = db.NewQuery(`SELECT c.name FROM sys.columns c JOIN sys.tables t ON t.object_id = c.object_id
+		WHERE t.schema_id = SCHEMA_ID() AND t.name = {:table} ORDER BY c.column_id`).
+		Bind(dbx.Params{"table": table}).Column(&cols)
+	return cols
+}

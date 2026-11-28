@@ -60,7 +60,11 @@ var engineGaps = map[string]map[string]string{
 		"unicode like is ascii only":  "CockroachDB's ILIKE and lower() fold the case of non ASCII letters, SQLite's only ASCII",
 		"unicode lower is ascii only": "CockroachDB's ILIKE and lower() fold the case of non ASCII letters, SQLite's only ASCII",
 	},
-	dialect.MSSQLName: {},
+	dialect.MSSQLName: {
+		"unicode like is ascii only":  "SQL Server's case insensitive collation folds the case of non ASCII letters (accents stay significant), SQLite's LIKE only ASCII",
+		"unicode lower is ascii only": "SQL Server's LOWER() and its case insensitive LIKE fold non ASCII letters, SQLite's only ASCII",
+		"json type ordering":          "a JSON string sorts before a number (sql_variant orders the type families numbers first), SQLite orders text after numbers",
+	},
 	dialect.MySQLName: {
 		"unicode like is ascii only":  "MySQL's case insensitive collation folds the case of non ASCII letters (accents stay significant), SQLite's LIKE only ASCII",
 		"unicode lower is ascii only": "MySQL's LOWER() and its case insensitive LIKE fold non ASCII letters, SQLite's only ASCII",
