@@ -423,7 +423,7 @@ CLAVIGER_DB_URL='sqlserver://user:password@host:1433?database=claviger'     # ms
 
 - **Create the database yourself with a binary collation**: `CREATE DATABASE claviger COLLATE Latin1_General_100_BIN2`. Text columns are compared as bytes, case and accent sensitive, like SQLite's `BINARY` (and every literal, parameter and JSON value follows the database default). Claviger **refuses to start** on a database whose collation does not end in `_BIN2`, and says so. A consequence: identifiers are case sensitive too (`INFORMATION_SCHEMA.TABLES`, not `information_schema.tables`).
 - Recommended: `ALTER DATABASE claviger SET READ_COMMITTED_SNAPSHOT ON`, so that readers do not block on writers (the test databases have it).
-- The driver is `github.com/microsoft/go-mssqldb` (pure Go). Its URL options work as documented there (`encrypt=`, `TrustServerCertificate=`, `app name=`, ...). Go 1.23+ rejects the self signed certificate of the SQL Server containers (negative serial number): use `encrypt=disable` on a local test server, or a real certificate.
+- The driver is `github.com/microsoft/go-mssqldb` (pure Go). Its URL options work as documented there (`encrypt=`, `TrustServerCertificate=`, `app name=`, ...). Go 1.23+ rejects the self signed certificate of the SQL Server containers (negative serial number): use `encrypt=disable` on a local test server (or `TrustServerCertificate=true` with `GODEBUG=x509negativeserial=1`), or a real certificate. Without any of them the connection fails with `x509: negative serial number`.
 - A `[]byte` parameter is sent as text (the driver would send `VARBINARY`, which SQL Server stores in an `NVARCHAR` column as raw UTF-16). Claviger stores no binary data.
 - `auxiliary.db` (logs) stays a local SQLite file.
 
@@ -485,7 +485,13 @@ CLAVIGER_TEST_PG_URL='sqlserver://sa:Test_Passw0rd!@127.0.0.1:1433?database=mast
 
 Every test creates and drops its own database (`CREATE DATABASE ... COLLATE Latin1_General_100_BIN2`, read committed snapshot on), so the `sa` user is needed; the database in the URL only has to exist (`master` does). The regular suites need `CLAVIGER_TEST_DB=postgres` plus the same URL and build one database per test app from the fixture (about 8 seconds on SQL Server, the fixture's views are adapted: `OVER()` becomes `OVER (ORDER BY (SELECT NULL))`), so a full run takes hours and was **not** run. What was run (skip list: `tests/postgres_skip.txt`, as `scripts/test_postgres_suites.sh` builds it):
 
-@@REGULAR_RESULTS@@
+| Run | Result |
+| --- | --- |
+| `./core -run '^TestRecord'` | 310 tests pass. |
+| `./core -run '^TestCollection'` | 235 tests pass (`TestCollectionDelete/view_with_reference` too: DDL is transactional here). |
+| `./apis -run '^TestRecordCrud'` | 253 tests pass. |
+
+Bugs that these runs found, fixed since: dbx's mssql builder leaves the offset of every unpaged query at 0 and emits `ORDER BY (SELECT NULL) OFFSET 0 ROWS` for it (the query builder is replaced, see `tools/dialect/mssql_builder.go`); the same builder cannot page a `SELECT DISTINCT` without an `ORDER BY`; the fixture's stored view queries (`OVER()`) are SQLite SQL.
 
 ## CI for CockroachDB, MySQL and SQL Server (for the conductor)
 
