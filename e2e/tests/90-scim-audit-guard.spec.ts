@@ -29,13 +29,14 @@ test("Audit log: shows the writes of this run, filters, and opens an entry", asy
     await admin.goto("/_/#/audit");
     await expect(admin.getByRole("table")).toContainText("create");
 
-    // filter by collection
-    await admin.getByLabel("Collection").fill("e2e_none_such");
-    await admin.getByLabel("Collection").press("Enter");
+    // filter by collection (by id: getByLabel("Collection") also matches the "Collections" nav link)
+    const collectionFilter = admin.locator("#audit_filter_collection");
+    await collectionFilter.fill("e2e_none_such");
+    await collectionFilter.press("Enter");
     await expect(admin.getByText(/no (audit )?entries|nothing/i).first()).toBeVisible();
 
-    await admin.getByLabel("Collection").fill("users");
-    await admin.getByLabel("Collection").press("Enter");
+    await collectionFilter.fill("users");
+    await collectionFilter.press("Enter");
     const row = admin.locator("tbody tr", { hasText: "users" }).first();
     await expect(row).toBeVisible();
     await row.click();
