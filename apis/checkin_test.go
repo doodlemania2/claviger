@@ -1030,8 +1030,8 @@ func TestCheckinRetention(t *testing.T) {
 	past := time.Now().AddDate(-1, 0, 0)
 
 	for _, id := range []string{f.id1, f.id2} {
-		ckExec(t, app, "UPDATE {{"+core.CheckinSessionCollection+"}} SET purgeAfter={:p} WHERE id={:id}", dbx.Params{"p": past.UTC().Format("2006-01-02 15:04:05.000Z"), "id": id})
-		ckExec(t, app, "UPDATE {{"+core.CheckinLogCollection+"}} SET purgeAfter={:p} WHERE session={:id}", dbx.Params{"p": past.UTC().Format("2006-01-02 15:04:05.000Z"), "id": id})
+		ckExec(t, app, "UPDATE {{"+core.CheckinSessionCollection+"}} SET [[purgeAfter]]={:p} WHERE [[id]]={:id}", dbx.Params{"p": past.UTC().Format("2006-01-02 15:04:05.000Z"), "id": id})
+		ckExec(t, app, "UPDATE {{"+core.CheckinLogCollection+"}} SET [[purgeAfter]]={:p} WHERE [[session]]={:id}", dbx.Params{"p": past.UTC().Format("2006-01-02 15:04:05.000Z"), "id": id})
 	}
 
 	// session 1 is an incident
