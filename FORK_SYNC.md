@@ -399,6 +399,23 @@ CockroachDB is the Postgres dialect with a flag (`postgresDialect{crdb: true}`, 
 | `cmd/migrate_db.go` | The target scheme may be `cockroach://`. | |
 | `tests/app_postgres.go` | MySQL and CockroachDB have no `CREATE DATABASE ... TEMPLATE`: every test app builds its own database from the fixture (`canTemplate`, `connectFunc`). | |
 
+### libSQL (#106, experimental)
+
+A separate dialect, `libsqlDialect` (`tools/dialect/libsql.go`: the SQLite dialect with `Vacuum`, `Optimize` and `Checkpoint` as no-ops), registered under the name `libsql`. Fork-only files: `tools/dialect/libsql.go`, `core/db_connect_libsql.go` (+ `_test.go`), `tests/app_libsql.go`, `tests/pgtests/libsql_test.go`. The client is `github.com/tursodatabase/libsql-client-go`, **deprecated upstream**: check it on every sync (`go.mod`). Upstream-owned hunks added by this work:
+
+| File | Change | Re-check when upstream touches |
+| --- | --- | --- |
+| `core/db_connect_postgres.go` | `applyEnvDBConfig` routes `libsql://`, `http://` and `https://` URLs to `LibSQLDBConnect`. | `applyEnvDBConfig`. |
+| `core/db_connect_postgres_stub.go` | `LibSQLDBConnect` and `DBAuthTokenEnv` for the `no_default_driver` tag. | |
+| `core/backup_create.go` | `backupTool` names the libSQL backup path. | |
+| `migrations/1640988000_init.go`, `migrations/1778828400_normalize_indexes.go` | `dialect.IsSQLiteFamily` instead of `Name() == SQLiteName` (libSQL speaks SQLite SQL: JSON `_params` value type, and the pre-v0.23 index repair stays on). | New `Name() != dialect.SQLiteName` checks: decide whether libSQL is meant (SQL level) or not (the local file: backups, restore, replicas). |
+| `cmd/keys.go` | `readFieldKeys` skips a libSQL URL instead of handing it to pgx. | |
+| `core/collection_model_test.go` | One scenario of `TestCollectionSaveViewWrapping` is skipped on libSQL (`tests.SkipOnLibSQL`). | The scenario table. |
+| `tests/app_postgres.go` | `preparePostgres` hands over to `prepareLibSQL` when `CLAVIGER_TEST_DB=libsql`; `fill` is split into `fillFixture(connect)`. | |
+| `tests/pgtests/{pg,engine,multireplica,sql_api,strftime,views}_test.go` | `isLibSQLServer`, `freshLibSQLNamespace`, and `skipOnLibSQL` on the tests that assert PostgreSQL specific outcomes. | |
+
+The code that means "a local data.db file" (zip backup and restore, backup verification, several replicas) compares `Name()` with `SQLiteName` and therefore treats `libsql` as a remote engine on purpose.
+
 ## CI
 
 | Workflow | File | Runs on |

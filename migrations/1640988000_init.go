@@ -126,7 +126,7 @@ func createParamsTable(txApp core.App) error {
 	// fork: with an encryption key the stored value is the encrypted settings
 	// (not JSON), which a JSONB column would reject
 	valueType := d.JSONType()
-	if d.Name() != dialect.SQLiteName {
+	if !dialect.IsSQLiteFamily(d) {
 		valueType = d.TextType()
 	}
 

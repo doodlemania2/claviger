@@ -166,6 +166,10 @@ func (r *pgDBs) release(name, dir string) func() {
 // srcDataDir is the data dir that the caller passed (empty for the default
 // fixture) and dataDir the temp dir that the app will use.
 func preparePostgres(config *core.BaseAppConfig, srcDataDir, dataDir string) (func(), error) {
+	if IsLibSQL() {
+		return prepareLibSQL(config, srcDataDir, dataDir) // fork: CLAVIGER_TEST_DB=libsql
+	}
+
 	if !IsPostgres() || config.DBConnect != nil {
 		return nil, nil
 	}
@@ -429,6 +433,12 @@ func dropStaleTemplates(adminURL string) {
 }
 
 func (p *testPostgres) fill(dbName string) (err error) {
+	return fillFixture(connectFunc(withDatabase(p.adminURL, dbName)))
+}
+
+// fillFixture copies the tests/data fixture into the (empty) database that
+// connect opens (see the file comment). Shared by the Postgres and libSQL test modes.
+func fillFixture(connect core.DBConnectFunc) (err error) {
 	_, currentFile, _, _ := runtime.Caller(0)
 	fixtureDir := filepath.Join(path.Dir(currentFile), "data")
 
@@ -464,7 +474,7 @@ func (p *testPostgres) fill(dbName string) (err error) {
 		DataDir: dstDir,
 		// no settings encryption: the template must not depend on the env of the first test
 		EncryptionEnv: "",
-		DBConnect:     connectFunc(withDatabase(p.adminURL, dbName)),
+		DBConnect:     connect,
 		AuxDBConnect:  core.DefaultDBConnect,
 	}
 	limitTestPGConns(&dstConfig)

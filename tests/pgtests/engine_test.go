@@ -21,6 +21,8 @@ func testEngine(t testing.TB) string {
 
 	engineOnce.Do(func() {
 		switch {
+		case isLibSQLServer(t):
+			engineName = dialect.LibSQLName
 		case isMySQLServer(t):
 			engineName = dialect.MySQLName
 			if strings.Contains(strings.ToLower(serverVersion(t)), "mariadb") {
@@ -79,5 +81,5 @@ var engineGaps = map[string]map[string]string{
 // is not an error.
 func engineMayAgree(t testing.TB) bool {
 	t.Helper()
-	return testEngine(t) == dialect.MySQLName || testEngine(t) == dialect.MariaDBName
+	return testEngine(t) == dialect.MySQLName || testEngine(t) == dialect.MariaDBName || testEngine(t) == dialect.LibSQLName
 }

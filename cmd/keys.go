@@ -190,6 +190,13 @@ func readFieldKeys(ctx context.Context, dbPath, postgresURL string) (rows []fiel
 		hasTable int
 	)
 
+	// fork (#106): a libSQL server is not opened here (the check is read only
+	// and offline); the app checks the keys itself when it starts and fails closed
+	if lower := strings.ToLower(strings.TrimSpace(postgresURL)); strings.HasPrefix(lower, "libsql://") ||
+		strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		return nil, nil, "the data database is libSQL: the app checks the keys itself when it starts"
+	}
+
 	hasTableQuery := "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?"
 	keysQuery := "SELECT collectionRef, fieldRef, keyId, kekId, wrapped FROM " + core.CollectionNameFieldKeys
 

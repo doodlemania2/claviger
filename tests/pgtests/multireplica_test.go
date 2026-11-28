@@ -665,6 +665,7 @@ func TestMultiReplicaRefusedOnSQLite(t *testing.T) {
 // Two replicas can be told apart by what they report, and the mode is invisible
 // to a deployment that did not ask for it.
 func TestMultiReplicaOffByDefault(t *testing.T) {
+	skipOnLibSQL(t, "asserts the PostgreSQL information_schema")
 	app := newApp(t) // CLAVIGER_DB_URL only
 	if core.ReplicaBusOf(app) != nil || core.IsMultiReplica(app) {
 		t.Fatal("the bus must not run without CLAVIGER_MULTI_REPLICA")
