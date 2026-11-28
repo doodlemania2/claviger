@@ -62,6 +62,7 @@ func NewRouter(app core.App) (*router.Router[*core.RequestEvent], error) {
 	bindMyAccessStatusApi(apiGroup)  // fork-local (#81)
 	bindRegistersApi(apiGroup)       // fork-local (#87)
 	bindPastoralApi(app, apiGroup)   // fork-local (#86)
+	bindCheckinApi(app, apiGroup)    // fork-local (#82)
 	bindDataExportApi(app, apiGroup) // fork-local (#88, 88-1)
 	bindRetentionApi(apiGroup)       // fork-local (#88, 88-3)
 	bindErasureApi(app, apiGroup)    // fork-local (#88, 88-4)

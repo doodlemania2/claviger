@@ -197,16 +197,16 @@ func buildResolversExpr(
 	case fexpr.SignLike, fexpr.SignAnyLike:
 		// the right side is a column and therefor wrap it with "%" for contains like behavior
 		if len(right.Params) == 0 {
-			expr = dbx.NewExp(fmt.Sprintf("%s %s ('%%' || %s || '%%') ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(false), d.AsText(right.Identifier)), left.Params)
+			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(false), likeContains(d, d.AsText(right.Identifier))), left.Params)
 		} else {
-			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(false), right.Identifier), mergeParams(left.Params, wrapLikeParams(right.Params)))
+			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(false), right.Identifier), mergeParams(left.Params, wrapLikeParams(right.Params, likeExtraChars(d)...)))
 		}
 	case fexpr.SignNlike, fexpr.SignAnyNlike:
 		// the right side is a column and therefor wrap it with "%" for not-contains like behavior
 		if len(right.Params) == 0 {
-			expr = dbx.NewExp(fmt.Sprintf("%s %s ('%%' || %s || '%%') ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(true), d.AsText(right.Identifier)), left.Params)
+			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(true), likeContains(d, d.AsText(right.Identifier))), left.Params)
 		} else {
-			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(true), right.Identifier), mergeParams(left.Params, wrapLikeParams(right.Params)))
+			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(true), right.Identifier), mergeParams(left.Params, wrapLikeParams(right.Params, likeExtraChars(d)...)))
 		}
 	case fexpr.SignLt, fexpr.SignAnyLt:
 		expr = dbx.NewExp(fmt.Sprintf("%s < %s", left.Identifier, right.Identifier), mergeParams(left.Params, right.Params))
@@ -367,7 +367,7 @@ func resolveEqualExpr(d dialect.Dialect, equal bool, left, right *ResolverResult
 	if left.NullFallback == NullFallbackDisabled ||
 		right.NullFallback == NullFallbackDisabled {
 		return dbx.NewExp(
-			fmt.Sprintf("%s %s %s", left.Identifier, nullEqualOp, right.Identifier),
+			nullSafeCompare(d, left.Identifier, nullEqualOp, right.Identifier, !equal),
 			mergeParams(left.Params, right.Params),
 		)
 	}
@@ -395,7 +395,7 @@ func resolveEqualExpr(d dialect.Dialect, equal bool, left, right *ResolverResult
 			rightIdentifier = emptyOperand(d, left)
 		}
 		return dbx.NewExp(
-			fmt.Sprintf("%s %s %s", leftIdentifier, equalOp, rightIdentifier),
+			nullSafeCompare(d, leftIdentifier, equalOp, rightIdentifier, !equal),
 			mergeParams(left.Params, right.Params),
 		)
 	}
@@ -502,7 +502,7 @@ func mergeParams(params ...dbx.Params) dbx.Params {
 //
 // wrapLikeParams wraps each provided param value string with `%`
 // if the param doesn't contain an explicit wildcard (`%`) character already.
-func wrapLikeParams(params dbx.Params) dbx.Params {
+func wrapLikeParams(params dbx.Params, extraEscapes ...rune) dbx.Params {
 	result := dbx.Params{}
 
 	for k, v := range params {
@@ -511,6 +511,10 @@ func wrapLikeParams(params dbx.Params) dbx.Params {
 			// note: this is done to minimize the breaking changes and to preserve the original autoescape behavior
 			vStr = escapeUnescapedChars(vStr, '\\', '%', '_')
 			vStr = "%" + vStr + "%"
+		}
+		// fork (#106): characters that only some engines treat as a pattern ([ on SQL Server)
+		if len(extraEscapes) > 0 {
+			vStr = escapeUnescapedChars(vStr, extraEscapes...)
 		}
 		result[k] = vStr
 	}
@@ -681,15 +685,15 @@ func (e *manyVsManyExpr) Build(db *dbx.DB, params dbx.Params) string {
 		return "0=1"
 	}
 
-	return fmt.Sprintf(
-		"NOT EXISTS (SELECT 1 FROM (%s) {{%s}} LEFT JOIN (%s) {{%s}}%s WHERE %s)",
+	return noRows(e.d, fmt.Sprintf(
+		"FROM (%s) {{%s}} LEFT JOIN (%s) {{%s}}%s WHERE %s",
 		e.left.MultiMatchSubQuery.Build(db, params),
 		lAlias,
 		e.right.MultiMatchSubQuery.Build(db, params),
 		rAlias,
 		joinOnClause(e.d),
 		whereExpr.Build(db, params),
-	)
+	))
 }
 
 // -------------------------------------------------------------------
@@ -747,10 +751,10 @@ func (e *manyVsOneExpr) Build(db *dbx.DB, params dbx.Params) string {
 		return "0=1"
 	}
 
-	return fmt.Sprintf(
-		"NOT EXISTS (SELECT 1 FROM (%s) {{%s}} WHERE %s)",
+	return noRows(e.d, fmt.Sprintf(
+		"FROM (%s) {{%s}} WHERE %s",
 		e.subQuery.Build(db, params),
 		alias,
 		whereExpr.Build(db, params),
-	)
+	))
 }

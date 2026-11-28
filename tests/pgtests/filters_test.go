@@ -59,6 +59,9 @@ func runFilterCases(t *testing.T, cases []filterCase) {
 	seedRecords(t, pgApp)
 
 	for _, c := range cases {
+		if c.gap == "" {
+			c.gap = engineGap(t, c.name)
+		}
 		name := strings.NewReplacer(" ", "_", "/", "_").Replace(c.name)
 		if c.gap != "" {
 			name = "known_gap/" + name
@@ -76,6 +79,9 @@ func runFilterCases(t *testing.T, cases []filterCase) {
 				pgResult := shortIds(pgIds)
 				if pgErr != nil {
 					pgResult = "error: " + strings.SplitN(pgErr.Error(), "; failed query", 2)[0]
+				}
+				if pgErr == nil && slices.Equal(sqliteIds, pgIds) && engineMayAgree(t) {
+					t.Skipf("agrees with SQLite on %s (the known gap is a PostgreSQL one): %s", testEngine(t), c.filter)
 				}
 				if pgErr == nil && slices.Equal(sqliteIds, pgIds) {
 					t.Fatalf("this known gap no longer differs, remove it from the skip list: %s", c.filter)
@@ -133,6 +139,7 @@ func TestRecordFilters(t *testing.T) {
 		{name: "text like case insensitive ascii", filter: `title ~ "HELLO"`, want: 3},
 		{name: "text not like", filter: `title !~ "hello"`, want: 5},
 		{name: "text like wildcard", filter: `title ~ "He%ld"`, want: 2},
+		{name: "text like bracket is literal", filter: `title ~ "[ab]"`, want: 0},
 		{name: "text like escapes percent", filter: `title ~ "t_p"`, want: 0},
 		{name: "text like literal percent", filter: `title ~ "post%"`, want: 0},
 		{name: "text like literal underscore", filter: `title ~ "h_u"`, want: 0},

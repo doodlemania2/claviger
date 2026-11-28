@@ -173,8 +173,9 @@ func TestRegisterApiFinalizeNeedsStepUpAndLocksTheEntry(t *testing.T) {
 		t.Fatalf("deleting a final entry: %d %v", status, body)
 	}
 
-	if status, body := env.do(http.MethodPatch, base, map[string]any{"restricted": true}, env.plain("carol")); status != http.StatusOK {
-		t.Fatalf("restricting a final entry: %d %v", status, body)
+	// restricting goes through the restrict route, which adds the marginal note (88-7)
+	if status, body := env.do(http.MethodPatch, base, map[string]any{"restricted": true}, env.plain("carol")); status != http.StatusBadRequest {
+		t.Fatalf("restricting a final entry with a plain write: %d %v", status, body)
 	}
 
 	// not even a superuser

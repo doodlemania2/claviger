@@ -26,6 +26,10 @@ type SortField struct {
 func (s *SortField) BuildExpr(fieldResolver FieldResolver) (string, error) {
 	// special case for random sort
 	if s.Name == randomSortKey {
+		// fork (#106): MySQL spells it RAND()
+		if r, ok := dialectOf(fieldResolver).(interface{ RandomOrder() string }); ok {
+			return r.RandomOrder(), nil
+		}
 		return "RANDOM()", nil
 	}
 

@@ -56,7 +56,7 @@ The route refuses to apply any rule that differs from the locked one, except `nu
 | Someone with only a database file or a backup | No | Field encryption: ciphertext only. |
 | Someone with a backup and the key | Yes | Key control. |
 
-Field encryption gives **protection at rest**, not protection from the operator. "Unreadable to admins" means org admins, and the rules deliver that. For the operator the controls are the read audit, a key held outside the server (Azure Key Vault source) and policy. An owner-held key vault (the note is encrypted in the browser) is a later option and is not built.
+Field encryption gives **protection at rest**, not protection from the operator. "Unreadable to admins" means org admins, and the rules deliver that. For the operator the controls are the read audit, a key held outside the server (Azure Key Vault source) and policy. An owner-held key vault (the note is encrypted in the browser) is a later option and is not built; the design spike is [docs/spikes/86-6-owner-key-vault.md](spikes/86-6-owner-key-vault.md).
 
 An archived note leaves everyone but the author. Realtime subscriptions never deliver a sealed note to anyone but its author; fetch it through the records API, where the read is logged.
 

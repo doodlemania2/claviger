@@ -2,15 +2,19 @@ package migrations
 
 import (
 	"github.com/doodlemania2/claviger/core"
+	"github.com/doodlemania2/claviger/tools/dialect"
 )
 
 // note: this migration will be deleted in future version
 
 func init() {
 	core.SystemMigrations.Register(func(txApp core.App) error {
-		_, err := txApp.DB().NewQuery("CREATE INDEX IF NOT EXISTS idx__collections_type on {{_collections}} ([[type]]);").Execute()
-		if err != nil {
-			return err
+		// fork (#106): MySQL and SQL Server have no CREATE INDEX IF NOT EXISTS (the init migration created it)
+		if d := core.DialectOf(txApp); (d.Name() != dialect.MySQLName && d.Name() != dialect.MSSQLName) || d.IndexOwner(txApp.DB(), "idx__collections_type") == "" {
+			_, err := txApp.DB().NewQuery(d.AdaptDDL("CREATE INDEX IF NOT EXISTS idx__collections_type on {{_collections}} ([[type]]);")).Execute()
+			if err != nil {
+				return err
+			}
 		}
 
 		// reset mfas and otps delete rule

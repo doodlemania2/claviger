@@ -40,6 +40,8 @@ type replicas struct {
 func newReplicas(t *testing.T, n int) *replicas {
 	t.Helper()
 
+	skipUnlessPostgres(t, "several replicas need LISTEN/NOTIFY and advisory locks")
+
 	url := freshDatabase(t)
 	t.Setenv(core.DBURLEnv, url)
 	t.Setenv(core.MultiReplicaEnv, "true")
@@ -663,13 +665,18 @@ func TestMultiReplicaRefusedOnSQLite(t *testing.T) {
 // Two replicas can be told apart by what they report, and the mode is invisible
 // to a deployment that did not ask for it.
 func TestMultiReplicaOffByDefault(t *testing.T) {
+	skipOnLibSQL(t, "asserts the PostgreSQL information_schema")
 	app := newApp(t) // CLAVIGER_DB_URL only
 	if core.ReplicaBusOf(app) != nil || core.IsMultiReplica(app) {
 		t.Fatal("the bus must not run without CLAVIGER_MULTI_REPLICA")
 	}
 
 	var n int
-	err := app.DB().NewQuery("SELECT count(*) FROM information_schema.tables WHERE table_name LIKE '\\_claviger\\_%'").Row(&n)
+	query := "SELECT count(*) FROM information_schema.tables WHERE table_name LIKE '\\_claviger\\_%'"
+	if isMSSQLServer(t) {
+		query = "SELECT count(*) FROM sys.tables WHERE name LIKE '[_]claviger[_]%'"
+	}
+	err := app.DB().NewQuery(query).Row(&n)
 	if err != nil || n != 0 {
 		t.Fatalf("shared tables created without the mode: %d (err %v)", n, err)
 	}

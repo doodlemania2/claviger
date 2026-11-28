@@ -41,11 +41,11 @@ func init() {
 		// (identical to the historic SQLite ones when running on SQLite)
 		d := core.DialectOf(txApp)
 
-		_, execerr := txApp.DB().NewQuery(fmt.Sprintf(`
+		_, execerr := txApp.DB().NewQuery(d.AdaptDDL(fmt.Sprintf(`
 			CREATE TABLE {{_collections}} (
 				[[id]]         TEXT PRIMARY KEY DEFAULT %[1]s NOT NULL,
 				[[system]]     BOOLEAN DEFAULT FALSE NOT NULL,
-				[[type]]       TEXT DEFAULT %[2]s NOT NULL,
+				[[type]]       %[8]s DEFAULT %[2]s NOT NULL,
 				[[name]]       TEXT UNIQUE NOT NULL,
 				[[fields]]     %[3]s DEFAULT %[4]s NOT NULL,
 				[[indexes]]    %[3]s DEFAULT %[4]s NOT NULL,
@@ -68,7 +68,8 @@ func init() {
 			d.StringDefault("{}"),
 			d.NowDefault(),
 			hiddenColumnsDDL(d),
-		)).Execute()
+			typeColumnType(d),
+		))).Execute()
 		if execerr != nil {
 			return fmt.Errorf("_collections exec error: %w", execerr)
 		}
@@ -125,20 +126,29 @@ func createParamsTable(txApp core.App) error {
 	// fork: with an encryption key the stored value is the encrypted settings
 	// (not JSON), which a JSONB column would reject
 	valueType := d.JSONType()
-	if d.Name() == dialect.PostgresName {
-		valueType = `TEXT COLLATE "C"`
+	if !dialect.IsSQLiteFamily(d) {
+		valueType = d.TextType()
 	}
 
-	_, execErr := txApp.DB().NewQuery(fmt.Sprintf(`
+	_, execErr := txApp.DB().NewQuery(d.AdaptDDL(fmt.Sprintf(`
 		CREATE TABLE {{_params}} (
 			[[id]]      TEXT PRIMARY KEY DEFAULT %[1]s NOT NULL,
 			[[value]]   %[2]s DEFAULT NULL,
 			[[created]] TEXT DEFAULT %[3]s NOT NULL,
 			[[updated]] TEXT DEFAULT %[3]s NOT NULL%[4]s
 		);
-	`, d.RandomIDDefault(), valueType, d.NowDefault(), hiddenColumnsDDL(d))).Execute()
+	`, d.RandomIDDefault(), valueType, d.NowDefault(), hiddenColumnsDDL(d)))).Execute()
 
 	return execErr
+}
+
+// typeColumnType is the type of the indexed "type" column of _collections
+// (MySQL cannot index a TEXT column without a prefix length).
+func typeColumnType(d dialect.Dialect) string {
+	if d.Name() == dialect.MySQLName || d.Name() == dialect.MariaDBName || d.Name() == dialect.MSSQLName {
+		return "VARCHAR(100)"
+	}
+	return "TEXT"
 }
 
 // hiddenColumnsDDL returns the extra ",\n [[col]] def" CREATE TABLE

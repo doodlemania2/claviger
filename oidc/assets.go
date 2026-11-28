@@ -349,7 +349,91 @@ passkeyBtn.addEventListener("click", async () => {
   }
 });
 
+// ---- single sign-on of an organization (home-realm discovery) ----------------
+// An address at a verified domain of an organization with a connection is sent to
+// that organization's identity provider. The provider's answer comes back to this
+// page as a one-time code, which is exchanged for the ordinary sign-in token.
+const ssoBox = root.querySelector("#ssoBox");
+const ssoNote = root.querySelector("#ssoNote");
+const ssoBtn = root.querySelector("#ssoBtn");
+let ssoRoute = null;
+let ssoFor = "";
+
+function ssoShow(route) {
+  ssoRoute = route;
+  ssoBox.hidden = !route;
+  const pwField = pw.elements.password.closest("label");
+  const pwButton = pw.querySelector("button");
+  const required = !!(route && route.required);
+  pwField.hidden = required;
+  pw.elements.password.required = !required;
+  pwButton.hidden = required;
+  if (!route) return;
+  ssoNote.textContent = t(required ? "js.sso.required" : "js.sso.available");
+  ssoBtn.textContent = fmt("js.sso.continueWith", { provider: route.name || "SSO" });
+}
+
+function ssoGo() {
+  if (!ssoRoute) return;
+  const back = window.location.pathname + window.location.search;
+  window.location.assign("/api/sso/start?connection=" + encodeURIComponent(ssoRoute.connection) +
+    "&returnTo=" + encodeURIComponent(back) + "&login_hint=" + encodeURIComponent(ssoFor));
+}
+
+async function ssoDiscover() {
+  const identity = pw.elements.identity.value.trim();
+  if (identity === ssoFor) return;
+  ssoFor = identity;
+  ssoShow(null);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(identity)) return;
+  try {
+    const res = await fetch("/api/sso/discover", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: identity }),
+    });
+    const body = await res.json().catch(() => ({}));
+    // only for the accounts this page signs in (the organizations' member collection)
+    if (identity === ssoFor && body && body.sso && (!body.collection || body.collection === collection)) ssoShow(body);
+  } catch (e) { /* the ordinary sign-in stays */ }
+}
+
+pw.elements.identity.addEventListener("change", ssoDiscover);
+pw.elements.identity.addEventListener("blur", ssoDiscover);
+ssoBtn.addEventListener("click", ssoGo);
+
+// back from the provider: a code to exchange, or the reason it did not work
+async function ssoReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("sso_code");
+  const err = params.get("sso_error");
+  if (!code && !err) return false;
+  params.delete("sso_code");
+  params.delete("sso_error");
+  const rest = params.toString();
+  window.history.replaceState(null, "", window.location.pathname + (rest ? "?" + rest : ""));
+  if (err) {
+    const known = ["email_unverified", "no_account", "other_browser", "expired"];
+    fail(t(known.indexOf(err) >= 0 ? "js.sso.err." + err : "js.sso.failed"));
+    return false;
+  }
+  const res = await fetch("/api/sso/exchange", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (res.status === 200 && body.token) { await finish(body.token); return true; }
+  if (res.status === 401 && secondFactor(body)) return true;
+  fail(t("js.sso.failed"));
+  return false;
+}
+
 (async () => {
+  try {
+    if (await ssoReturn()) return;
+  } catch (e) { fail(t("js.sso.failed")); }
   try {
     const client = new PasskeysClient({ baseUrl: window.location.origin, collection });
     const methods = await client.methods();

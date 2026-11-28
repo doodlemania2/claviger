@@ -15,7 +15,7 @@ func init() {
 	core.SystemMigrations.Register(func(txApp core.App) error {
 		// fork: it only repairs indexes of databases created before v0.23,
 		// and no Postgres database can be in that state
-		if core.DialectOf(txApp).Name() != dialect.SQLiteName {
+		if !dialect.IsSQLiteFamily(core.DialectOf(txApp)) {
 			return nil
 		}
 

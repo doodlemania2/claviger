@@ -3,21 +3,38 @@
 package pgtests
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/url"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/doodlemania2/claviger/core"
 	_ "github.com/doodlemania2/claviger/migrations"
 	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/security"
+	mysqldrv "github.com/go-sql-driver/mysql"
 )
+
+// isLibSQLServer reports whether the suite runs against a libSQL server
+// (CLAVIGER_TEST_DB=libsql, CLAVIGER_TEST_LIBSQL_URL and
+// CLAVIGER_TEST_LIBSQL_ADMIN_URL, see tests/app_libsql.go): the SQL is
+// SQLite's, so the engine is expected to agree with SQLite everywhere.
+func isLibSQLServer(t testing.TB) bool {
+	t.Helper()
+	return strings.EqualFold(os.Getenv("CLAVIGER_TEST_DB"), "libsql") && os.Getenv("CLAVIGER_TEST_LIBSQL_URL") != ""
+}
 
 func adminURL(t testing.TB) string {
 	t.Helper()
+
+	if isLibSQLServer(t) {
+		return os.Getenv("CLAVIGER_TEST_LIBSQL_URL")
+	}
 
 	u := os.Getenv("CLAVIGER_TEST_PG_URL")
 	if u == "" {
@@ -27,35 +44,166 @@ func adminURL(t testing.TB) string {
 	return u
 }
 
+// textCast is the type that CAST(x AS ...) uses for text on the test server.
+func textCast(t testing.TB) string {
+	if isMSSQLServer(t) {
+		return "NVARCHAR(MAX)"
+	}
+	if isMySQLServer(t) {
+		return "CHAR"
+	}
+	return "TEXT"
+}
+
+// isMySQLServer reports whether the test server URL is a MySQL or MariaDB
+// one (mysql://user:pass@host:3306/db). The suites are the Postgres ones, run
+// against another engine: see docs/datastores.md.
+func isMySQLServer(t testing.TB) bool {
+	t.Helper()
+	return !isLibSQLServer(t) && strings.HasPrefix(strings.ToLower(adminURL(t)), "mysql://") ||
+		strings.HasPrefix(strings.ToLower(adminURL(t)), "mariadb://")
+}
+
+// isMSSQLServer reports whether the test server URL is a SQL Server one
+// (sqlserver://user:pass@host:1433?database=claviger).
+func isMSSQLServer(t testing.TB) bool {
+	t.Helper()
+	l := strings.ToLower(adminURL(t))
+	return strings.HasPrefix(l, "sqlserver://") || strings.HasPrefix(l, "mssql://")
+}
+
+// adminSQL opens the admin connection of the test server.
+func adminSQL(t testing.TB) *sql.DB {
+	t.Helper()
+
+	raw := adminURL(t)
+
+	if isMSSQLServer(t) {
+		db, err := sql.Open("sqlserver", raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return db
+	}
+
+	if isMySQLServer(t) {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg := mysqldrv.NewConfig()
+		cfg.Net = "tcp"
+		cfg.Addr = u.Host
+		cfg.User = u.User.Username()
+		cfg.Passwd, _ = u.User.Password()
+		cfg.DBName = strings.TrimPrefix(u.Path, "/")
+		cfg.MultiStatements = true
+		db, err := sql.Open("mysql", cfg.FormatDSN())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return db
+	}
+
+	db, err := sql.Open("pgx", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
+
+// serverVersion is the version() string of the test server.
+func serverVersion(t testing.TB) string {
+	t.Helper()
+
+	if isLibSQLServer(t) {
+		return "libsql"
+	}
+
+	db := adminSQL(t)
+	defer db.Close()
+
+	var v string
+	query := "SELECT version()"
+	if isMSSQLServer(t) {
+		query = "SELECT @@VERSION"
+	}
+	if err := db.QueryRow(query).Scan(&v); err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+// isCockroach reports whether the test server is CockroachDB.
+func isCockroach(t testing.TB) bool {
+	return !isLibSQLServer(t) && !isMySQLServer(t) && !isMSSQLServer(t) && strings.Contains(serverVersion(t), "CockroachDB")
+}
+
+// skipUnlessPostgres skips a test of a feature that only PostgreSQL has.
+func skipUnlessPostgres(t testing.TB, why string) {
+	t.Helper()
+	if isLibSQLServer(t) {
+		t.Skip("known_gap(libsql): " + why)
+	}
+	if isMySQLServer(t) {
+		t.Skip("known_gap(mysql): " + why)
+	}
+	if isMSSQLServer(t) {
+		t.Skip("known_gap(mssql): " + why)
+	}
+	if isCockroach(t) {
+		t.Skip("known_gap(cockroach): " + why)
+	}
+}
+
 // freshDatabase creates an empty database and returns its connection URL.
 func freshDatabase(t testing.TB) string {
 	t.Helper()
 
+	if isLibSQLServer(t) {
+		return freshLibSQLNamespace(t)
+	}
+
 	admin := adminURL(t)
 
-	db, err := sql.Open("pgx", admin)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := adminSQL(t)
 	defer db.Close()
 
 	name := "pbt_" + strings.ToLower(security.PseudorandomString(10))
-	if _, err := db.Exec(`CREATE DATABASE "` + name + `"`); err != nil {
+
+	create := `CREATE DATABASE "` + name + `"`
+	drop := `DROP DATABASE IF EXISTS "` + name + `" WITH (FORCE)`
+	if isMSSQLServer(t) {
+		create = "CREATE DATABASE [" + name + "] COLLATE Latin1_General_100_BIN2; ALTER DATABASE [" + name + "] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE"
+		drop = "IF DB_ID(N'" + name + "') IS NOT NULL BEGIN ALTER DATABASE [" + name + "] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [" + name + "] END"
+	}
+	if isMySQLServer(t) {
+		create = "CREATE DATABASE `" + name + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin"
+		drop = "DROP DATABASE IF EXISTS `" + name + "`"
+	}
+	if isCockroach(t) {
+		drop = `DROP DATABASE IF EXISTS "` + name + `" CASCADE` // no WITH (FORCE) there
+	}
+
+	if _, err := db.Exec(create); err != nil {
 		t.Fatalf("create database: %v", err)
 	}
 
 	t.Cleanup(func() {
-		db, err := sql.Open("pgx", admin)
-		if err != nil {
-			return
-		}
+		db := adminSQL(t)
 		defer db.Close()
-		_, _ = db.Exec(`DROP DATABASE IF EXISTS "` + name + `" WITH (FORCE)`)
+		_, _ = db.Exec(drop)
 	})
 
 	u, err := url.Parse(admin)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if isMSSQLServer(t) {
+		q := u.Query()
+		q.Set("database", name)
+		u.RawQuery = q.Encode()
+		return u.String()
 	}
 	u.Path = "/" + name
 
@@ -75,20 +223,57 @@ func newApp(t testing.TB) *core.BaseApp {
 	}
 	t.Cleanup(func() { _ = app.ClearBootstrap() })
 
+	// PGTESTS_LOGSQL=1 prints the statements that the server rejected
+	if os.Getenv("PGTESTS_LOGSQL") != "" {
+		if db, ok := app.DB().(*dbx.DB); ok {
+			db.ExecLogFunc = func(ctx context.Context, d time.Duration, q string, res sql.Result, err error) {
+				if err != nil {
+					t.Logf("SQLERR %v: %s", err, q)
+				}
+			}
+			db.QueryLogFunc = func(ctx context.Context, d time.Duration, q string, rows *sql.Rows, err error) {
+				if err != nil {
+					t.Logf("SQLERR %v: %s", err, q)
+				}
+			}
+		}
+	}
+
 	return app
 }
 
 func TestDialectSelection(t *testing.T) {
 	app := newApp(t)
 
-	if got := core.DialectOf(app).Name(); got != dialect.PostgresName {
-		t.Fatalf("data db dialect = %q, want postgres", got)
+	want := dialect.PostgresName
+	if isLibSQLServer(t) {
+		want = dialect.LibSQLName
+	}
+	if isCockroach(t) {
+		want = dialect.CockroachName
+	}
+	if isMSSQLServer(t) {
+		want = dialect.MSSQLName
+	}
+	if isMySQLServer(t) {
+		want = dialect.MySQLName
+		if strings.Contains(strings.ToLower(serverVersion(t)), "mariadb") {
+			want = dialect.MariaDBName
+		}
+	}
+	if got := core.DialectOf(app).Name(); got != want {
+		t.Fatalf("data db dialect = %q, want %s", got, want)
 	}
 	// the logs db stays a local SQLite file
 	if got := core.AuxDialectOf(app).Name(); got != dialect.SQLiteName {
 		t.Fatalf("aux db dialect = %q, want sqlite", got)
 	}
-	if app.ConcurrentDB() != app.NonconcurrentDB() {
+	if isLibSQLServer(t) {
+		// libSQL keeps the SQLite model: one writer pool, in the app
+		if app.ConcurrentDB() == app.NonconcurrentDB() {
+			t.Fatal("expected a separate write pool on libSQL")
+		}
+	} else if app.ConcurrentDB() != app.NonconcurrentDB() {
 		t.Fatal("expected a single connection pool for reads and writes on Postgres")
 	}
 	if app.AuxConcurrentDB() == app.AuxNonconcurrentDB() {
@@ -168,6 +353,10 @@ func TestBootstrapAndSystemMigrations(t *testing.T) {
 }
 
 func TestIntrospection(t *testing.T) {
+	skipOnLibSQL(t, "asserts the PostgreSQL catalogs and column types")
+	if isMySQLServer(t) {
+		t.Skip("known_gap(mysql): column types and defaults are reported in MySQL's spelling (varchar(255), concat(_utf8mb4'r', ...)), which this test pins for PostgreSQL")
+	}
 	app := newApp(t)
 
 	info, err := app.TableInfo("_collections")
@@ -182,10 +371,14 @@ func TestIntrospection(t *testing.T) {
 	if _, ok := byName[dialect.RowIDColumn]; ok {
 		t.Error("the hidden row id column must not be listed")
 	}
-	if id := byName["id"]; id == nil || id.PK != 1 || !id.NotNull || id.Type != "text" {
+	wantID, wantFields := "text", "jsonb"
+	if isMSSQLServer(t) {
+		wantID, wantFields = "nvarchar(255)", "nvarchar(max)"
+	}
+	if id := byName["id"]; id == nil || id.PK != 1 || !id.NotNull || id.Type != wantID {
 		t.Errorf("unexpected id column info: %+v", id)
 	}
-	if f := byName["fields"]; f == nil || f.Type != "jsonb" || !f.NotNull {
+	if f := byName["fields"]; f == nil || f.Type != wantFields || !f.NotNull {
 		t.Errorf("unexpected fields column info: %+v", f)
 	}
 	if info[0].Name != "id" || info[0].Index != 0 {
@@ -226,6 +419,7 @@ func TestIntrospection(t *testing.T) {
 }
 
 func TestCollectionLifecycle(t *testing.T) {
+	skipOnLibSQL(t, "asserts PostgreSQL column types and pg_indexes")
 	app := newApp(t)
 
 	col := core.NewBaseCollection("posts")
@@ -257,10 +451,23 @@ func TestCollectionLifecycle(t *testing.T) {
 	for _, r := range info {
 		colTypes[r.Name] = r.Type
 	}
-	for col, want := range map[string]string{
+	wantTypes := map[string]string{
 		"id": "text", "title": "text", "views": "double precision", "pub": "boolean",
 		"meta": "jsonb", "when": "text", "tag": "text", "created": "text",
-	} {
+	}
+	if isMSSQLServer(t) {
+		wantTypes = map[string]string{
+			"id": "nvarchar(255)", "title": "nvarchar(max)", "views": "float", "pub": "bit",
+			"meta": "nvarchar(max)", "when": "nvarchar(max)", "tag": "nvarchar(max)", "created": "nvarchar(max)",
+		}
+	}
+	if isMySQLServer(t) {
+		wantTypes = map[string]string{
+			"id": "varchar(255)", "title": "longtext", "views": "double", "pub": "tinyint(1)",
+			"meta": "json", "when": "longtext", "tag": "longtext", "created": "longtext",
+		}
+	}
+	for col, want := range wantTypes {
 		if colTypes[col] != want {
 			t.Errorf("column %s type = %q, want %q", col, colTypes[col], want)
 		}
@@ -271,9 +478,11 @@ func TestCollectionLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var pgDef string
-	if err := app.DB().NewQuery("SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_posts_title_nocase'").Row(&pgDef); err != nil || !strings.Contains(pgDef, "lower(") {
-		t.Errorf("expected a lower() index in the catalog, got %q (%v)", pgDef, err)
+	if !isMySQLServer(t) && !isMSSQLServer(t) {
+		var pgDef string
+		if err := app.DB().NewQuery("SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_posts_title_nocase'").Row(&pgDef); err != nil || !strings.Contains(pgDef, "lower(") {
+			t.Errorf("expected a lower() index in the catalog, got %q (%v)", pgDef, err)
+		}
 	}
 	// TableIndexes returns the portable form of it
 	if !strings.Contains(indexes["idx_posts_title_nocase"], "`title` COLLATE NOCASE") {
@@ -347,16 +556,20 @@ func TestCollectionLifecycle(t *testing.T) {
 	}
 	col.Fields.GetByName("tag").(*core.SelectField).MaxSelect = 3
 	if err := app.Save(col); err != nil {
+		if isCockroach(t) && strings.Contains(err.Error(), "not supported on CockroachDB") {
+			t.Logf("known_gap(cockroach): %v", err)
+			return
+		}
 		t.Fatalf("single to multiple: %v", err)
 	}
 	var tag string
-	if err := app.DB().NewQuery("SELECT tag::text FROM articles WHERE title = 'alpha'").Row(&tag); err != nil {
+	if err := app.DB().NewQuery("SELECT CAST(tag AS " + textCast(t) + ") FROM articles WHERE title = 'alpha'").Row(&tag); err != nil {
 		t.Fatal(err)
 	}
 	if tag != `["b"]` {
 		t.Errorf("tag after single->multiple = %q", tag)
 	}
-	if err := app.DB().NewQuery("SELECT tag::text FROM articles WHERE title = 'zeta'").Row(&tag); err != nil {
+	if err := app.DB().NewQuery("SELECT CAST(tag AS " + textCast(t) + ") FROM articles WHERE title = 'zeta'").Row(&tag); err != nil {
 		t.Fatal(err)
 	}
 	if tag != `[]` {
@@ -399,6 +612,9 @@ func TestCollectionLifecycle(t *testing.T) {
 }
 
 func TestTryUsesSavepoints(t *testing.T) {
+	if isMySQLServer(t) || isCockroach(t) {
+		t.Skip("known_gap(" + testEngine(t) + "): a failed statement does not abort a MySQL transaction, and CockroachDB cannot roll back to a savepoint after DDL")
+	}
 	app := newApp(t)
 
 	err := app.RunInTransaction(func(txApp core.App) error {

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	"github.com/doodlemania2/claviger/tools/dialect"
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" database/sql driver
 )
 
@@ -26,21 +27,31 @@ const DBURLEnv = "CLAVIGER_DB_URL"
 
 // PostgresDBConnect returns a [DBConnectFunc] that opens the provided
 // PostgreSQL connection URL. The dbPath argument is ignored.
+//
+// The URL scheme chooses the engine: postgres:// and postgresql:// are
+// PostgreSQL, cockroach:// and cockroachdb:// are CockroachDB (rewritten to
+// postgresql:// for the driver). A postgres:// URL that turns out to reach a
+// CockroachDB server is detected after connecting and gets the CockroachDB
+// dialect too.
 func PostgresDBConnect(url string) DBConnectFunc {
+	url, forceCRDB := normalizeCockroachURL(url)
 	url = postgresExecModeURL(url)
 
 	return func(_ string) (*dbx.DB, error) {
+		var sqlDB *sql.DB
+
 		// instrumented driver wrapper while traces/metrics are active
 		if db, err := openTelemetryPostgres(url); db != nil || err != nil {
 			if err != nil {
 				return nil, redactDBURL(err, url)
 			}
-			return db, pingPostgres(db.DB(), url)
-		}
-
-		sqlDB, err := sql.Open("pgx", url)
-		if err != nil {
-			return nil, redactDBURL(err, url)
+			sqlDB = db.DB()
+		} else {
+			var err error
+			sqlDB, err = sql.Open("pgx", url)
+			if err != nil {
+				return nil, redactDBURL(err, url)
+			}
 		}
 
 		if err := pingPostgres(sqlDB, url); err != nil {
@@ -48,9 +59,43 @@ func PostgresDBConnect(url string) DBConnectFunc {
 		}
 
 		// "pgx" selects dbx's PgsqlBuilder (placeholders, quoting, upsert)
-		// and the Postgres dialect (see tools/dialect).
-		return dbx.NewFromDB(sqlDB, "pgx"), nil
+		// and the Postgres dialect (see tools/dialect); "cockroach" the same
+		// builder and the CockroachDB dialect.
+		driverName := "pgx"
+		if forceCRDB || isCockroachServer(sqlDB) {
+			driverName = dialect.CockroachName
+		}
+
+		return dbx.NewFromDB(sqlDB, driverName), nil
 	}
+}
+
+// normalizeCockroachURL turns the cockroach:// and cockroachdb:// schemes into
+// postgresql:// and reports whether it did.
+func normalizeCockroachURL(raw string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	lower := strings.ToLower(trimmed)
+
+	for _, scheme := range []string{"cockroachdb://", "cockroach://"} {
+		if strings.HasPrefix(lower, scheme) {
+			return "postgresql://" + trimmed[len(scheme):], true
+		}
+	}
+
+	return raw, false
+}
+
+// isCockroachServer asks the server for its version string.
+func isCockroachServer(sqlDB *sql.DB) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	var version string
+	if err := sqlDB.QueryRowContext(ctx, "SELECT version()").Scan(&version); err != nil {
+		return false
+	}
+
+	return strings.Contains(version, "CockroachDB")
 }
 
 // pingPostgres fails early, with a clear error, instead of at the first query.
@@ -75,7 +120,15 @@ func applyEnvDBConfig(config *BaseAppConfig) {
 		return
 	}
 
-	config.DBConnect = PostgresDBConnect(url)
+	if isMySQLURL(url) {
+		config.DBConnect = MySQLDBConnect(url)
+	} else if isLibSQLURL(url) {
+		config.DBConnect = LibSQLDBConnect(url)
+	} else if isMSSQLURL(url) {
+		config.DBConnect = MSSQLDBConnect(url)
+	} else {
+		config.DBConnect = PostgresDBConnect(url)
+	}
 	config.DBURL = url
 
 	if config.AuxDBConnect == nil {

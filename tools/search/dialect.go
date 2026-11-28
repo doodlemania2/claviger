@@ -99,6 +99,30 @@ func adaptJSONOperands(d dialect.Dialect, op fexpr.SignOp, left, right *Resolver
 	if d.StrictTypes() && !isLikeOp(op) {
 		lk, lok := scalarKind(left)
 		rk, rok := scalarKind(right)
+		// a NULL parameter has no kind of its own: it takes the kind of the
+		// other operand (CockroachDB, unlike PostgreSQL, does not infer the
+		// type of two placeholders that are compared with each other)
+		if !lok && isNilParam(left) {
+			lk, lok = rk, rok
+			if !rok && isNilParam(right) {
+				lk, rk, lok, rok = dialect.ScalarText, dialect.ScalarText, true, true
+			}
+		}
+		if !rok && isNilParam(right) {
+			rk, rok = lk, lok
+		}
+		// a NULL literal compared with a parameter has no type for the
+		// parameter either
+		if isNullLiteral(left) && rok && len(right.Params) > 0 {
+			r := *right
+			r.Identifier = d.ScalarCast(rk, right.Identifier)
+			return left, &r
+		}
+		if isNullLiteral(right) && lok && len(left.Params) > 0 {
+			l := *left
+			l.Identifier = d.ScalarCast(lk, left.Identifier)
+			return &l, right
+		}
 		if lok && rok && len(left.Params) > 0 && len(right.Params) > 0 {
 			l, r := *left, *right
 			l.Identifier = d.ScalarCast(lk, left.Identifier)
@@ -172,6 +196,23 @@ func jsonAsText(d dialect.Dialect, r *ResolverResult) *ResolverResult {
 var numberLiteral = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
 
 // scalarKind reports the kind of a scalar parameter or literal operand.
+func isNullLiteral(r *ResolverResult) bool {
+	return len(r.Params) == 0 && strings.EqualFold(strings.TrimSpace(r.Identifier), "NULL")
+}
+
+// isNilParam reports whether the operand is a single NULL placeholder.
+func isNilParam(r *ResolverResult) bool {
+	if len(r.Params) != 1 || r.MultiMatchSubQuery != nil {
+		return false
+	}
+
+	for name, v := range r.Params {
+		return v == nil && r.Identifier == "{:"+name+"}"
+	}
+
+	return false
+}
+
 func scalarKind(r *ResolverResult) (dialect.ScalarKind, bool) {
 	switch strings.ToUpper(r.Identifier) {
 	case "TRUE", "FALSE":
@@ -216,4 +257,63 @@ func emptyOperand(d dialect.Dialect, other *ResolverResult) string {
 	}
 
 	return "''"
+}
+
+// nullSafeComparer is implemented by dialects that have no infix operator for
+// the null safe (in)equality that "IS" and "IS NOT" are on SQLite (MySQL: <=>).
+type nullSafeComparer interface {
+	NullSafeEqual(left, right string, not bool) string
+}
+
+// nullSafeCompare renders "left op right", or the dialect's own spelling.
+func nullSafeCompare(d dialect.Dialect, left, op, right string, not bool) string {
+	if c, ok := d.(nullSafeComparer); ok {
+		return c.NullSafeEqual(left, right, not)
+	}
+
+	return left + " " + op + " " + right
+}
+
+// noRows renders "there is no row in <fromWhere>" (a FROM ... WHERE ... tail).
+// It is NOT EXISTS, except on the dialects that implement NoRows: MySQL
+// evaluates NOT EXISTS over a correlated derived table with an outer join
+// wrongly (it is always false), a COUNT(*) comparison is right.
+func noRows(d dialect.Dialect, fromWhere string) string {
+	if nr, ok := d.(interface{ NoRows(fromWhere string) string }); ok {
+		return nr.NoRows(fromWhere)
+	}
+
+	return "NOT EXISTS (SELECT 1 " + fromWhere + ")"
+}
+
+// likeContains renders the "contains" pattern of a column operand: '%' || x || '%'
+// (SQL Server concatenates with +).
+func likeContains(d dialect.Dialect, operand string) string {
+	if c, ok := d.(interface{ Concat(parts ...string) string }); ok {
+		return "(" + c.Concat("'%'", operand, "'%'") + ")"
+	}
+
+	return "('%' || " + operand + " || '%')"
+}
+
+// LateralJoin returns the keyword that joins a table valued function (or a
+// derived table) over a column of an earlier table without a condition
+// ("OUTER APPLY" on SQL Server), or an empty string if the dialect joins it
+// with LEFT JOIN ... ON.
+func LateralJoin(d dialect.Dialect) string {
+	if a, ok := d.(interface{ ApplyJoin() string }); ok {
+		return a.ApplyJoin()
+	}
+
+	return ""
+}
+
+// likeExtraChars returns the characters, besides % and _, that the dialect's
+// LIKE treats as a pattern (SQL Server: [ starts a character class).
+func likeExtraChars(d dialect.Dialect) []rune {
+	if c, ok := d.(interface{ LikeSpecialChars() []rune }); ok {
+		return c.LikeSpecialChars()
+	}
+
+	return nil
 }

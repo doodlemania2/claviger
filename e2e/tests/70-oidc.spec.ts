@@ -195,3 +195,22 @@ test("OIDC: the admin page lists the signing key and rotates it", async ({ admin
     await expect.poll(async () => (await api("GET", "/api/oidc/keys")).length).toBeGreaterThan(before);
     await expect(keys.first()).toBeVisible();
 });
+
+test("OIDC: an admin sets a client's ID token lifetime, logo and accent color in the UI", async ({ admin }) => {
+    await admin.goto("/_/#/oidc");
+    await admin.getByRole("row", { name: /E2E first party/ }).getByRole("button", { name: "Edit" }).click();
+    await admin.getByLabel("ID token lifetime (seconds)").fill("600");
+    await admin.getByLabel("Logo URL").fill("https://cdn.example.test/logo.svg");
+    await admin.getByLabel("Accent color").fill("#FFB627");
+    await admin.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(admin.getByText("Client saved.")).toBeVisible();
+
+    const found = await api("GET", `/api/collections/_oauthClients/records?filter=${encodeURIComponent(`clientId='${clients.first.id}'`)}&perPage=1`);
+    const saved = found.items[0];
+    expect(saved.idTokenSeconds).toBe(600);
+    expect(saved.logoUri).toBe("https://cdn.example.test/logo.svg");
+    expect(saved.accentColor).toBe("#FFB627");
+
+    const css = await (await fetch(`${state().base}/oidc/assets/accent.css?c=${clients.first.id}`)).text();
+    expect(css).toContain("#FFB627");
+});

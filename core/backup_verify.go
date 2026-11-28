@@ -418,7 +418,7 @@ func runBackupVerification(
 		if f := entries[BackupManifestName]; f != nil {
 			if raw, rerr := readZipEntry(f, maxBackupManifestSize); rerr == nil {
 				var m BackupManifest
-				if json.Unmarshal(raw, &m) == nil && m.DataDatabase == dialect.PostgresName {
+				if json.Unmarshal(raw, &m) == nil && m.DataDatabase != "" && m.DataDatabase != dialect.SQLiteName {
 					result.HasManifest = true
 					result.Message = "no data database in the archive"
 					return errors.New(backupVerifyPostgresSkip), true

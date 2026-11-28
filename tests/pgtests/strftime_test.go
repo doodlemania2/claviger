@@ -13,10 +13,24 @@ import (
 // Every supported strftime() format and modifier gives the same text as
 // SQLite, for dates around the edges (year end, ISO week 53, leap day).
 func TestStrftimeMatchesSQLite(t *testing.T) {
+	skipOnLibSQL(t, "it checks the PostgreSQL strftime translation, which libSQL does not use (it has the native strftime)")
 	sqliteApp := newSQLiteApp(t)
 	pgApp := newApp(t)
 
-	fb := dialect.Postgres.(dialect.FunctionBuilder)
+	var d dialect.Dialect = dialect.Postgres
+	if isCockroach(t) {
+		d = dialect.Cockroach
+	}
+	if isMySQLServer(t) {
+		d = dialect.MySQL
+		if testEngine(t) == dialect.MariaDBName {
+			d = dialect.MariaDB
+		}
+	}
+	if isMSSQLServer(t) {
+		d = dialect.MSSQL
+	}
+	fb := d.(dialect.FunctionBuilder)
 
 	dates := []string{
 		"2024-02-05 03:04:05.678Z",
@@ -35,6 +49,23 @@ func TestStrftimeMatchesSQLite(t *testing.T) {
 		"%Y-%m-%dT%H:%M:%S", "Q%m/%Y week %W day %w", `100%% "quoted" it's`,
 	}
 
+	if isMySQLServer(t) {
+		// the subset that MySQL supports (docs/datastores.md)
+		formats = []string{
+			"%Y", "%m", "%d", "%e", "%H", "%I", "%k", "%l", "%M", "%S", "%j", "%p", "%w", "%s", "%F", "%T", "%R", "%%",
+			"%Y-%m-%dT%H:%M:%S", `100%% "quoted" it's`,
+		}
+	}
+
+	if isMSSQLServer(t) {
+		// the subset that SQL Server supports (docs/datastores.md): no %P %G %g
+		formats = []string{
+			"%Y", "%m", "%d", "%e", "%H", "%I", "%k", "%l", "%M", "%S", "%f", "%j", "%p",
+			"%w", "%u", "%s", "%U", "%W", "%V", "%F", "%T", "%R", "%%",
+			"%Y-%m-%dT%H:%M:%S", "Q%m/%Y week %W day %w", `100%% "quoted" it's`,
+		}
+	}
+
 	for _, format := range formats {
 		for _, date := range dates {
 			check(t, sqliteApp, pgApp, fb, format, date, nil)
@@ -50,6 +81,28 @@ func TestStrftimeMatchesSQLite(t *testing.T) {
 		{"utc"}, {"subsec"},
 	}
 
+	if isMSSQLServer(t) {
+		// no fractional day modifiers
+		modifiers = [][]string{
+			{"start of day"}, {"start of month"}, {"start of year"},
+			{"+1 day"}, {"-1 day"}, {"+36 hours"}, {"-90 minutes"}, {"+45 seconds"}, {"+1 year"}, {"-1 year"},
+			{"+1 month"}, {"-1 month"},
+			{"start of month", "+1 month", "-1 day"}, {"start of year", "+6 months"},
+			{"weekday 0"}, {"weekday 3"}, {"weekday 6"}, {"+3 days", "weekday 1"},
+			{"utc"}, {"subsec"},
+		}
+	}
+
+	if isMySQLServer(t) {
+		modifiers = [][]string{
+			{"start of day"}, {"start of month"}, {"start of year"},
+			{"+1 day"}, {"-1 day"}, {"+36 hours"}, {"-90 minutes"}, {"+45 seconds"}, {"+1 year"}, {"-1 year"},
+			{"+1 month"}, {"-1 month"},
+			{"start of month", "+1 month", "-1 day"}, {"start of year", "+6 months"},
+			{"utc"}, {"subsec"},
+		}
+	}
+
 	for _, mods := range modifiers {
 		for _, date := range dates[:6] {
 			// 29 Feb + 1 year and 31st + month overflow differ by design (docs/datastores.md)
@@ -61,8 +114,8 @@ func TestStrftimeMatchesSQLite(t *testing.T) {
 		}
 	}
 
-	// numbers: julian day and unix time
-	for _, tc := range []struct {
+	// numbers: julian day and unix time (not on MySQL)
+	numbers := []struct {
 		value string
 		mods  []string
 	}{
@@ -71,7 +124,11 @@ func TestStrftimeMatchesSQLite(t *testing.T) {
 		{"1705312800", []string{"unixepoch"}},
 		{"1705312800.5", []string{"unixepoch"}},
 		{"0", []string{"unixepoch"}},
-	} {
+	}
+	if isMySQLServer(t) {
+		numbers = nil
+	}
+	for _, tc := range numbers {
 		sq := "SELECT strftime('%Y-%m-%d %H:%M:%f', " + tc.value
 		for _, m := range tc.mods {
 			sq += ", '" + m + "'"
@@ -111,7 +168,14 @@ func TestStrftimeMatchesSQLite(t *testing.T) {
 	}
 
 	// the session time zone does not matter
-	for _, zone := range []string{"UTC", "America/Los_Angeles", "Asia/Kolkata"} {
+	zones := []string{"UTC", "America/Los_Angeles", "Asia/Kolkata"}
+	if isMSSQLServer(t) {
+		zones = nil // SQL Server has no session time zone: the SQL uses UTC
+	}
+	if isMySQLServer(t) {
+		zones = nil // the session time zone of MySQL is pinned to UTC by the connection
+	}
+	for _, zone := range zones {
 		if _, err := pgApp.DB().NewQuery("SET TIME ZONE '" + zone + "'").Execute(); err != nil {
 			t.Fatal(err)
 		}

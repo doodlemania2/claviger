@@ -277,7 +277,7 @@ func normalizeViewQueryId(app App, query string) (string, error) {
 	columns := make([]string, 0, len(rawParsed.columns))
 	for _, col := range rawParsed.columns {
 		if col.alias == FieldNameId {
-			columns = append(columns, fmt.Sprintf("CAST([[%s]] as TEXT) [[%s]]", col.alias, col.alias))
+			columns = append(columns, fmt.Sprintf("CAST([[%s]] as %s) [[%s]]", col.alias, dialectOf(app).TextCastType(), col.alias))
 		} else {
 			columns = append(columns, "[["+col.alias+"]]")
 		}

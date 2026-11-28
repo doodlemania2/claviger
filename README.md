@@ -43,6 +43,7 @@ JavaScript hooks. Every feature below is off, or has no effect, until you config
 | Passkeys (WebAuthn) | Register, sign in, manage and revoke per auth collection; counts as an MFA factor. See [Passkey API](#passkey-api). |
 | Passkey-only collections, step-up, passkey reset | Collections that accept no password, a fresh passkey check for sensitive actions, email recovery that clears passkeys ([#73](../../issues/73)) |
 | OpenID Connect provider | Authorization code, refresh and device flows under `/oidc`, plus the account chooser: [docs/oidc.md](docs/oidc.md) |
+| Church software SSO presets | Client templates and setup guides for Church Online Platform, MinistryPlatform, Blackbaud ID and a generic app, with a vendor survey. The guides are written from public documentation and are **not yet verified end to end**: [docs/sso](docs/sso/README.md) ([#85](../../issues/85)) |
 | TOTP and backup codes | Authenticator-app second factor for users and superusers, enforced once enrolled ([#90](../../issues/90)) |
 | Captcha and persistent rate limits | Turnstile, hCaptcha or reCAPTCHA; counters survive restarts. See [Captcha and rate limits](#captcha-and-rate-limits) |
 | Bans, session revocation, impersonation | Superuser tools, audited ([#93](../../issues/93)) |
@@ -51,6 +52,7 @@ JavaScript hooks. Every feature below is off, or has no effect, until you config
 | Accessible hosted pages | Larger text, high contrast, keyboard and screen reader use: [docs/accessibility.md](docs/accessibility.md) |
 | Organizations and roles | Members, roles, tags, invitations, nested orgs and transfers: [docs/orgs.md](docs/orgs.md) |
 | SCIM 2.0 | Provision members from Entra ID or Okta: [docs/scim.md](docs/scim.md) |
+| Enterprise single sign-on | An organization's own OpenID Connect or SAML 2.0 provider (Okta, Entra ID, Google Workspace), DNS-verified domains, home-realm discovery, just-in-time accounts, group-to-role mapping: [docs/inbound-sso.md](docs/inbound-sso.md) |
 
 ### Trust and operations
 
@@ -61,9 +63,11 @@ JavaScript hooks. Every feature below is off, or has no effect, until you config
 | Signed webhooks | Standard Webhooks signatures, retries: [docs/webhooks.md](docs/webhooks.md) |
 | Encrypted backups | AES-256-GCM, restore verification: [docs/backup-encryption.md](docs/backup-encryption.md) |
 | OpenTelemetry and metrics | OTLP/HTTP logs, traces and metrics; Prometheus text at `/api/metrics`. See [Telemetry](#telemetry) |
-| SQLite-safe rollouts | `entrypoint.sh` hands the database from the outgoing to the incoming container |
+| SQLite-safe rollouts | `entrypoint.sh` hands the database from the outgoing to the incoming container; an opt-in built-in handover (`serve --handover`) does the same in the binary: [docs/handover.md](docs/handover.md) |
 | Container packaging | Multi-stage `Dockerfile`, `docker-compose.yml`, optional Litestream replication |
 | PostgreSQL | Supported, opt-in data store (16 and 17); several replicas only on PostgreSQL; no zip backups: [docs/datastores.md](docs/datastores.md) |
+| CockroachDB, MySQL, SQL Server | CockroachDB (`cockroach://`) is supported on one replica; MySQL 8 (`mysql://`) and SQL Server 2019+ / Azure SQL (`sqlserver://`) are experimental; MariaDB is not supported yet: [docs/datastores.md](docs/datastores.md) |
+| libSQL (sqld, Turso) | Experimental data store over HTTP, no shared file system for the data database (`libsql://` or `http(s)://`, token in `CLAVIGER_DB_AUTH_TOKEN`); one replica; no zip backups: [docs/datastores.md](docs/datastores.md) |
 
 ### Congregations
 
@@ -74,7 +78,8 @@ JavaScript hooks. Every feature below is off, or has no effect, until you config
 | Staff-assisted recovery | Short codes vouched for by staff: [docs/recovery.md](docs/recovery.md) |
 | Diocese hierarchy and transfers | Nested orgs, opt-in oversight rules, consented transfers, org-scoped role tags: [docs/orgs.md](docs/orgs.md) |
 | Pastoral notes | Locked rules, two-person break-glass access, expiring prayer requests: [docs/pastoral-notes.md](docs/pastoral-notes.md) |
-| Permanent registers | Final entries cannot be edited; corrections are annotations: [docs/registers.md](docs/registers.md) |
+| Children's check-in | Family pickup codes, guardian passkey release, kiosks, do-not-release flags, an append-only log: [docs/checkin.md](docs/checkin.md) |
+| Permanent registers | Final entries cannot be edited; corrections are annotations; restriction of processing (GDPR Article 18) and optional anonymization of old entries: [docs/registers.md](docs/registers.md) |
 | SMS | Twilio or a generic webhook: [docs/sms.md](docs/sms.md) |
 
 ### Data protection (GDPR)
@@ -87,21 +92,20 @@ JavaScript hooks. Every feature below is off, or has no effect, until you config
 | Retention and legal holds | Daily retention job, holds that block deletion: [docs/retention.md](docs/retention.md) |
 | Erasure | Confirmed requests, a grace period, holds and registers respected, audit scrub, re-erasure after a restore: [docs/erasure.md](docs/erasure.md) |
 | Admin screens | Data map, requests, holds, retention and consent in the admin UI under Data protection |
+| Administrator guide and templates | Day-to-day guide for the parish data-protection lead, a DPIA template and an Article 30 record template (templates, not legal advice): [docs/gdpr/admin-guide.md](docs/gdpr/admin-guide.md) |
 
 Retention periods, pastoral disclosure and the interaction of permanent registers with
 erasure all need local legal review. The guides say so where it applies.
 
 ## Roadmap
 
-Not built yet. Labels and details are in the [issues](../../issues).
+Not built yet, or not finished. Labels and details are in the [issues](../../issues).
 
-- Register restriction flow, administrator guide and DPIA templates ([#88](../../issues/88)).
-- Children's check-in ([#82](../../issues/82)).
-- Church software SSO presets ([#85](../../issues/85)).
-- Enterprise inbound SSO ([#92](../../issues/92)).
-- Built-in handover between instances ([#72](../../issues/72)).
-- Owner-held key vault ([#86](../../issues/86)).
-- Other data stores beyond SQLite and PostgreSQL ([#106](../../issues/106)).
+- Enterprise inbound SSO is built; testing it against a real Okta and Entra ID tenant is what remains of [#92](../../issues/92).
+- The church software SSO guides need two vendors verified end to end ([#85](../../issues/85)).
+- The built-in handover is opt-in; making it the default and deleting the entrypoint's copy is what remains of [#72](../../issues/72).
+- Owner-held key vault ([#86](../../issues/86)). Design spike: [docs/spikes/86-6-owner-key-vault.md](docs/spikes/86-6-owner-key-vault.md).
+- Data stores beyond SQLite, PostgreSQL and CockroachDB: MySQL, SQL Server and libSQL are experimental, MariaDB is not supported yet ([#106](../../issues/106)).
 
 ## Quick start
 
@@ -112,8 +116,22 @@ docker compose up --build
 Then open the dashboard at `http://127.0.0.1:8090/_/` and check
 `http://127.0.0.1:8090/api/health`.
 
-A published container image is not available yet. The release workflow builds one when a
-version tag is pushed. Until then, use `docker compose up --build` above.
+### Container image
+
+Each version tag publishes a multi-arch image (linux/amd64, linux/arm64) to
+`ghcr.io/doodlemania2/claviger`:
+
+| Tag | Points at |
+|---|---|
+| `1.2.3` | that release |
+| `1.2` | the newest patch of 1.2 |
+| `latest` | the newest stable release (pre-releases such as `1.2.3-rc.1` get only their exact tag) |
+
+Pin by digest in production (`ghcr.io/doodlemania2/claviger@sha256:...`). The image runs
+`/usr/local/bin/claviger` through `entrypoint.sh`, with data in `/pb_data` and the handover
+described below. It serves at the root path of its host name: it cannot run under a URL
+path prefix such as `https://example.org/auth/`, so give it its own host name. Until the
+first release is tagged, build it yourself with `docker compose up --build` above.
 
 Or build and run the binary directly (Go 1.27+):
 

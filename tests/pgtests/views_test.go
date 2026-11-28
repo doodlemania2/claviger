@@ -14,6 +14,27 @@ type viewDef struct {
 	name   string
 	sqlite string
 	pg     string
+	// mysql is the MySQL spelling (empty: the SQLite one is valid there too)
+	mysql string
+	// mssql is the SQL Server spelling (empty: the SQLite one is valid there too)
+	mssql string
+}
+
+// forEngine is the view query in the SQL of the test server.
+func (v viewDef) forEngine(t testing.TB) string {
+	if isMSSQLServer(t) {
+		if v.mssql != "" {
+			return v.mssql
+		}
+		return v.sqlite
+	}
+	if isMySQLServer(t) {
+		if v.mysql != "" {
+			return v.mysql
+		}
+		return v.sqlite
+	}
+	return v.pg
 }
 
 var testViews = []viewDef{
@@ -36,6 +57,8 @@ var testViews = []viewDef{
 		name:   "v_expr",
 		sqlite: "SELECT id, (views * 2) AS doubled, (views > 5) AS big, (title || '!') AS shout, json_extract(meta, '$.n') AS n, CAST(views AS INTEGER) AS whole FROM posts",
 		pg:     `SELECT id, (views * 2) AS doubled, (views > 5) AS big, (title || '!') AS shout, (meta -> 'n') AS n, CAST(views AS INTEGER) AS whole FROM posts`,
+		mysql:  "SELECT id, (views * 2) AS doubled, (views > 5) AS big, (title || '!') AS shout, json_extract(meta, '$.n') AS n, CAST(views AS SIGNED) AS whole FROM posts",
+		mssql:  "SELECT id, (views * 2) AS doubled, (CASE WHEN views > 5 THEN 1 ELSE 0 END) AS big, (title + '!') AS shout, (CASE WHEN ISJSON(meta) = 1 THEN JSON_VALUE(meta, '$.n') END) AS n, CAST(views AS INT) AS whole FROM posts",
 	},
 	{
 		// the quoted camelCase alias is the Postgres spelling of an identifier with capitals
@@ -47,10 +70,12 @@ var testViews = []viewDef{
 		name:   "v_rowid",
 		sqlite: "SELECT (ROW_NUMBER() OVER()) AS id, title FROM posts",
 		pg:     `SELECT (ROW_NUMBER() OVER ()) AS id, title FROM posts`,
+		mssql:  "SELECT (ROW_NUMBER() OVER (ORDER BY (SELECT NULL))) AS id, title FROM posts",
 	},
 }
 
 func TestViewCollections(t *testing.T) {
+	skipOnLibSQL(t, "asserts the field types that PostgreSQL infers for view columns (SQLite and libSQL infer none)")
 	sqliteApp := newSQLiteApp(t)
 	seedRecords(t, sqliteApp)
 	pgApp := newApp(t)
@@ -68,7 +93,7 @@ func TestViewCollections(t *testing.T) {
 	for _, v := range testViews {
 		t.Run("create/"+v.name, func(t *testing.T) {
 			sres := createView(sqliteClient, v.name, v.sqlite)
-			pres := createView(pgClient, v.name, v.pg)
+			pres := createView(pgClient, v.name, v.forEngine(t))
 			if sres.Status != 200 || pres.Status != 200 {
 				t.Fatalf("create view: sqlite=%d %s postgres=%d %s", sres.Status, brief(sres.Body), pres.Status, brief(pres.Body))
 			}
@@ -83,12 +108,23 @@ func TestViewCollections(t *testing.T) {
 	// field types inferred from the view's columns (Postgres only; SQLite
 	// views are dynamically typed so unknown expressions are JSON fields)
 	t.Run("field types", func(t *testing.T) {
-		for view, want := range map[string]map[string]string{
+		wantViews := map[string]map[string]string{
 			"v_plain": {"id": "text", "title": "text", "views": "number", "active": "bool", "status": "select", "created": "autodate"},
 			"v_agg":   {"id": "text", "name": "text", "total": "number", "sum_views": "number"},
 			"v_expr":  {"id": "text", "doubled": "number", "big": "bool", "shout": "text", "n": "json", "whole": "number"},
 			"v_camel": {"id": "text", "postTitle": "text"},
-		} {
+		}
+		if isMySQLServer(t) {
+			// MySQL types a comparison as an integer, not a boolean
+			wantViews["v_expr"]["big"] = "number"
+		}
+		if isMSSQLServer(t) {
+			// SQL Server has no boolean expression: the CASE is an integer, and its
+			// JSON_VALUE and the string concatenation are text
+			wantViews["v_expr"]["big"] = "number"
+			wantViews["v_expr"]["n"] = "text"
+		}
+		for view, want := range wantViews {
 			col, err := pgApp.FindCollectionByNameOrId(view)
 			if err != nil {
 				t.Fatal(err)

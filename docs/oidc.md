@@ -58,6 +58,15 @@ only a hash is stored. `POST /api/oidc/clients/{id}/secret` replaces it.
 Clients are the `_oauthClients` system collection (superusers only). Changes are audited; the secret hash is
 redacted from the audit log and never returned by the records API.
 
+## Client templates for church software
+
+**New client** can start from a template (Church Online Platform, MinistryPlatform, Blackbaud ID, or a generic
+application). Pick one, fill in the placeholders (your product's tenant URL), read the list of claims that
+will be sent to that third party, tick the confirmation, and **Apply template**: the form is filled in and you
+review it before creating the client. Templates are JSON files embedded in the binary
+(`oidc/templates/*.json`); `GET /api/oidc/client-templates` (superuser only) returns them. Setup guides and
+the vendor survey are in [docs/sso](sso/README.md). **None of the guides has been verified end to end yet.**
+
 ## Sign in with an OAuth2 provider
 
 When the client's auth collection has OAuth2 enabled, the hosted sign-in page shows one "Continue with

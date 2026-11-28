@@ -13,3 +13,11 @@ import (
 func normalizePostgresUniqueError(err error, fieldNames []string) validation.Errors {
 	return nil
 }
+
+func normalizeMySQLUniqueError(err error, fieldNames []string, indexes []string) validation.Errors {
+	return nil
+}
+
+func normalizeMSSQLUniqueError(err error, fieldNames []string, indexes []string) validation.Errors {
+	return nil
+}

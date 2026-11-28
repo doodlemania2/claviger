@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	"github.com/doodlemania2/claviger/tools/dialect"
 )
 
 var _ dbx.Expression = (*replaceWithExpression)(nil)
@@ -26,6 +27,10 @@ func (e *replaceWithExpression) Build(db *dbx.DB, params dbx.Params) string {
 
 	oldResult := e.old.Build(db, params)
 	newResult := e.new.Build(db, params)
+	if dialect.ForDriver(db.DriverName()).Name() == dialect.MSSQLName {
+		// fork (#106): a SQL Server condition is not a value
+		newResult = "(CASE WHEN " + newResult + " THEN 1 ELSE 0 END)"
+	}
 
 	return strings.ReplaceAll(oldResult, e.placeholder, newResult)
 }

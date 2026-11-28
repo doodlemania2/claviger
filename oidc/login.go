@@ -86,6 +86,10 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
 <label>{{.Text.T "js.passwordLabel"}}<input name="password" type="password" autocomplete="current-password" required aria-describedby="status"></label>
 <button type="submit">{{.Text.T "js.signIn"}}</button>
 </form>
+<div id="ssoBox" hidden>
+<p id="ssoNote" class="msg"></p>
+<button id="ssoBtn" type="button"></button>
+</div>
 <form id="totp" hidden>
 <label>{{.Text.T "js.totpLabel"}}<input name="code" inputmode="numeric" autocomplete="one-time-code" required aria-describedby="status"></label>
 <button type="submit">{{.Text.T "js.verify"}}</button>

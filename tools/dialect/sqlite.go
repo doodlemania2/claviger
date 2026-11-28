@@ -35,6 +35,8 @@ func (d sqliteDialect) IDColumn() string {
 	return "TEXT PRIMARY KEY DEFAULT " + d.RandomIDDefault() + " NOT NULL"
 }
 
+func (sqliteDialect) TextType() string { return "TEXT" }
+
 func (sqliteDialect) TextColumn() string { return "TEXT DEFAULT '' NOT NULL" }
 
 func (sqliteDialect) NumberColumn() string { return "NUMERIC DEFAULT 0 NOT NULL" }
@@ -252,3 +254,18 @@ func (sqliteDialect) DropSuffix() string { return "" }
 func (sqliteDialect) DetachDependentViews(db dbx.Builder, view string) (func() error, error) {
 	return func() error { return nil }, nil
 }
+
+func (sqliteDialect) Retries() bool { return false }
+
+func (sqliteDialect) IsRetryable(error) bool { return false }
+
+func (sqliteDialect) AdaptDDL(sql string) string { return sql }
+
+func (sqliteDialect) DropIndexIfExists(db dbx.Builder, table, name string) error {
+	_, err := db.NewQuery("DROP INDEX IF EXISTS [[" + name + "]]").Execute()
+	return err
+}
+
+func (sqliteDialect) FinishIndexDrops(db dbx.Builder) error { return nil }
+
+func (sqliteDialect) TextCastType() string { return "TEXT" }

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/inflector"
 	"github.com/doodlemania2/claviger/tools/search"
 	"github.com/doodlemania2/claviger/tools/security"
@@ -318,9 +319,9 @@ func (r *RecordFieldResolver) resolveStaticRequestField(path ...string) (*search
 
 	if modifier == issetModifier {
 		if err != nil {
-			return &search.ResolverResult{Identifier: "FALSE"}, nil
+			return &search.ResolverResult{Identifier: boolSQL(r.app, false)}, nil
 		}
-		return &search.ResolverResult{Identifier: "TRUE"}, nil
+		return &search.ResolverResult{Identifier: boolSQL(r.app, true)}, nil
 	}
 
 	// note: we are ignoring the error because requestInfo is dynamic
@@ -584,4 +585,19 @@ func splitModifier(combined string) (string, string, error) {
 	}
 
 	return "", "", fmt.Errorf("unknown modifier in %q", combined)
+}
+
+// boolSQL is the SQL literal of a boolean (SQL Server has no TRUE and FALSE).
+func boolSQL(app App, v bool) string {
+	if dialectOf(app).Name() == dialect.MSSQLName {
+		if v {
+			return "1"
+		}
+		return "0"
+	}
+
+	if v {
+		return "TRUE"
+	}
+	return "FALSE"
 }

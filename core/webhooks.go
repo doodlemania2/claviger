@@ -79,6 +79,13 @@ var webhookExcludedCollections = map[string]struct{}{
 	// #80: children's names, birth dates and health notes never leave in a webhook
 	CollectionNameHouseholds:       {},
 	CollectionNameHouseholdMembers: {},
+	// #82: children's check-in; only the checkin.alert event (ids only) leaves
+	CheckinEventsCollection:  {},
+	CheckinSessionCollection: {},
+	PickupAuthCollection:     {},
+	CheckinLogCollection:     {},
+	CheckinFlagsCollection:   {},
+	CollectionNameKiosks:     {},
 }
 
 // webhookEventTypes maps the audit action to the delivered event type.
@@ -114,6 +121,10 @@ var webhookEntryEventTypes = map[string]string{
 	AuditActionBreakGlassRequest: "breakglass.request",
 	AuditActionBreakGlassOpen:    "breakglass.open",
 	AuditActionBreakGlassRevoke:  "breakglass.revoke",
+
+	// #82: a check-in alert (a locked session, a do-not-release block, an
+	// override); the payload is ids only
+	AuditActionCheckinAlert: "checkin.alert",
 }
 
 // -------------------------------------------------------------------
@@ -317,7 +328,7 @@ func ValidateWebhookEvents(events []string) error {
 		switch action {
 		case "*", AuditActionCreate, AuditActionUpdate, AuditActionDelete, AuditActionCredentialExpiring, AuditActionCredentialLapsed:
 		case AuditActionRetentionRun, AuditActionLegalHold, AuditActionLegalHoldLift:
-		case AuditActionDataExport, AuditActionBreakGlassRequest, AuditActionBreakGlassRevoke, AuditActionBreakGlassOpen: // fork-local (#88, #86): see webhookEntryEventTypes
+		case AuditActionDataExport, AuditActionBreakGlassRequest, AuditActionBreakGlassRevoke, AuditActionBreakGlassOpen, AuditActionCheckinAlert: // fork-local (#88, #86): see webhookEntryEventTypes
 		default:
 			return fmt.Errorf("invalid action in event filter %q (expected create, update, delete, credential_expiring, credential_lapsed or *)", ev)
 		}

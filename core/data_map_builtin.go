@@ -93,6 +93,10 @@ var builtinDataMap = []DataMapEntry{
 	{Collection: CollectionNamePastoralHolds, Treatment: DataMapTreatmentErase, SubjectPaths: []string{"subject"},
 		PersonalFields: []string{"subject", "decidedBy", "note"},
 		Note:           "Held pastoral notes (#86). Export: that a note is held or released, never what it says. Deleted when the person is erased (UnlinkPastoralSubject)."},
+	// ---- children's check-in (#82) ----
+	{Collection: CollectionNameKiosks, Treatment: DataMapTreatmentAnonymize, SubjectPaths: []string{"registeredBy"},
+		PersonalFields: []string{"registeredBy", "revokedBy"},
+		Note:           "Check-in kiosks (#82). A device, not a person; only the admin who registered or revoked it is personal data and is blanked on erasure. The token hash is never exported."},
 	// ---- consent (#88, 88-2) ----
 	{Collection: CollectionNameConsentPurposes, Treatment: DataMapTreatmentNone,
 		Note: "What a person can consent to (key, text, version, lawful basis). Not about a person."},

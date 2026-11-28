@@ -49,14 +49,20 @@ func (m *MultiMatchSubquery) Build(db *dbx.DB, params dbx.Params) string {
 		if i > 0 {
 			mergedJoins.WriteString(" ")
 		}
-		mergedJoins.WriteString("LEFT JOIN ")
+		apply := LateralJoin(dialect.ForDriver(db.DriverName()))
+		isApply := j.On == nil && apply != ""
+		if isApply {
+			mergedJoins.WriteString(apply + " ")
+		} else {
+			mergedJoins.WriteString("LEFT JOIN ")
+		}
 		mergedJoins.WriteString(db.QuoteTableName(j.TableName))
 		mergedJoins.WriteString(" ")
 		mergedJoins.WriteString(db.QuoteTableName(j.TableAlias))
 		if j.On != nil {
 			mergedJoins.WriteString(" ON ")
 			mergedJoins.WriteString(j.On.Build(db, params))
-		} else {
+		} else if !isApply {
 			mergedJoins.WriteString(joinOnClause(dialect.ForDriver(db.DriverName())))
 		}
 	}

@@ -45,7 +45,10 @@ func UniqueId(db dbx.Builder, tableName string) validation.RuleFunc {
 // - err is nil
 // - err is already validation.Errors
 // - err is not "unique constraint failed" error
-func NormalizeUniqueIndexError(err error, tableOrAlias string, fieldNames []string) error {
+//
+// fork (#106): indexes are the collection's index definitions (optional). MySQL
+// names the violated index, not its columns, so they are looked up there.
+func NormalizeUniqueIndexError(err error, tableOrAlias string, fieldNames []string, indexes ...string) error {
 	if err == nil {
 		return err
 	}
@@ -57,6 +60,12 @@ func NormalizeUniqueIndexError(err error, tableOrAlias string, fieldNames []stri
 	// fork-local (#106): PostgreSQL unique violations
 	if pgErrs := normalizePostgresUniqueError(err, fieldNames); pgErrs != nil {
 		return pgErrs
+	}
+	if myErrs := normalizeMySQLUniqueError(err, fieldNames, indexes); myErrs != nil {
+		return myErrs
+	}
+	if msErrs := normalizeMSSQLUniqueError(err, fieldNames, indexes); msErrs != nil {
+		return msErrs
 	}
 
 	msg := strings.ToLower(err.Error())

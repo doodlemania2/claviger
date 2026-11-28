@@ -33,6 +33,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -101,8 +102,14 @@ func NormalizeQuotes(sql string) string {
 		return sql
 	}
 
+	if isMSSQLURL(os.Getenv(TestPGURLEnv)) {
+		return mssqlBracketIdent.ReplaceAllString(sql, "`$1`")
+	}
+
 	return strings.ReplaceAll(sql, `"`, "`")
 }
+
+var mssqlBracketIdent = regexp.MustCompile(`\[([^\[\]]+)\]`)
 
 type testPostgres struct {
 	adminURL string
@@ -166,6 +173,10 @@ func (r *pgDBs) release(name, dir string) func() {
 // srcDataDir is the data dir that the caller passed (empty for the default
 // fixture) and dataDir the temp dir that the app will use.
 func preparePostgres(config *core.BaseAppConfig, srcDataDir, dataDir string) (func(), error) {
+	if IsLibSQL() {
+		return prepareLibSQL(config, srcDataDir, dataDir) // fork: CLAVIGER_TEST_DB=libsql
+	}
+
 	if !IsPostgres() || config.DBConnect != nil {
 		return nil, nil
 	}
@@ -200,7 +211,7 @@ func preparePostgres(config *core.BaseAppConfig, srcDataDir, dataDir string) (fu
 	testPGDBs.byDir[dataDir] = name
 	testPGDBs.mu.Unlock()
 
-	config.DBConnect = core.PostgresDBConnect(withDatabase(testPG.adminURL, name))
+	config.DBConnect = connectFunc(withDatabase(testPG.adminURL, name))
 	config.AuxDBConnect = core.DefaultDBConnect
 	limitTestPGConns(config)
 
@@ -223,6 +234,14 @@ func withDatabase(rawURL, name string) string {
 	if err != nil {
 		panic(err)
 	}
+	if isMSSQLURL(rawURL) {
+		// SQL Server: the database is a query parameter
+		q := u.Query()
+		q.Set("database", name)
+		u.Path = ""
+		u.RawQuery = q.Encode()
+		return u.String()
+	}
 	u.Path = "/" + name
 	return u.String()
 }
@@ -231,7 +250,77 @@ func randomDBName(prefix string) string {
 	return prefix + strings.ToLower(security.PseudorandomString(10))
 }
 
+func isMySQLURL(u string) bool {
+	l := strings.ToLower(strings.TrimSpace(u))
+	return strings.HasPrefix(l, "mysql://") || strings.HasPrefix(l, "mariadb://")
+}
+
+func isMSSQLURL(u string) bool {
+	l := strings.ToLower(strings.TrimSpace(u))
+	return strings.HasPrefix(l, "sqlserver://") || strings.HasPrefix(l, "mssql://")
+}
+
+// canTemplate reports whether the server clones a database with CREATE DATABASE
+// ... TEMPLATE (PostgreSQL). MySQL and CockroachDB do not: every test app then
+// builds its own database from the fixture (a few seconds each, see clone).
+func canTemplate(adminURL string) bool {
+	if isMySQLURL(adminURL) || isMSSQLURL(adminURL) {
+		return false
+	}
+
+	db, err := sql.Open("pgx", adminURL)
+	if err != nil {
+		return false
+	}
+	defer db.Close()
+
+	var version string
+	if err := db.QueryRow("SELECT version()").Scan(&version); err != nil {
+		return false
+	}
+
+	return !strings.Contains(version, "CockroachDB")
+}
+
+// connectFunc opens the database of the engine of the test server.
+func connectFunc(url string) core.DBConnectFunc {
+	if isMySQLURL(url) {
+		return core.MySQLDBConnect(url)
+	}
+	if isMSSQLURL(url) {
+		return core.MSSQLDBConnect(url)
+	}
+	return core.PostgresDBConnect(url)
+}
+
 func adminExec(adminURL string, query string) error {
+	if isMSSQLURL(adminURL) {
+		db, err := sql.Open("sqlserver", adminURL)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+
+		_, err = db.Exec(query)
+		return err
+	}
+
+	if isMySQLURL(adminURL) {
+		u, err := url.Parse(adminURL)
+		if err != nil {
+			return err
+		}
+		pass, _ := u.User.Password()
+		db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s)/?multiStatements=true", u.User.Username(), pass, u.Host))
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+
+		_, err = db.Exec(query)
+		return err
+	}
+
 	db, err := sql.Open("pgx", adminURL)
 	if err != nil {
 		return err
@@ -242,11 +331,59 @@ func adminExec(adminURL string, query string) error {
 	return err
 }
 
+func createDatabase(adminURL, name string) error {
+	if isMSSQLURL(adminURL) {
+		return adminExec(adminURL, "CREATE DATABASE ["+name+"] COLLATE Latin1_General_100_BIN2; "+
+			"ALTER DATABASE ["+name+"] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE")
+	}
+	if isMySQLURL(adminURL) {
+		return adminExec(adminURL, "CREATE DATABASE `"+name+"` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin")
+	}
+	return adminExec(adminURL, `CREATE DATABASE "`+name+`"`)
+}
+
+var (
+	templateOnce sync.Once
+	templateOK   bool
+)
+
 func dropDatabase(adminURL, name string) {
+	if isMSSQLURL(adminURL) {
+		_ = adminExec(adminURL, "IF DB_ID(N'"+name+"') IS NOT NULL BEGIN ALTER DATABASE ["+name+"] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE ["+name+"] END")
+		return
+	}
+
+	if isMySQLURL(adminURL) {
+		_ = adminExec(adminURL, "DROP DATABASE IF EXISTS `"+name+"`")
+		return
+	}
+
+	templateOnce.Do(func() { templateOK = canTemplate(adminURL) })
+	if !templateOK {
+		// CockroachDB has no WITH (FORCE); CASCADE drops what is in it
+		_ = adminExec(adminURL, `DROP DATABASE IF EXISTS "`+name+`" CASCADE`)
+		return
+	}
+
 	_ = adminExec(adminURL, `DROP DATABASE IF EXISTS "`+name+`" WITH (FORCE)`)
 }
 
 func (p *testPostgres) clone() (string, error) {
+	// no templates (MySQL, CockroachDB): build the database from the fixture
+	if p.tplName == "" {
+		name := randomDBName("pbt_")
+		if err := createDatabase(p.adminURL, name); err != nil {
+			return "", err
+		}
+		if err := p.fill(name); err != nil {
+			dropDatabase(p.adminURL, name)
+			// many tests ignore the NewTestApp error and would only panic on a nil app
+			fmt.Fprintf(os.Stderr, "TESTAPP: build the test database: %v\n", err)
+			return "", fmt.Errorf("build the test database: %w", err)
+		}
+		return name, nil
+	}
+
 	// a template can't be accessed by two CREATE DATABASE at the same time
 	p.cloneMu.Lock()
 	defer p.cloneMu.Unlock()
@@ -273,6 +410,11 @@ func buildPostgresTemplate() (*testPostgres, error) {
 		return nil, fmt.Errorf("%s is not set", TestPGURLEnv)
 	}
 
+	if !canTemplate(adminURL) {
+		// MySQL, CockroachDB: nothing to prepare, every app builds its database
+		return &testPostgres{adminURL: adminURL}, nil
+	}
+
 	// templates leaked by crashed runs
 	dropStaleTemplates(adminURL)
 
@@ -283,7 +425,7 @@ func buildPostgresTemplate() (*testPostgres, error) {
 	}
 	p.touch()
 
-	if err := p.fill(); err != nil {
+	if err := p.fill(p.tplName); err != nil {
 		dropDatabase(adminURL, p.tplName)
 		return nil, err
 	}
@@ -296,6 +438,9 @@ func buildPostgresTemplate() (*testPostgres, error) {
 // package once ran past the old 30-minute cutoff and lost its template mid-run.
 // Call with cloneMu held, or before the template is shared.
 func (p *testPostgres) touch() {
+	if p.tplName == "" {
+		return
+	}
 	if time.Since(p.touched) < time.Minute {
 		return
 	}
@@ -330,7 +475,13 @@ func dropStaleTemplates(adminURL string) {
 	}
 }
 
-func (p *testPostgres) fill() (err error) {
+func (p *testPostgres) fill(dbName string) (err error) {
+	return fillFixture(connectFunc(withDatabase(p.adminURL, dbName)))
+}
+
+// fillFixture copies the tests/data fixture into the (empty) database that
+// connect opens (see the file comment). Shared by the Postgres and libSQL test modes.
+func fillFixture(connect core.DBConnectFunc) (err error) {
 	_, currentFile, _, _ := runtime.Caller(0)
 	fixtureDir := filepath.Join(path.Dir(currentFile), "data")
 
@@ -366,7 +517,7 @@ func (p *testPostgres) fill() (err error) {
 		DataDir: dstDir,
 		// no settings encryption: the template must not depend on the env of the first test
 		EncryptionEnv: "",
-		DBConnect:     core.PostgresDBConnect(withDatabase(p.adminURL, p.tplName)),
+		DBConnect:     connect,
 		AuxDBConnect:  core.DefaultDBConnect,
 	}
 	limitTestPGConns(&dstConfig)
@@ -446,6 +597,11 @@ func rawCollections(app core.App) ([]map[string]any, error) {
 		}
 		delete(m, "options")
 
+		// SQL Server: a window function needs an ORDER BY (the fixture's one is SQLite SQL)
+		if q, ok := m["viewQuery"].(string); ok && IsPostgres() && isMSSQLURL(os.Getenv(TestPGURLEnv)) {
+			m["viewQuery"] = strings.NewReplacer("OVER()", "OVER (ORDER BY (SELECT NULL))", "OVER ()", "OVER (ORDER BY (SELECT NULL))").Replace(q)
+		}
+
 		result = append(result, m)
 	}
 
@@ -503,6 +659,11 @@ func copyFixtureRows(src, dst core.App, collections []*core.Collection) error {
 						continue // a column that the Postgres table doesn't have
 					}
 					params[col] = adaptFixtureValue(vals[i], typ)
+
+					// SQL Server: the stored view queries of the fixture are SQLite SQL too
+					if str, ok := params[col].(string); ok && table == "_collections" && col == "options" && isMSSQLURL(os.Getenv(TestPGURLEnv)) {
+						params[col] = strings.NewReplacer("OVER()", "OVER (ORDER BY (SELECT NULL))", "OVER ()", "OVER (ORDER BY (SELECT NULL))").Replace(str)
+					}
 				}
 
 				if _, err := txApp.DB().Insert(table, params).Execute(); err != nil {
@@ -534,7 +695,7 @@ func adaptFixtureValue(v any, pgType string) any {
 	}
 
 	switch {
-	case pgType == "boolean":
+	case pgType == "boolean" || pgType == "tinyint(1)" || pgType == "bit":
 		switch x := v.(type) {
 		case int64:
 			return x != 0
@@ -548,7 +709,7 @@ func adaptFixtureValue(v any, pgType string) any {
 			return nil
 		}
 		return fmt.Sprint(v)
-	case strings.Contains(pgType, "double") || pgType == "real":
+	case strings.Contains(pgType, "double") || pgType == "real" || pgType == "float":
 		switch x := v.(type) {
 		case string:
 			var f float64
@@ -556,7 +717,7 @@ func adaptFixtureValue(v any, pgType string) any {
 				return f
 			}
 		}
-	case pgType == "text" || strings.HasPrefix(pgType, "character"):
+	case pgType == "text" || pgType == "longtext" || strings.HasPrefix(pgType, "varchar") || strings.HasPrefix(pgType, "nvarchar") || strings.HasPrefix(pgType, "character"):
 		if _, ok := v.(string); !ok {
 			return fmt.Sprint(v)
 		}

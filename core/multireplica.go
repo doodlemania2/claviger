@@ -144,7 +144,11 @@ func (app *BaseApp) initReplicaBus() error {
 		app.replicaBus = nil
 	}
 
-	if dialect.Of(app.concurrentDB).Name() != dialect.PostgresName {
+	if name := dialect.Of(app.concurrentDB).Name(); name != dialect.PostgresName {
+		if name != dialect.SQLiteName {
+			// fork (#106): the bus is LISTEN/NOTIFY and the cron guard an advisory lock
+			return fmt.Errorf("%s=true is not supported on %s: several replicas need the LISTEN/NOTIFY and advisory locks of PostgreSQL (set %s to a PostgreSQL database)", MultiReplicaEnv, name, DBURLEnv)
+		}
 		return fmt.Errorf("%s=true needs the data database to be PostgreSQL (set %s): several replicas cannot share a SQLite file", MultiReplicaEnv, DBURLEnv)
 	}
 

@@ -2,6 +2,22 @@
 
 Claviger stores its data in SQLite by default, exactly like PocketBase. Nothing needs to be configured for that.
 
+## Engines at a glance
+
+One variable chooses the engine, `CLAVIGER_DB_URL`; the URL scheme says which. Unset means SQLite.
+
+| Engine | `CLAVIGER_DB_URL` | Status | Several replicas | `migrate-db` target | Tested versions |
+| --- | --- | --- | --- | --- | --- |
+| SQLite | (unset) | The default, unchanged. | No (single writer, `entrypoint.sh` handover) | n/a (the source) | bundled `modernc.org/sqlite` |
+| [PostgreSQL](#postgresql) | `postgres://` or `postgresql://` | Supported. | Yes, opt-in | Yes | 16, 17 |
+| [CockroachDB](#cockroachdb) | `cockroach://` or `cockroachdb://`; a `postgres://` URL that reaches CockroachDB is detected | Supported, with the limits listed in its section. | **Refused** (no `LISTEN`/`NOTIFY`, no advisory locks) | Yes | v25.4 (single node) |
+| [MySQL](#mysql-experimental) | `mysql://` | **Experimental.** Passes the tagged suites, not the regular ones (see the section). | **Refused** | No | 8.4 |
+| [SQL Server](#sql-server-experimental) | `sqlserver://` (or `mssql://`) | **Experimental.** Passes the tagged suites, not the regular ones (see the section). | **Refused** | No | 2019 (Azure SQL Edge, 15.0); 2022 untested here |
+| MariaDB | `mysql://` or `mariadb://` | **Refused at startup** (no functional indexes in 11.4, which the partial and case insensitive unique indexes need). | n/a | n/a | n/a |
+| [libSQL](#libsql-experimental) | `libsql://`, `http://` or `https://` (a sqld or Turso server) | **Experimental.** The tagged suite and samples of the regular suites pass; the only pure Go client is deprecated upstream (see the section). | **Refused** (one primary, no coordination) | No (a dump path, see the section) | sqld 0.24.33 |
+
+Everything engine specific lives behind the `Dialect` interface in `tools/dialect`. SQLite's SQL text is pinned byte for byte by `tools/search/dialect_sqlite_golden_test.go`, and the SQLite suites run as before.
+
 ## PostgreSQL
 
 Status: **supported, one replica or several** (issue #106, milestones 1 to 7). The storage layer sits behind a dialect interface (`tools/dialect`), the app runs on PostgreSQL 16 and 17, the records API works (filters, sorting, expand, view collections), collections import and export and the migration commands work, every fork feature runs on it, and `claviger migrate-db` copies an existing SQLite install over ([Moving from SQLite to PostgreSQL](#moving-from-sqlite-to-postgresql)). CI runs the Postgres suites on both versions. More than one replica is opt-in ([Several replicas](#several-replicas)). What is not there is zip backups of the database (see [Backups](#backups)). SQLite stays the default and its behavior is unchanged. The lists below say exactly what is and is not there.
@@ -246,6 +262,8 @@ Claviger does not translate user SQL; translating it would turn this into a hard
 
 ### Running the Postgres tests
 
+The same suites run against CockroachDB and MySQL: point `CLAVIGER_TEST_PG_URL` at a server of that engine (see [CockroachDB](#cockroachdb) and [MySQL](#mysql-experimental) for the URLs and what is skipped). The tests that differ per engine are listed in `tests/pgtests/engine_test.go` (`engineGaps`).
+
 ```sh
 # against a throwaway local Postgres 16 (downloaded on first use, no Docker needed;
 # EPG_VERSION=17 for Postgres 17):
@@ -280,3 +298,422 @@ The tests that cannot pass on Postgres are listed in `tests/postgres_skip.txt`, 
 ### For developers
 
 The seam is the `Dialect` interface in `tools/dialect`. Code that has to differ per engine asks `core.DialectOf(app)` (or `dialect.Of(db)` when it holds a builder; a transaction keeps the dialect of its connection). SQLite is the previous behavior moved behind the interface and its SQL text is unchanged. New raw SQL in `core/`, `apis/` or a migration must either work on both engines or go through the dialect. `FORK_SYNC.md` lists the upstream-owned files that call into it.
+
+## CockroachDB
+
+Status: **supported on a single cluster, one or several nodes of it** (issue #106). CockroachDB speaks the PostgreSQL wire protocol and most of its SQL, so it is the PostgreSQL dialect with a CockroachDB variant (`dialect.Cockroach`, name `cockroach`); the PostgreSQL sections above (what works, how data is stored, backups, your own SQL, `migrate-db`) apply unless this section says otherwise. The tagged suites (`tests/pgtests`) pass against CockroachDB v25.4: 439 tests pass and the rest are the skips listed below.
+
+### Turning it on
+
+```sh
+CLAVIGER_DB_URL='cockroach://user:password@host:26257/dbname?sslmode=verify-full'
+# or, the same thing, because the server is detected after connecting:
+CLAVIGER_DB_URL='postgresql://user:password@host:26257/dbname?sslmode=verify-full'
+```
+
+- `cockroach://` and `cockroachdb://` are rewritten to `postgresql://` for the driver (`pgx`, the same as for PostgreSQL) and force the CockroachDB dialect. A `postgres://` or `postgresql://` URL gets it too when `SELECT version()` says CockroachDB.
+- The data database is the one in the URL, created by you. `auxiliary.db` (logs) stays a local SQLite file, as on PostgreSQL.
+- `claviger migrate-db --to='cockroach://...'` works like the PostgreSQL one (the smoke test `scripts/test_migrate_db_smoke.sh` passes against CockroachDB).
+
+### What differs from PostgreSQL
+
+| Area | CockroachDB |
+| --- | --- |
+| Several replicas (`CLAVIGER_MULTI_REPLICA=true`) | **Refused at startup**, with a message that names the engine. The bus is `LISTEN`/`NOTIFY` (CockroachDB has none) and the cron guard an advisory lock (the functions are missing or no-ops). Run one replica, or use PostgreSQL. |
+| Transactions | The default isolation is `SERIALIZABLE`, so a transaction can be aborted with SQLSTATE `40001` when it conflicts with another one. `RunInTransaction` runs the whole function again (up to 20 times, with a growing, jittered delay of at most a second) when that happens. Keep the function free of effects outside the database, as you should anyway; the model hooks that run after commit are only called for the attempt that committed. Single statements outside a transaction are retried by the server. |
+| Migrations lock | There is no advisory lock to serialize migrations, so starting two instances at the same moment on an empty database is not guarded: the second one fails on the `_migrations` primary key and can simply be started again. Start one instance first. |
+| Changing a field between single and multiple (select, relation, file) | `ALTER COLUMN ... TYPE` that rewrites data is not allowed in a transaction, so this is done only for a collection **without records** (the column is recreated). With records the save is refused with an error that says to add a new field, copy the values and drop the old one. |
+| Case insensitive and partial indexes | `COLLATE NOCASE` is a `lower(column)` expression index as on PostgreSQL. CockroachDB cannot create an expression index in a transaction after one was dropped in it, so a collection update renames the old indexes first and drops them after the new ones exist (`FinishIndexDrops`). |
+| Text columns | No `COLLATE "C"`: the default collation is already byte order, and the locale `C` is rejected. |
+| Row order | The hidden `_rowid_` identity column uses `CACHE 1`, so insertion order holds across nodes (each insert asks the sequence). |
+| `ILIKE` and `lower()` | Fold the case of non ASCII letters (`é` matches `É`), SQLite and PostgreSQL's `C` collation only ASCII. The filter operator `~` is therefore Unicode aware on CockroachDB. |
+| `strftime()` | The same formats and modifiers as PostgreSQL. CockroachDB has no `pg_input_is_valid()`, so text is cast to a timestamp only if it matches a strict date pattern (months 01-12, days 01-31, hours 00-23); text that does not match is `NULL`, like SQLite. A date that does not exist in its month (`2024-02-30`) matches the pattern and makes the query fail. |
+| Backups | As on PostgreSQL, the zip holds files only. The manifest names `cockroach` and points at `BACKUP`. |
+| `VACUUM`, `ANALYZE` | Not run (garbage collection and statistics are automatic). |
+
+### Running the tests
+
+```sh
+docker run -d --name crdb-test -p 26257:26257 cockroachdb/cockroach:latest-v25.4 \
+  start-single-node --insecure --cache=512MiB --max-sql-memory=512MiB
+
+# DDL is slow by default (a 25 second bootstrap). These two settings make it ~2 seconds:
+for q in "SET CLUSTER SETTING jobs.registry.interval.adopt = '1s'" \
+         "SET CLUSTER SETTING jobs.registry.interval.cancel = '1s'" \
+         "SET CLUSTER SETTING sql.stats.automatic_collection.enabled = false"; do
+  docker exec crdb-test ./cockroach sql --insecure -e "$q"; done
+
+export CLAVIGER_TEST_PG_URL='postgresql://root@localhost:26257/defaultdb?sslmode=disable'
+go test -tags postgres -count=1 -v ./tests/pgtests/...        # about a minute
+scripts/test_migrate_db_smoke.sh                               # migrate-db end to end
+```
+
+Skipped on CockroachDB (each prints its reason, named `known_gap(cockroach)` or in `engineGaps`): the eight multi replica tests, `TestTryUsesSavepoints` (CockroachDB cannot roll back to a savepoint after DDL; `Try` therefore just runs the function there), the two Unicode `LIKE`/`lower()` cases, and the single to multiple conversion step of `TestCollectionLifecycle` (the refusal above is asserted instead). The container needs about 1 GiB of memory.
+
+The **regular suites** (`CLAVIGER_TEST_DB=postgres`, see `scripts/test_postgres_suites.sh`) build one database per test app from the fixture, because CockroachDB has no `CREATE DATABASE ... TEMPLATE`: about 7 seconds per app instead of milliseconds, so a full `./apis` and `./core` run (several thousand apps) takes many hours and was **not** run. What was run, with `-parallel 1` (several concurrent schema builds conflict on CockroachDB's system tables and fail with `restart transaction` even after the retries): `go test ./core -run '^TestRecord' -skip <tests/postgres_skip.txt>` passes (310 tests, about 8 minutes), and `go test ./apis -run '^TestRecordCrudView$'` passes (23 scenarios, 6 minutes). `TestRecordCrudCreate` was started and stopped unfinished (no failure before it was stopped); the rest of `./apis` was not run. Add `ALTER RANGE default CONFIGURE ZONE USING gc.ttlseconds = 5` to the settings above for such long runs, and drop leftover `pbt_*` databases with `DROP DATABASE ... CASCADE` (CockroachDB has no `WITH (FORCE)`).
+
+## MySQL (experimental)
+
+Status: **experimental** (issue #106). A MySQL 8.0.13+ dialect (`dialect.MySQL`, name `mysql`) exists and the tagged suites (`tests/pgtests`) pass against MySQL 8.4 (419 pass, 0 fail, 36 skips for the engine gaps below), but the regular `core`/`apis` suites were run only on a sample (see [Running the tests](#running-the-tests-1)), `migrate-db` does not target MySQL, several replicas are refused, and SQLite semantics are approximated in places (list below). Do not use it for data you cannot lose. **MariaDB is refused at startup**: its 11.4 has no functional indexes.
+
+### Turning it on
+
+```sh
+CLAVIGER_DB_URL='mysql://user:password@host:3306/dbname'     # mariadb:// is accepted and then refused
+```
+
+- Create the database yourself, as `utf8mb4` with `utf8mb4_bin`: `CREATE DATABASE claviger CHARACTER SET utf8mb4 COLLATE utf8mb4_bin`. Claviger creates its tables in it. `tls=` and other driver options of the go-sql-driver (`?tls=true`) can be added to the URL.
+- The driver is `github.com/go-sql-driver/mysql` (pure Go). The session is opened with `sql_mode=STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION,PIPES_AS_CONCAT,NO_BACKSLASH_ESCAPES` (the filter SQL concatenates with `||` and writes `ESCAPE '\'`), `time_zone='+00:00'`, `collation=utf8mb4_bin`, `multiStatements=true` (the system migrations send scripts) and `optimizer_switch='semijoin=off'`. The last one works around a MySQL 8.4 bug: an `EXISTS` or `IN` subquery over `JSON_TABLE` matched nothing (seen with a `utf8mb4_bin` database), and the back relations and multi value filters need them.
+- `auxiliary.db` (logs) stays a local SQLite file.
+
+### How data is stored
+
+| What | MySQL |
+| --- | --- |
+| Text | `LONGTEXT ... utf8mb4_bin` (byte order, case sensitive, like SQLite's `BINARY`). A literal default is not allowed on a TEXT column, so defaults are expressions: `DEFAULT ('')`. |
+| Ids | `VARCHAR(255) utf8mb4_bin`, default `CONCAT('r', LOWER(HEX(RANDOM_BYTES(7))))`. |
+| Dates | `LONGTEXT` in the same `2006-01-02 15:04:05.000Z` format, UTC. |
+| Numbers, booleans, JSON | `DOUBLE`, `BOOLEAN` (`tinyint(1)`), the native `JSON` type. JSON text is normalized by MySQL (a space after `:` and `,`, keys ordered by length). |
+| Insertion order | A hidden `_rowid_ BIGINT AUTO_INCREMENT UNIQUE` column, like PostgreSQL's. |
+| Indexes | MySQL cannot index a TEXT column whole, has no partial indexes and no `COLLATE NOCASE`. A plain index on text uses a 191 character prefix key. A **unique** index on text is a unique expression index over `SHA2(column, 256)`. A partial unique index (`WHERE email != ''`) is an expression that is `NULL` when the condition is false (NULLs never collide), so it keeps its meaning. A partial non unique index is created without its `WHERE`. `COLLATE NOCASE` is `LOWER(column)`. The portable definition is kept in the index comment, and `TableIndexes` returns it, so collections export and import the same indexes on every engine. |
+| Unique errors | `Duplicate entry ... for key 'table.index'` (error 1062) is mapped to the `validation_not_unique` error of the field whose name the index name contains (the primary key is `id`). |
+| DDL | DDL commits implicitly in MySQL: a migration or a collection save that fails half way is **not** rolled back. Seen in the suites: deleting a collection that a view still selects from is refused, but only after its table was dropped (`TestCollectionDelete/view_with_reference`). |
+| Transactions | Deadlocks (1213) and lock wait timeouts (1205) are retried like CockroachDB's `40001`. |
+
+### Differences from SQLite
+
+Besides the PostgreSQL list above (most of it applies in spirit), these are the cases that the suites show differ on MySQL (each is a `known_gap(mysql)` or an `engineGaps` entry in `tests/pgtests/engine_test.go`):
+
+- `~` and `:lower` fold the case of non ASCII letters (accents stay significant): `title ~ "école"` matches `ÉCOLE`.
+- A JSON string that looks like a number equals the number: `meta.n = 5` also matches `{"n": "5"}`, and it sorts among the numbers.
+- `strftime()` supports `%Y %m %d %e %H %I %k %l %M %S %f %j %p %w %s %F %T %R %%` and the modifiers `start of day|month|year`, `[+-]N second|minute|hour|day|month|year`, `utc`, `subsec`. **Not supported** (rejected when the filter is built): `%u %U %W %V %G %g %P`, `weekday N`, julian day and unix time numbers, `localtime`.
+- The `info` of a table (`app.TableInfo`) reports MySQL's type spellings (`varchar(255)`, `longtext`, `tinyint(1)`) and defaults (`concat(_utf8mb4\'r\', ...)`).
+- A view query is MySQL SQL, as written (`CAST(x AS SIGNED)`, not `INTEGER`; a comparison is typed as a number, not a boolean).
+- The superuser SQL endpoint (`/api/sql`) runs MySQL SQL as written; the PostgreSQL oriented test of it is skipped.
+- Several replicas, zip backups of the database (as on PostgreSQL: use `mysqldump`) and `migrate-db` to MySQL are not available. Migrations are not serialized (start one instance first).
+- `TestTryUsesSavepoints` is skipped: a failed statement does not abort a MySQL transaction.
+
+### Running the tests
+
+```sh
+docker run -d --name mysql-test -e MYSQL_ROOT_PASSWORD=test -e MYSQL_DATABASE=claviger -p 3307:3306 mysql:8.4
+
+CLAVIGER_TEST_PG_URL='mysql://root:test@127.0.0.1:3307/claviger' \
+  go test -tags postgres -count=1 -v ./tests/pgtests/...           # about a minute
+```
+
+Every test creates and drops its own database (`CREATE DATABASE ... utf8mb4_bin`), so the root user is needed. The regular suites need `CLAVIGER_TEST_DB=postgres` plus the same URL and build one database per test app from the fixture (about 4 seconds), so a full run takes hours and was **not** run. What was run (skip list: `tests/postgres_skip.txt`, as `scripts/test_postgres_suites.sh` builds it):
+
+| Run | Result |
+| --- | --- |
+| `./core -run '^TestRecord'` | 310 tests pass. |
+| `./core -run '^TestCollection'` | 233 tests pass, 1 fails: `TestCollectionDelete/view_with_reference` (DDL commits implicitly, see the table above). |
+| `./apis -run '^TestRecordCrud'` | 249 tests pass; 2 failed on the unique field error check (the violated MySQL index was not mapped to its field), fixed since and re-run alone: both pass. |
+
+MariaDB 11.4 is refused at startup, so there is nothing to run against it.
+
+## libSQL (experimental)
+
+Status: **experimental** (issue #106). libSQL is a fork of SQLite that a server (`sqld`, or Turso Cloud) exposes over the network. Claviger speaks to it over HTTP (the Hrana protocol), so **the data database is no longer a file on the app's disk**: the shared file system, and the NFS locking problems that come with it, are out of the picture for `data.db`. The SQL is SQLite's SQL, so the SQLite dialect is reused with a handful of statements turned into no-ops (`tools/dialect/libsql.go`, dialect name `libsql`).
+
+**Read this before you depend on it.** The only pure Go (no CGO) client of a libSQL server is `github.com/tursodatabase/libsql-client-go`, and its repository is marked **deprecated** by Turso (it points to the CGO `go-libsql` and to `turso-go`, neither of which is a client for a libSQL server that fits `CGO_ENABLED=0` builds). It still builds and works (module version `v0.0.0-20260528064733-9d5d30a29a60`, the last commit before the deprecation notice), but nobody is going to fix it. That is the reason this stays experimental, and the reason the code keeps the driver behind one small file (`core/db_connect_libsql.go`): if a maintained client appears, only that file changes.
+
+### Turning it on
+
+```sh
+CLAVIGER_DB_URL='libsql://my-db-org.turso.io'                 # TLS (https) to a Turso database
+CLAVIGER_DB_AUTH_TOKEN='eyJ...'                               # the JWT of the database, never in the URL
+# a self hosted sqld:
+CLAVIGER_DB_URL='http://sqld.internal:8080'                   # plain text, https:// for TLS
+CLAVIGER_DB_URL='libsql://sqld.internal:8080?tls=0'           # the same, written libsql://
+```
+
+- **The scheme chooses libSQL**: `libsql://` (HTTPS unless `?tls=0`, which needs an explicit port), `http://` and `https://`. Nothing else in `CLAVIGER_DB_URL` is HTTP, so there is no clash with the other engines.
+- **The auth token** is read from `CLAVIGER_DB_AUTH_TOKEN`. It is also accepted as `?authToken=...` in the URL (the URL value wins when both are set), but prefer the variable: URLs end up in process lists, manifests and logs, the variable does not. A JWT that a sqld started with `--auth-jwt-key-file` (or `SQLD_AUTH_JWT_KEY`) accepts, or a Turso database token. A server without authentication needs no token.
+- Other URL parameters: `tls=0` (above) and `proxy=http://host:port` (connect to that address, but send the URL's host as the HTTP `Host` header: a sqld behind an ingress, or one namespace of a multi tenant sqld, which picks the namespace from the first label of the host name). Anything else in the query string is refused.
+- **Redaction.** The token and the URL never appear in a Claviger error message (they are replaced by `<redacted>`), and `core.RedactDBURL` masks them for any log line you add. `claviger keys check` does not open a libSQL database (it says so and skips; the app checks the keys itself when it starts and fails closed).
+- `auxiliary.db` (request logs) stays a local SQLite file, as with PostgreSQL.
+- The driver is pure Go, so `CGO_ENABLED=0` builds keep working. The binary grows by about 1 MB (`coder/websocket` and an ANTLR runtime come with the client).
+
+### What differs from SQLite
+
+| Area | libSQL |
+| --- | --- |
+| Pragmas | **None are sent.** The connections are remote and the server owns the file: sqld runs WAL, `foreign_keys=ON` (verified) and a 100 ms `busy_timeout` by default. `journal_mode`, `synchronous`, `cache_size`, `temp_store` and the modernc `_defensive` flag are the server's business. |
+| `VACUUM`, `PRAGMA optimize`, `PRAGMA wal_checkpoint` | **Rejected by sqld's statement parser** (`unsupported statement`), so the dialect makes `Vacuum`, `Optimize` and `Checkpoint` no-ops. The periodic checkpoint and optimize jobs log nothing and do nothing for the data database; the server checkpoints its own WAL. `VACUUM` of the data database is not available (the logs database is local and unchanged). |
+| Transactions | Interactive transactions work: one `database/sql` connection is one Hrana stream (a baton), `BEGIN` ... `COMMIT`/`ROLLBACK` run on it. The SQLite model is kept: reads use a concurrent pool, **writes go through a separate pool of one connection** (`SeparateWritePool`), because sqld has a single writer too and queuing in the app is cheaper than a round trip that fails with `database is locked`. **A transaction that sits idle for more than about 10 seconds is dropped by the server** (`stream is closed`): do not hold a transaction across a slow call (an HTTP request in a hook, for example). Idle pooled connections are fine: the driver opens a new stream when the old one expired (verified with 25 second gaps). |
+| Latency | Every statement is a network round trip (HTTP, no pipelining across statements of one transaction). Co-locate the app and sqld; expect a slower bootstrap (the first start, which runs all system migrations, takes a few seconds against a local sqld). |
+| Custom SQL functions | The fork registers **none** on the modernc connection (`core/db_connect.go` only sets pragmas), so nothing is missing: the SQL functions that the app uses are SQLite's own (`json_each`, `json_extract`, `strftime`, `randomblob`, `hex`, `lower`, `PRAGMA_TABLE_INFO`), which sqld has (SQLite 3.47). `regexp()` is also present. **Not available**: `unistr()` (SQLite 3.50+, see the dump note below) and anything that needs a loadable extension. |
+| Introspection | `sqlite_master`, `sqlite_schema` and `PRAGMA_TABLE_INFO(...)` work on sqld and are what the SQLite dialect uses. |
+| Error messages | `UNIQUE constraint failed: table.column` comes through unchanged, so the unique field errors work as on SQLite. |
+| Query log and telemetry | The OpenTelemetry DB spans wrap the modernc, pgx and mysql drivers only: a libSQL data database is traced at the HTTP request level, without DB child spans. |
+| Settings encryption, field encryption, every fork feature | Unchanged: they are built on the dialect seam, and the tagged suite runs them (below). |
+
+### Backups
+
+The zip backup does **not** contain the data database (it is in the server): like on PostgreSQL the archive holds the storage files and the local auxiliary database, and its manifest says that the database is `libsql`. A zip **restore is refused**, and so is verification of a backup that lacks the database. Back up the server instead: a snapshot of the sqld data directory (`--db-path`, stop writes or use the volume's snapshot), `turso db shell <db> .dump` / Turso's point in time recovery, or a dump taken through the app's own connection.
+
+### Several replicas
+
+**Refused**: `CLAVIGER_MULTI_REPLICA=true` fails the start with `... is not supported on libsql: several replicas need the LISTEN/NOTIFY and advisory locks of PostgreSQL`. sqld is one primary (replicas are read only), and the realtime bus, the cron guard, the shared rate limits and the cache invalidation of [Several replicas](#several-replicas) are built on PostgreSQL primitives that libSQL does not have. So there is one writer app instance.
+
+What changes for that one instance: the data database no longer needs the single-writer handover, because it is not a file on the shared volume. **`auxiliary.db` is still a SQLite file on the volume**, so `entrypoint.sh` keeps the handover (and the NFS rules of the deployment) for it: the entrypoint is deliberately unchanged. A rollout that overlaps two replicas is safe for the data database (sqld serializes writers) but not for the logs file; leave the handover on.
+
+### Moving from SQLite to libSQL
+
+`claviger migrate-db` targets PostgreSQL and CockroachDB only (it adapts values to Postgres column types and builds the schema through the import path). SQLite to libSQL is a plain copy, because the schema and the values are already SQLite's. Stop the server first (it is the single writer of `pb_data`), then:
+
+```sh
+# 1. dump data.db. Use Python's iterdump: the sqlite3 CLI of SQLite 3.50+ writes
+#    strings with control characters as unistr('...'), which sqld (SQLite 3.47) cannot read.
+python3 - <<'PY' > dump.sql
+import sqlite3
+for line in sqlite3.connect("pb_data/data.db").iterdump():
+    print(line)
+PY
+
+# 2a. Turso Cloud
+turso db create claviger --from-dump dump.sql
+
+# 2b. a self hosted sqld started with --enable-namespaces: create a namespace from the dump
+#     (the file must be readable by the server; an http(s):// URL works too)
+curl -X POST http://sqld:8081/v1/namespaces/claviger/create \
+  -H 'Content-Type: application/json' -d '{"dump_url":"file:///dumps/dump.sql"}'
+
+# 3. start Claviger on it (a namespace is the first label of the host name)
+CLAVIGER_DB_URL='http://claviger.sqld.internal:8080?proxy=http://sqld:8080' claviger serve
+```
+
+Checked end to end with `tests/data/data.db` (16 collections): the app started on the imported namespace, all collections and records were there and the migrations were recognised as applied. For a plain (single database) sqld without namespaces, run the dump through its HTTP API or `turso db shell`. The reverse direction is the same dump taken from the server (`sqlite3 new.db < dump.sql`).
+
+### Running the tests
+
+The tagged suite and the regular suites run against a sqld started with namespaces: every test app gets its own namespace, forked from a template that holds the converted fixture (the same conversion as the PostgreSQL mode, a file copy per app).
+
+```sh
+docker run -d --name claviger-libsql -p 127.0.0.1:18090:8080 -p 127.0.0.1:18091:8081 \
+  ghcr.io/tursodatabase/libsql-server:latest \
+  /bin/sqld --enable-namespaces --admin-listen-addr 0.0.0.0:8081
+# note: SQLD_ENABLE_NAMESPACES is NOT read from the environment, the flag is required;
+# without it every namespace silently resolves to the one default database.
+
+export CLAVIGER_TEST_DB=libsql
+export CLAVIGER_TEST_LIBSQL_URL=http://127.0.0.1:18090
+export CLAVIGER_TEST_LIBSQL_ADMIN_URL=http://127.0.0.1:18091
+
+go test -tags postgres,libsql -count=1 -v ./tests/pgtests/...           # the tagged suite plus the libSQL-only tests, about 30 seconds
+go test ./core -run '^TestRecord'      -timeout 20m                     # about 1 minute
+go test ./core -run '^TestCollection'  -timeout 20m
+go test ./apis -run '^TestRecordCrud'  -timeout 30m                     # about 20 seconds
+```
+
+The live connection tests (`core.TestLibSQLLive`, `core.TestLibSQLLiveAuth`) use a plain sqld (no namespaces) and one started with a JWT key:
+
+```sh
+docker run -d --name claviger-libsql-plain -p 127.0.0.1:18080:8080 ghcr.io/tursodatabase/libsql-server:latest
+# an Ed25519 key pair: SQLD_AUTH_JWT_KEY is the URL-safe base64 of the public key,
+# the token is a JWT with alg EdDSA signed by the private key
+docker run -d --name claviger-libsql-auth -p 127.0.0.1:18082:8080 -e SQLD_AUTH_JWT_KEY=<public key> ghcr.io/tursodatabase/libsql-server:latest
+
+CLAVIGER_TEST_LIBSQL_URL=http://127.0.0.1:18080 \
+CLAVIGER_TEST_LIBSQL_AUTH_URL=http://127.0.0.1:18082 CLAVIGER_TEST_LIBSQL_AUTH_TOKEN=<jwt> \
+  go test ./core -run 'LibSQL|RedactDBURL' -v
+```
+
+The URL parsing, the redaction and the "errors never contain the token" tests need no server.
+
+Skipped on libSQL (each prints `known_gap(libsql)`): the eight multi replica tests, and six tagged tests that assert PostgreSQL specific outcomes (`TestIntrospection`, `TestCollectionLifecycle` (PostgreSQL column types and `pg_indexes`), `TestSQLEndpoint` (PostgreSQL SQL and its statement guard), `TestStrftimeMatchesSQLite` (checks the PostgreSQL strftime translation), `TestViewCollections` (PostgreSQL's view column type inference), `TestMultiReplicaOffByDefault` (`information_schema`)). In the regular suites one scenario is skipped, `TestCollectionSaveViewWrapping/no_wrapping_-_select_field`: the test fixture declares `demo1.select_many` as `TEXT` while the schema rebuilt from the converted fixture declares it `JSON`, so the view wrapping differs (a fixture artifact, not a libSQL behavior).
+
+| Run | Result |
+| --- | --- |
+| `./tests/pgtests` (tag `postgres`) | 400 pass, 0 fail, 28 skips (14 whole tests, 14 filter cases where libSQL agrees with SQLite and the table lists a PostgreSQL gap). |
+| `./core -run '^TestRecord'` | 421 pass, 0 fail. |
+| `./core -run '^TestCollection'` | 248 pass, 0 fail, 1 skip. |
+| `./apis -run '^TestRecordCrud'` | 253 pass, 0 fail. |
+
+(Counts include subtests.)
+
+The regular suites were run on these samples, **not in full**; the full `./core` and `./apis` suites on libSQL (thousands of namespace forks) were not run.
+
+## SQL Server (experimental)
+
+Status: **experimental** (issue #106). A SQL Server 2019+ / Azure SQL dialect (`dialect.MSSQL`, name `mssql`, `tools/dialect/mssql.go`) exists and the tagged suites (`tests/pgtests`) pass against SQL Server 15.0 (Azure SQL Edge, see [Running the tests](#running-the-tests-3): 430 pass, 0 fail, 26 skips), but the regular `core`/`apis` suites were run only on a sample (same section), `migrate-db` does not target SQL Server, several replicas are refused, and SQLite semantics are approximated in places (list below). Do not use it for data you cannot lose. Nothing here needs SQL Server 2022 or newer (no `IS DISTINCT FROM`, `GREATEST`, `JSON_ARRAY`, `ISJSON(.., type)`), so Azure SQL Database and Managed Instance should behave the same; they were not run.
+
+### Turning it on
+
+```sh
+CLAVIGER_DB_URL='sqlserver://user:password@host:1433?database=claviger'     # mssql:// is accepted too
+```
+
+- **Create the database yourself with a binary collation**: `CREATE DATABASE claviger COLLATE Latin1_General_100_BIN2`. Text columns are compared as bytes, case and accent sensitive, like SQLite's `BINARY` (and every literal, parameter and JSON value follows the database default). Claviger **refuses to start** on a database whose collation does not end in `_BIN2`, and says so. A consequence: identifiers are case sensitive too (`INFORMATION_SCHEMA.TABLES`, not `information_schema.tables`).
+- Recommended: `ALTER DATABASE claviger SET READ_COMMITTED_SNAPSHOT ON`, so that readers do not block on writers (the test databases have it).
+- The driver is `github.com/microsoft/go-mssqldb` (pure Go). Its URL options work as documented there (`encrypt=`, `TrustServerCertificate=`, `app name=`, ...). Go 1.23+ rejects the self signed certificate of the SQL Server containers (negative serial number): use `encrypt=disable` on a local test server (or `TrustServerCertificate=true` with `GODEBUG=x509negativeserial=1`), or a real certificate. Without any of them the connection fails with `x509: negative serial number`.
+- A `[]byte` parameter is sent as text (the driver would send `VARBINARY`, which SQL Server stores in an `NVARCHAR` column as raw UTF-16). Claviger stores no binary data.
+- `auxiliary.db` (logs) stays a local SQLite file.
+
+### How data is stored
+
+| What | SQL Server |
+| --- | --- |
+| Text | `NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2`. Defaults are literals: `DEFAULT ''`. |
+| Ids | `NVARCHAR(255)` with the same collation, default `'r' + LOWER(CONVERT(NVARCHAR(14), CRYPT_GEN_RANDOM(7), 2))`. |
+| Dates | `NVARCHAR(MAX)` in the same `2006-01-02 15:04:05.000Z` format, UTC (`CONVERT(NVARCHAR(23), SYSUTCDATETIME(), 121) + 'Z'`). |
+| Numbers, booleans | `FLOAT`, `BIT`. |
+| JSON | `NVARCHAR(MAX)` text, as written (no `json` type before SQL Server 2025). Read with `ISJSON`, `OPENJSON` and `STRING_ESCAPE`. |
+| Insertion order | A hidden `_rowid_ BIGINT IDENTITY` column, like PostgreSQL's. |
+| JSON paths in filters | `meta.a.b` is read with `OPENJSON(..., '$.a')` and returns a `sql_variant`: a number is a float, `true`/`false` are 1 and 0, a JSON null is NULL, a string is text, an object or array is its JSON text (cut at 4000 characters). The variant compares numbers with numbers and text with text and never fails a conversion, which is what SQLite's dynamic typing gives; `ORDER BY` puts NULL, numbers, then text (`JSONOrderTerm`). |
+| Multi value fields (`tags ?= 'x'`, `:each`, back relations) | `OUTER APPLY OPENJSON(...)`: SQL Server cannot `LEFT JOIN` a function over a column of an earlier table. `search.LateralJoin` and `RecordFieldResolver.leftJoin` write it. |
+| Indexes | SQL Server cannot index an `NVARCHAR(MAX)`, has no partial or functional indexes, and a unique index treats NULLs as equal. A key that needs it is materialized as a hidden computed column named `_pbx_<index>_<n>` (persisted): a SHA2-256 hash for a unique key on text, `LOWER()` for `COLLATE NOCASE`, a `CASE WHEN <condition>` for a partial index, a 450 character prefix for a plain index on text. Rows that SQLite would skip in a unique index (a NULL key, a partial index whose condition is false) get a key of their own made from their row number, because a filtered index cannot test a computed column. The portable definition is kept in an extended property (`claviger_index`), and `TableIndexes` returns it, so collections export and import the same indexes on every engine. A partial non unique index is created without its `WHERE`. The hidden columns do not show in `TableInfo`/`TableColumns` and are dropped with their index. |
+| Unique errors | Errors 2601 and 2627 are mapped to the `validation_not_unique` error of the field whose name the index contains (the primary key is `id`). |
+| DDL | Transactional, like PostgreSQL. A column with a default is dropped together with its default constraint (the builder looks it up); tables and columns are renamed with `sp_rename`. |
+| Transactions | Deadlock victims (1205) and snapshot update conflicts (3960) are retried like CockroachDB's `40001`. `Try` uses `SAVE TRANSACTION`. Migrations are serialized with `sp_getapplock`. |
+
+### Differences from SQLite
+
+Besides the PostgreSQL list above (most of it applies in spirit), these are the cases that the suites show differ on SQL Server (each is a `known_gap(mssql)` or an `engineGaps` entry in `tests/pgtests/engine_test.go`):
+
+- `~` and `:lower` fold the case of non ASCII letters (accents stay significant): `title ~ "école"` matches `ÉCOLE`.
+- A JSON number compares with a number and a JSON string with text, but a JSON string sorts **before** a number (the variant hierarchy), where SQLite orders text after numbers: `meta.n > 5` is false for `{"n": "5"}`. A JSON boolean is 1 or 0, as in SQLite.
+- `strftime()` supports `%Y %m %d %e %H %I %k %l %M %S %f %j %p %u %w %s %U %W %V %F %T %R %%`, a julian day or unix time number (`unixepoch`), and the modifiers `start of day|month|year`, `[+-]N second|minute|hour|day|month|year`, `weekday N`, `utc`, `subsec`. **Not supported** (rejected when the filter is built): `%G %g %P`, fractional unit modifiers (`+2.5 days`), `localtime`. A month overflow clamps like PostgreSQL's (`DATEADD`), not forward like SQLite's.
+- Sorting by a field of a related record (`sort=author.name`, a multi relation or a back relation) groups the base table by all its columns and sorts by the smallest (`ASC`) or largest (`DESC`) value of the related rows (`MIN`/`MAX`), as PostgreSQL does. `MIN`/`MAX` do not take a `BIT`, so sorting by a related **bool** field fails.
+- `JSON_VALUE` and `OPENJSON` raise an error on text that is not JSON: the filter SQL checks `ISJSON` first, **your own SQL** (views, `/api/sql`) must too.
+- A query can have at most 2100 bound parameters (the driver's limit): a filter with more values than that fails.
+- The `info` of a table (`app.TableInfo`) reports SQL Server's spellings (`nvarchar(max)`, `float`, `bit`).
+- A view query is Transact-SQL, as written (`CASE WHEN a > 5 THEN 1 ELSE 0 END`, `+` for concatenation, `ROW_NUMBER() OVER (ORDER BY ...)`, no `||`, no boolean expression as a value); a comparison column is typed as a number.
+- The superuser SQL endpoint (`/api/sql`) runs Transact-SQL as written and classifies writes with the generic guess (as on MySQL); the PostgreSQL oriented test of it is skipped.
+- Several replicas, zip backups of the database (as on PostgreSQL: use `BACKUP DATABASE` or point-in-time recovery) and `migrate-db` to SQL Server are not available.
+- `TestTryUsesSavepoints` passes (SQL Server dooms some failed batches, so `Try` rolls back to a savepoint).
+
+### Refusals
+
+| Request | Result |
+| --- | --- |
+| `CLAVIGER_MULTI_REPLICA=true` | Refused at startup: several replicas need `LISTEN`/`NOTIFY` and advisory locks (PostgreSQL). |
+| A database without a `_BIN2` collation | Refused at startup, with the `CREATE DATABASE` statement to use. |
+| SQL Server older than 2019 (`ProductMajorVersion` < 15) | Refused at startup. |
+| `claviger migrate-db --to='sqlserver://...'` | Refused: the target must be PostgreSQL or CockroachDB. |
+| A zip backup of the database | The archive holds the storage files and the logs database only; its manifest says the data is in SQL Server. |
+| The `no_default_driver` build tag | The URL is refused (`SQL Server support is not compiled in`). |
+
+### Running the tests
+
+SQL Server 2022 has no arm64 image. On Apple Silicon under Colima the amd64 image only runs through Rosetta (a separate profile: `colima start claviger-mssql --cpu 4 --memory 6 --disk 30 --vm-type vz --vz-rosetta`; the default 2 GiB VM is too small). On the Mac that this was developed on the Rosetta share was not attached to the VM, so the image ran under QEMU and died at start with "Invalid mapping of address ... in reserved address space". **Azure SQL Edge** (`mcr.microsoft.com/azure-sql-edge`, a SQL Server 15.0 engine, native arm64, retired by Microsoft) is the fallback that the results below were measured on. Its limits: it is the 2019 engine (compatibility level 150), so nothing newer was exercised, and it has no full text search or CLR integration (nothing here needs them).
+
+```sh
+docker run -d --name mssql-test -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD='Test_Passw0rd!' -p 1433:1433 \
+  mcr.microsoft.com/mssql/server:2022-latest          # or mcr.microsoft.com/azure-sql-edge on arm64
+
+CLAVIGER_TEST_PG_URL='sqlserver://sa:Test_Passw0rd!@127.0.0.1:1433?database=master&encrypt=disable' \
+  go test -tags postgres -count=1 -v ./tests/pgtests/...           # about 2.5 minutes
+```
+
+Every test creates and drops its own database (`CREATE DATABASE ... COLLATE Latin1_General_100_BIN2`, read committed snapshot on), so the `sa` user is needed; the database in the URL only has to exist (`master` does). The regular suites need `CLAVIGER_TEST_DB=postgres` plus the same URL and build one database per test app from the fixture (about 8 seconds on SQL Server, the fixture's views are adapted: `OVER()` becomes `OVER (ORDER BY (SELECT NULL))`), so a full run takes hours and was **not** run. What was run (skip list: `tests/postgres_skip.txt`, as `scripts/test_postgres_suites.sh` builds it):
+
+| Run | Result |
+| --- | --- |
+| `./core -run '^TestRecord'` | 310 tests pass. |
+| `./core -run '^TestCollection'` | 235 tests pass (`TestCollectionDelete/view_with_reference` too: DDL is transactional here). |
+| `./apis -run '^TestRecordCrud'` | 253 tests pass. |
+
+Bugs that these runs found, fixed since: dbx's mssql builder leaves the offset of every unpaged query at 0 and emits `ORDER BY (SELECT NULL) OFFSET 0 ROWS` for it (the query builder is replaced, see `tools/dialect/mssql_builder.go`); the same builder cannot page a `SELECT DISTINCT` without an `ORDER BY`; the fixture's stored view queries (`OVER()`) are SQLite SQL.
+
+## CI for CockroachDB, MySQL, libSQL and SQL Server (for the conductor)
+
+Nothing here is wired into `.github/workflows/test.yml` yet. Two jobs would do it, each after the `test` job, on the same runner tier as the `postgres` job. The service container syntax of GitHub Actions cannot pass arguments to the CockroachDB image, so that one is started with a `docker run` step.
+
+```yaml
+  cockroach:
+    needs: test
+    runs-on: ${{ vars.RUNNER_LIGHT || 'tdp-k3s-claviger' }}
+    env:
+      CLAVIGER_TEST_PG_URL: postgresql://root@127.0.0.1:26257/defaultdb?sslmode=disable
+    steps:
+      - uses: actions/checkout@<sha>
+      - uses: actions/setup-go@<sha>
+        with: { go-version-file: go.mod }
+      - name: Start CockroachDB
+        run: |
+          docker run -d --name crdb -p 26257:26257 cockroachdb/cockroach:v25.4.21 \
+            start-single-node --insecure --cache=512MiB --max-sql-memory=512MiB
+          until docker exec crdb ./cockroach sql --insecure -e 'select 1' >/dev/null 2>&1; do sleep 1; done
+          for q in "SET CLUSTER SETTING jobs.registry.interval.adopt = '1s'" \
+                   "SET CLUSTER SETTING jobs.registry.interval.cancel = '1s'" \
+                   "SET CLUSTER SETTING sql.stats.automatic_collection.enabled = false" \
+                   "ALTER RANGE default CONFIGURE ZONE USING gc.ttlseconds = 5"; do
+            docker exec crdb ./cockroach sql --insecure -e "$q"; done
+      - run: go test -tags postgres -count=1 -v ./tests/pgtests/... | tee crdb.log   # expect about 440 PASS, 0 FAIL, skips named known_gap(cockroach) or MultiReplica
+      - run: scripts/test_migrate_db_smoke.sh
+
+  mysql:
+    needs: test
+    runs-on: ${{ vars.RUNNER_LIGHT || 'tdp-k3s-claviger' }}
+    services:
+      mysql:
+        image: mysql:8.4
+        env: { MYSQL_ROOT_PASSWORD: test, MYSQL_DATABASE: claviger }
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -ptest" --health-interval 5s --health-retries 20
+    env:
+      CLAVIGER_TEST_PG_URL: mysql://root:test@127.0.0.1:3306/claviger
+    steps:
+      - uses: actions/checkout@<sha>
+      - uses: actions/setup-go@<sha>
+        with: { go-version-file: go.mod }
+      - run: go test -tags postgres -count=1 -v ./tests/pgtests/... | tee mysql.log   # expect about 420 PASS, 0 FAIL
+```
+
+The SQL Server job (`mcr.microsoft.com/mssql/server:2022-latest` needs 2 GiB or more, and an amd64 runner):
+
+```yaml
+  mssql:
+    needs: test
+    runs-on: ${{ vars.RUNNER_LIGHT || 'tdp-k3s-claviger' }}
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env: { ACCEPT_EULA: "Y", MSSQL_SA_PASSWORD: "Test_Passw0rd!" }
+        ports: ["1433:1433"]
+        options: >-
+          --memory 3g --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Test_Passw0rd! -Q 'SELECT 1'"
+          --health-interval 5s --health-retries 30
+    env:
+      CLAVIGER_TEST_PG_URL: sqlserver://sa:Test_Passw0rd!@127.0.0.1:1433?database=master&encrypt=disable
+    steps:
+      - uses: actions/checkout@<sha>
+      - uses: actions/setup-go@<sha>
+        with: { go-version-file: go.mod }
+      - run: go test -tags postgres -count=1 -v ./tests/pgtests/... | tee mssql.log   # expect about 430 PASS, 0 FAIL
+```
+
+On the `tdp-k3s` tier the job must not start before the CockroachDB and MySQL ones have finished if the node is small: SQL Server takes 2 GiB at idle.
+
+Check the counts the way the `postgres` job does (`grep -c -- '--- PASS'` against a minimum, any `--- SKIP` that is not `known_gap` or a multi replica test fails the job). The regular suites on these engines are not part of this proposal: they build one database per test app (4 to 7 seconds), so a full run takes hours; run a sample (`./core -run '^TestRecord'`, `./apis -run '^TestRecordCrud'`) with `CLAVIGER_TEST_DB=postgres` if you want one.
+
+### libSQL
+
+One more job, same shape (the sqld image takes its arguments after the image name, so it is started with a `docker run` step like CockroachDB; pin the image to a digest or a released tag instead of `latest` in CI):
+
+```yaml
+  libsql:
+    needs: test
+    runs-on: ${{ vars.RUNNER_LIGHT || 'tdp-k3s-claviger' }}
+    env:
+      CLAVIGER_TEST_DB: libsql
+      CLAVIGER_TEST_LIBSQL_URL: http://127.0.0.1:18090
+      CLAVIGER_TEST_LIBSQL_ADMIN_URL: http://127.0.0.1:18091
+    steps:
+      - uses: actions/checkout@<sha>
+      - uses: actions/setup-go@<sha>
+        with: { go-version-file: go.mod }
+      - name: Start sqld
+        run: |
+          docker run -d --name sqld -p 127.0.0.1:18090:8080 -p 127.0.0.1:18091:8081 \
+            ghcr.io/tursodatabase/libsql-server:<tag> /bin/sqld --enable-namespaces --admin-listen-addr 0.0.0.0:8081
+          until curl -sf -X POST http://127.0.0.1:18090/v2/pipeline -d '{"requests":[{"type":"execute","stmt":{"sql":"select 1"}}]}' >/dev/null; do sleep 1; done
+      - run: go test -tags postgres,libsql -count=1 -v ./tests/pgtests/... | tee libsql.log   # expect 0 FAIL; skips are known_gap(libsql)
+      - run: go test -count=1 ./core -run '^TestRecord' -timeout 20m
+      - run: go test -count=1 ./apis -run '^TestRecordCrud' -timeout 30m
+```
+
+The auth token tests need a second sqld with `SQLD_AUTH_JWT_KEY` and a signed token; add them only if you want the CI to cover the token path (the unit tests of the URL parsing and the redaction run in the normal `test` job, without a server).

@@ -22,3 +22,27 @@ func PostgresDBConnect(url string) DBConnectFunc {
 		return nil, errors.New("PostgreSQL support is not compiled in (no_default_driver build tag)")
 	}
 }
+
+// MySQLDBConnect is not available without the default drivers.
+func MySQLDBConnect(url string) DBConnectFunc {
+	return func(_ string) (*dbx.DB, error) {
+		return nil, errors.New("MySQL support is not compiled in (no_default_driver build tag)")
+	}
+}
+
+// LibSQLDBConnect is not available without the default drivers.
+func LibSQLDBConnect(url string) DBConnectFunc {
+	return func(_ string) (*dbx.DB, error) {
+		return nil, errors.New("libSQL support is not compiled in (no_default_driver build tag)")
+	}
+}
+
+// DBAuthTokenEnv is the libSQL token variable (see db_connect_libsql.go).
+const DBAuthTokenEnv = "CLAVIGER_DB_AUTH_TOKEN"
+
+// MSSQLDBConnect is not available without the default drivers.
+func MSSQLDBConnect(url string) DBConnectFunc {
+	return func(_ string) (*dbx.DB, error) {
+		return nil, errors.New("SQL Server support is not compiled in (no_default_driver build tag)")
+	}
+}

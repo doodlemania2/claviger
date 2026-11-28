@@ -108,6 +108,9 @@ Files the fork modifies that upstream also owns (expect conflicts here):
 | `core/apikey.go`, `core/audit_model.go`, `pocketbase.go`, `apis/collection_test.go`, `apis/collection_import_test.go`, `core/collection_query_test.go`, `apis/orgs_routes_test.go` | `_orgClosure` (#84): added to `APIKeyForbiddenCollections` and `auditExcludedCollections`; `NewOrgsCommand` registered in `pocketbase.go`; system collection count 39 to 40; the one-level hierarchy route test now expects deeper trees. |
 | `ui/src/router.js`, `ui/src/store.js`, `ui/src/main.js`, `ui/src/css/_main.css` | LOW | `#/oidc` route and nav entry, the client modal import and the `oidc.css` import (#71). Rebuild `ui/dist` (not committed on the #71 branch). |
 | `THIRD_PARTY_NOTICES.md` | LOW | Added the OIDC provider's dependencies (#71). |
+| `pocketbase.go`, `cmd/serve.go` | LOW | Built-in handover (#72): `handover.Register(pb.App)` in `NewWithConfig` after `oidc.Register`, and in `serve` the `--handover` flag plus a warning when it (or `CLAVIGER_HANDOVER=binary`) is set on an app built without `pocketbase.New` (`handover.Attached`). Both import `tools/handover`. Nothing binds unless the flag or the variable is set. Tests: `go test ./tools/handover/...`. |
+| `apis/base.go`, `core/base.go` | LOW | Children's check-in (#82): `bindCheckinApi(app, apiGroup)` in `apis/base.go` and `app.registerCheckinHooks()` in `registerBaseHooks`. Re-add both lines if upstream rewrites those lists. |
+| `ui/src/css/_main.css` | LOW | `@import "forkPages.css"` after `oidc.css` (padding of the fork's admin pages' toolbars, #153). |
 | `core/record_model.go` | LOW | Audit log (#74): `cascadeRecordDelete`/`deleteRefRecords` take a leading `ctx` and use `DeleteWithContext`/`SaveNoValidateWithContext`, so cascade deletes keep the audit actor. Re-apply if upstream touches those two functions. |
 | `apis/record_crud.go` | LOW | Audit log (#74): `form.SetContext(auditContext(e))` after both `NewRecordUpsert` calls and `DeleteWithContext(auditContext(...))` in `recordDelete`. Without them every API change is attributed to `system`. |
 | `apis/sql.go` | LOW | Audit log (#74): write queries mentioning `_auditLog` are rejected in `executeQuery`. |
@@ -379,6 +382,59 @@ Upstream test files were touched only for fork-owned behaviour: none of the upst
 | `scripts/pgembedded/main.go` | `EPG_VERSION` (16 or 17). | |
 
 `migrate-db` reads the stored `_collections` rows and the system migration list (`core.SystemMigrations`): after a sync that adds a system migration or changes how `ImportCollections` treats system collections, run `go test ./cmd -run MigrateDB` against a Postgres (`CLAVIGER_TEST_PG_URL`). The `_migrations`, `_params` and `_collections` handling in `copyTable` / `copyMigrations` follows the upstream table layout.
+
+### CockroachDB and MySQL (#106)
+
+CockroachDB is the Postgres dialect with a flag (`postgresDialect{crdb: true}`, `tools/dialect/cockroach.go`); MySQL is its own dialect (`tools/dialect/mysql.go`, experimental). Fork-only files: `tools/dialect/{cockroach,mysql}.go`, `core/db_connect_mysql.go`, `tests/pgtests/engine_test.go`. Run the tagged suites against both after a sync (commands in `docs/datastores.md`). Upstream-owned hunks added by this work (the rest of the seam is listed above):
+
+| File | Change | Re-check when upstream touches |
+| --- | --- | --- |
+| `core/db_tx.go` | `runInTransaction` loops: a transaction that the server aborted with a retryable error (CockroachDB 40001, MySQL deadlock) runs again, up to `txMaxAttempts`. One attempt (the old code) on SQLite and PostgreSQL. | `runInTransaction`: keep the loop and the `afterFuncs` call per attempt. |
+| `core/collection_record_table_sync.go` | `dialect.BuildIndexFor` instead of `BuildIndex` (MySQL reads the column types); `DropIndexIfExists` instead of the raw `DROP INDEX IF EXISTS`; `FinishIndexDrops` at the end of `createCollectionIndexes`. | Index creation and drop code, `ConvertMultiplicity`. |
+| `core/collection_query.go`, `core/household.go` | `CAST(... AS TEXT)` takes the type from `TextCastType()` (MySQL: `CHAR`). | New raw `CAST(.. AS TEXT)`. |
+| `core/validators/db.go`, `core/record_model.go`, `forms/record_upsert.go` | `normalizeMySQLUniqueError` after the Postgres one (`db_postgres.go`, `_stub.go`); `NormalizeUniqueIndexError` takes the collection's index definitions as a variadic last argument (MySQL names the violated index, not its columns), both callers pass them. | `NormalizeUniqueIndexError` and its callers. |
+| `core/multireplica.go` | The refusal names the engine. | |
+| `core/backup_create.go`, `core/backup_verify.go` | The manifest note names the engine's backup tool (`backupTool`); the verify skip accepts any non-SQLite `dataDatabase`. | |
+| `tools/search/filter.go` | `nullSafeCompare` (MySQL `<=>`) in the two direct comparisons of `resolveEqualExpr`; `noRows` replaces the two `NOT EXISTS (SELECT 1 ...)` of the multi match expressions (MySQL: `0 = (SELECT COUNT(*) ...)`, because `NOT EXISTS` over a correlated derived table with an outer join is wrong in MySQL 8.4). Byte for byte the old SQL on SQLite and PostgreSQL. | New operators and multi match code. |
+| `tools/search/dialect.go` | `adaptJSONOperands` types a NULL parameter and a NULL literal that is compared with a parameter (CockroachDB cannot infer the type of two placeholders). | |
+| `tools/search/sort.go` | `@random` asks the dialect (`RAND()` on MySQL). | |
+| `migrations/1640988000_init.go`, `migrations/1717233557_v0.23_migrate2.go` | `AdaptDDL` rewrites the hand written DDL for MySQL; `_collections.type` is `VARCHAR(100)` there; the pre 0.23 index migration does not repeat the index. | New hand written DDL in a system migration: it needs `AdaptDDL` and an indexable key. |
+| `cmd/migrate_db.go` | The target scheme may be `cockroach://`. | |
+| `tests/app_postgres.go` | MySQL and CockroachDB have no `CREATE DATABASE ... TEMPLATE`: every test app builds its own database from the fixture (`canTemplate`, `connectFunc`). | |
+
+### libSQL (#106, experimental)
+
+A separate dialect, `libsqlDialect` (`tools/dialect/libsql.go`: the SQLite dialect with `Vacuum`, `Optimize` and `Checkpoint` as no-ops), registered under the name `libsql`. Fork-only files: `tools/dialect/libsql.go`, `core/db_connect_libsql.go` (+ `_test.go`), `tests/app_libsql.go`, `tests/pgtests/libsql_test.go`. The client is `github.com/tursodatabase/libsql-client-go`, **deprecated upstream**: check it on every sync (`go.mod`). Upstream-owned hunks added by this work:
+
+| File | Change | Re-check when upstream touches |
+| --- | --- | --- |
+| `core/db_connect_postgres.go` | `applyEnvDBConfig` routes `libsql://`, `http://` and `https://` URLs to `LibSQLDBConnect`. | `applyEnvDBConfig`. |
+| `core/db_connect_postgres_stub.go` | `LibSQLDBConnect` and `DBAuthTokenEnv` for the `no_default_driver` tag. | |
+| `core/backup_create.go` | `backupTool` names the libSQL backup path. | |
+| `migrations/1640988000_init.go`, `migrations/1778828400_normalize_indexes.go` | `dialect.IsSQLiteFamily` instead of `Name() == SQLiteName` (libSQL speaks SQLite SQL: JSON `_params` value type, and the pre-v0.23 index repair stays on). | New `Name() != dialect.SQLiteName` checks: decide whether libSQL is meant (SQL level) or not (the local file: backups, restore, replicas). |
+| `cmd/keys.go` | `readFieldKeys` skips a libSQL URL instead of handing it to pgx. | |
+| `core/collection_model_test.go` | One scenario of `TestCollectionSaveViewWrapping` is skipped on libSQL (`tests.SkipOnLibSQL`). | The scenario table. |
+| `tests/app_postgres.go` | `preparePostgres` hands over to `prepareLibSQL` when `CLAVIGER_TEST_DB=libsql`; `fill` is split into `fillFixture(connect)`. | |
+| `tests/pgtests/{pg,engine,multireplica,sql_api,strftime,views}_test.go` | `isLibSQLServer`, `freshLibSQLNamespace`, and `skipOnLibSQL` on the tests that assert PostgreSQL specific outcomes. | |
+
+The code that means "a local data.db file" (zip backup and restore, backup verification, several replicas) compares `Name()` with `SQLiteName` and therefore treats `libsql` as a remote engine on purpose.
+
+### SQL Server (#106, experimental)
+
+SQL Server is its own dialect (`tools/dialect/mssql.go`, plus `mssql_builder.go` for the DDL and paging that dbx's mssql builder gets wrong). Fork-only files: `tools/dialect/mssql*.go`, `core/db_connect_mssql.go`. Run the tagged suites against it after a sync (commands in `docs/datastores.md`; `go test -tags postgres ./tests/pgtests/...` with `CLAVIGER_TEST_PG_URL=sqlserver://...&encrypt=disable`). Upstream-owned hunks added by this work (the rest of the seam is listed above):
+
+| File | Change | Re-check when upstream touches |
+| --- | --- | --- |
+| `core/migrations_runner.go` | `initMigrationsTable` rewrites its `CREATE TABLE IF NOT EXISTS` with `AdaptDDL` (and quotes `file`, a T-SQL keyword) on SQL Server; the `lastAppliedMigrations` ordering expression comes from `appliedOrderExpr()` (`SUBSTRING(CAST(.. AS NVARCHAR) + ..)` there, the old `substr(applied\|\|..)` elsewhere). | `initMigrationsTable`, `lastAppliedMigrations`. |
+| `core/record_field_resolver.go`, `core/record_field_resolver_runner.go`, `core/session.go` | `TRUE`/`FALSE` literals go through `boolSQL(app, v)` (SQL Server has none; the text is unchanged elsewhere). | New raw `= TRUE` in rules or queries. |
+| `core/record_field_resolver_replace_expr.go` | The condition that replaces the `:changed` placeholder is wrapped in `CASE WHEN .. THEN 1 ELSE 0 END` on SQL Server (a condition is not a value there). | `replaceWithExpression`. |
+| `core/validators/db.go` | `normalizeMSSQLUniqueError` after the MySQL one (`db_postgres.go`, `_stub.go`). | `NormalizeUniqueIndexError`. |
+| `tools/search/filter.go` | The two `'%' \|\| x \|\| '%'` LIKE patterns go through `likeContains` (SQL Server concatenates with `+`). Same text elsewhere. | The LIKE operators. |
+| `tools/search/multi_match_subquery.go`, `core/record_field_resolver_dialect.go` | A join without a condition is `OUTER APPLY table alias` on SQL Server (`search.LateralJoin`), `groupJoinedOrderBy` also runs there (GROUP BY every column, `MIN`/`MAX`), and `leftJoin` writes the APPLY. | Multi match subquery building, `registerJoin`. |
+| `migrations/1640988000_init.go`, `migrations/1717233557_v0.23_migrate2.go` | `_collections.type` is `NVARCHAR(100)` and the pre 0.23 index migration does not repeat the index on SQL Server, like MySQL. | New hand written DDL in a system migration: `AdaptDDL` rewrites `TEXT`, `VARCHAR(n)`, `BOOLEAN`, `DEFAULT FALSE`, `IF NOT EXISTS`. |
+| `core/backup_create.go` | `backupTool` names `BACKUP DATABASE`. | |
+| `go.mod` | `github.com/microsoft/go-mssqldb` (pure Go). | |
+| `tests/app_postgres.go`, `tests/postgres_harness_test.go` | SQL Server test databases (`withDatabase` sets the `database` parameter, `COLLATE Latin1_General_100_BIN2`, snapshot isolation), the fixture's `OVER()` views get an `ORDER BY`. | |
 
 ## CI
 
