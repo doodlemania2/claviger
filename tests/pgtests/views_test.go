@@ -65,6 +65,7 @@ var testViews = []viewDef{
 }
 
 func TestViewCollections(t *testing.T) {
+	skipOnLibSQL(t, "asserts the field types that PostgreSQL infers for view columns (SQLite and libSQL infer none)")
 	sqliteApp := newSQLiteApp(t)
 	seedRecords(t, sqliteApp)
 	pgApp := newApp(t)

@@ -13,6 +13,7 @@ import (
 // Every supported strftime() format and modifier gives the same text as
 // SQLite, for dates around the edges (year end, ISO week 53, leap day).
 func TestStrftimeMatchesSQLite(t *testing.T) {
+	skipOnLibSQL(t, "it checks the PostgreSQL strftime translation, which libSQL does not use (it has the native strftime)")
 	sqliteApp := newSQLiteApp(t)
 	pgApp := newApp(t)
 

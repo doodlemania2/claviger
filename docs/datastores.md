@@ -13,6 +13,7 @@ One variable chooses the engine, `CLAVIGER_DB_URL`; the URL scheme says which. U
 | [CockroachDB](#cockroachdb) | `cockroach://` or `cockroachdb://`; a `postgres://` URL that reaches CockroachDB is detected | Supported, with the limits listed in its section. | **Refused** (no `LISTEN`/`NOTIFY`, no advisory locks) | Yes | v25.4 (single node) |
 | [MySQL](#mysql-experimental) | `mysql://` | **Experimental.** Passes the tagged suites, not the regular ones (see the section). | **Refused** | No | 8.4 |
 | MariaDB | `mysql://` or `mariadb://` | **Refused at startup** (no functional indexes in 11.4, which the partial and case insensitive unique indexes need). | n/a | n/a | n/a |
+| [libSQL](#libsql-experimental) | `libsql://`, `http://` or `https://` (a sqld or Turso server) | **Experimental.** The tagged suite and samples of the regular suites pass; the only pure Go client is deprecated upstream (see the section). | **Refused** (one primary, no coordination) | No (a dump path, see the section) | sqld 0.24.33 |
 
 Everything engine specific lives behind the `Dialect` interface in `tools/dialect`. SQLite's SQL text is pinned byte for byte by `tools/search/dialect_sqlite_golden_test.go`, and the SQLite suites run as before.
 
@@ -410,7 +411,130 @@ Every test creates and drops its own database (`CREATE DATABASE ... utf8mb4_bin`
 
 MariaDB 11.4 is refused at startup, so there is nothing to run against it.
 
-## CI for CockroachDB and MySQL (for the conductor)
+## libSQL (experimental)
+
+Status: **experimental** (issue #106). libSQL is a fork of SQLite that a server (`sqld`, or Turso Cloud) exposes over the network. Claviger speaks to it over HTTP (the Hrana protocol), so **the data database is no longer a file on the app's disk**: the shared file system, and the NFS locking problems that come with it, are out of the picture for `data.db`. The SQL is SQLite's SQL, so the SQLite dialect is reused with a handful of statements turned into no-ops (`tools/dialect/libsql.go`, dialect name `libsql`).
+
+**Read this before you depend on it.** The only pure Go (no CGO) client of a libSQL server is `github.com/tursodatabase/libsql-client-go`, and its repository is marked **deprecated** by Turso (it points to the CGO `go-libsql` and to `turso-go`, neither of which is a client for a libSQL server that fits `CGO_ENABLED=0` builds). It still builds and works (module version `v0.0.0-20260528064733-9d5d30a29a60`, the last commit before the deprecation notice), but nobody is going to fix it. That is the reason this stays experimental, and the reason the code keeps the driver behind one small file (`core/db_connect_libsql.go`): if a maintained client appears, only that file changes.
+
+### Turning it on
+
+```sh
+CLAVIGER_DB_URL='libsql://my-db-org.turso.io'                 # TLS (https) to a Turso database
+CLAVIGER_DB_AUTH_TOKEN='eyJ...'                               # the JWT of the database, never in the URL
+# a self hosted sqld:
+CLAVIGER_DB_URL='http://sqld.internal:8080'                   # plain text, https:// for TLS
+CLAVIGER_DB_URL='libsql://sqld.internal:8080?tls=0'           # the same, written libsql://
+```
+
+- **The scheme chooses libSQL**: `libsql://` (HTTPS unless `?tls=0`, which needs an explicit port), `http://` and `https://`. Nothing else in `CLAVIGER_DB_URL` is HTTP, so there is no clash with the other engines.
+- **The auth token** is read from `CLAVIGER_DB_AUTH_TOKEN`. It is also accepted as `?authToken=...` in the URL (the URL value wins when both are set), but prefer the variable: URLs end up in process lists, manifests and logs, the variable does not. A JWT that a sqld started with `--auth-jwt-key-file` (or `SQLD_AUTH_JWT_KEY`) accepts, or a Turso database token. A server without authentication needs no token.
+- Other URL parameters: `tls=0` (above) and `proxy=http://host:port` (connect to that address, but send the URL's host as the HTTP `Host` header: a sqld behind an ingress, or one namespace of a multi tenant sqld, which picks the namespace from the first label of the host name). Anything else in the query string is refused.
+- **Redaction.** The token and the URL never appear in a Claviger error message (they are replaced by `<redacted>`), and `core.RedactDBURL` masks them for any log line you add. `claviger keys check` does not open a libSQL database (it says so and skips; the app checks the keys itself when it starts and fails closed).
+- `auxiliary.db` (request logs) stays a local SQLite file, as with PostgreSQL.
+- The driver is pure Go, so `CGO_ENABLED=0` builds keep working. The binary grows by about 1 MB (`coder/websocket` and an ANTLR runtime come with the client).
+
+### What differs from SQLite
+
+| Area | libSQL |
+| --- | --- |
+| Pragmas | **None are sent.** The connections are remote and the server owns the file: sqld runs WAL, `foreign_keys=ON` (verified) and a 100 ms `busy_timeout` by default. `journal_mode`, `synchronous`, `cache_size`, `temp_store` and the modernc `_defensive` flag are the server's business. |
+| `VACUUM`, `PRAGMA optimize`, `PRAGMA wal_checkpoint` | **Rejected by sqld's statement parser** (`unsupported statement`), so the dialect makes `Vacuum`, `Optimize` and `Checkpoint` no-ops. The periodic checkpoint and optimize jobs log nothing and do nothing for the data database; the server checkpoints its own WAL. `VACUUM` of the data database is not available (the logs database is local and unchanged). |
+| Transactions | Interactive transactions work: one `database/sql` connection is one Hrana stream (a baton), `BEGIN` ... `COMMIT`/`ROLLBACK` run on it. The SQLite model is kept: reads use a concurrent pool, **writes go through a separate pool of one connection** (`SeparateWritePool`), because sqld has a single writer too and queuing in the app is cheaper than a round trip that fails with `database is locked`. **A transaction that sits idle for more than about 10 seconds is dropped by the server** (`stream is closed`): do not hold a transaction across a slow call (an HTTP request in a hook, for example). Idle pooled connections are fine: the driver opens a new stream when the old one expired (verified with 25 second gaps). |
+| Latency | Every statement is a network round trip (HTTP, no pipelining across statements of one transaction). Co-locate the app and sqld; expect a slower bootstrap (the first start, which runs all system migrations, takes a few seconds against a local sqld). |
+| Custom SQL functions | The fork registers **none** on the modernc connection (`core/db_connect.go` only sets pragmas), so nothing is missing: the SQL functions that the app uses are SQLite's own (`json_each`, `json_extract`, `strftime`, `randomblob`, `hex`, `lower`, `PRAGMA_TABLE_INFO`), which sqld has (SQLite 3.47). `regexp()` is also present. **Not available**: `unistr()` (SQLite 3.50+, see the dump note below) and anything that needs a loadable extension. |
+| Introspection | `sqlite_master`, `sqlite_schema` and `PRAGMA_TABLE_INFO(...)` work on sqld and are what the SQLite dialect uses. |
+| Error messages | `UNIQUE constraint failed: table.column` comes through unchanged, so the unique field errors work as on SQLite. |
+| Query log and telemetry | The OpenTelemetry DB spans wrap the modernc, pgx and mysql drivers only: a libSQL data database is traced at the HTTP request level, without DB child spans. |
+| Settings encryption, field encryption, every fork feature | Unchanged: they are built on the dialect seam, and the tagged suite runs them (below). |
+
+### Backups
+
+The zip backup does **not** contain the data database (it is in the server): like on PostgreSQL the archive holds the storage files and the local auxiliary database, and its manifest says that the database is `libsql`. A zip **restore is refused**, and so is verification of a backup that lacks the database. Back up the server instead: a snapshot of the sqld data directory (`--db-path`, stop writes or use the volume's snapshot), `turso db shell <db> .dump` / Turso's point in time recovery, or a dump taken through the app's own connection.
+
+### Several replicas
+
+**Refused**: `CLAVIGER_MULTI_REPLICA=true` fails the start with `... is not supported on libsql: several replicas need the LISTEN/NOTIFY and advisory locks of PostgreSQL`. sqld is one primary (replicas are read only), and the realtime bus, the cron guard, the shared rate limits and the cache invalidation of [Several replicas](#several-replicas) are built on PostgreSQL primitives that libSQL does not have. So there is one writer app instance.
+
+What changes for that one instance: the data database no longer needs the single-writer handover, because it is not a file on the shared volume. **`auxiliary.db` is still a SQLite file on the volume**, so `entrypoint.sh` keeps the handover (and the NFS rules of the deployment) for it: the entrypoint is deliberately unchanged. A rollout that overlaps two replicas is safe for the data database (sqld serializes writers) but not for the logs file; leave the handover on.
+
+### Moving from SQLite to libSQL
+
+`claviger migrate-db` targets PostgreSQL and CockroachDB only (it adapts values to Postgres column types and builds the schema through the import path). SQLite to libSQL is a plain copy, because the schema and the values are already SQLite's. Stop the server first (it is the single writer of `pb_data`), then:
+
+```sh
+# 1. dump data.db. Use Python's iterdump: the sqlite3 CLI of SQLite 3.50+ writes
+#    strings with control characters as unistr('...'), which sqld (SQLite 3.47) cannot read.
+python3 - <<'PY' > dump.sql
+import sqlite3
+for line in sqlite3.connect("pb_data/data.db").iterdump():
+    print(line)
+PY
+
+# 2a. Turso Cloud
+turso db create claviger --from-dump dump.sql
+
+# 2b. a self hosted sqld started with --enable-namespaces: create a namespace from the dump
+#     (the file must be readable by the server; an http(s):// URL works too)
+curl -X POST http://sqld:8081/v1/namespaces/claviger/create \
+  -H 'Content-Type: application/json' -d '{"dump_url":"file:///dumps/dump.sql"}'
+
+# 3. start Claviger on it (a namespace is the first label of the host name)
+CLAVIGER_DB_URL='http://claviger.sqld.internal:8080?proxy=http://sqld:8080' claviger serve
+```
+
+Checked end to end with `tests/data/data.db` (16 collections): the app started on the imported namespace, all collections and records were there and the migrations were recognised as applied. For a plain (single database) sqld without namespaces, run the dump through its HTTP API or `turso db shell`. The reverse direction is the same dump taken from the server (`sqlite3 new.db < dump.sql`).
+
+### Running the tests
+
+The tagged suite and the regular suites run against a sqld started with namespaces: every test app gets its own namespace, forked from a template that holds the converted fixture (the same conversion as the PostgreSQL mode, a file copy per app).
+
+```sh
+docker run -d --name claviger-libsql -p 127.0.0.1:18090:8080 -p 127.0.0.1:18091:8081 \
+  ghcr.io/tursodatabase/libsql-server:latest \
+  /bin/sqld --enable-namespaces --admin-listen-addr 0.0.0.0:8081
+# note: SQLD_ENABLE_NAMESPACES is NOT read from the environment, the flag is required;
+# without it every namespace silently resolves to the one default database.
+
+export CLAVIGER_TEST_DB=libsql
+export CLAVIGER_TEST_LIBSQL_URL=http://127.0.0.1:18090
+export CLAVIGER_TEST_LIBSQL_ADMIN_URL=http://127.0.0.1:18091
+
+go test -tags postgres -count=1 -v ./tests/pgtests/...                  # the tagged suite, about 30 seconds
+go test ./core -run '^TestRecord'      -timeout 20m                     # about 1 minute
+go test ./core -run '^TestCollection'  -timeout 20m
+go test ./apis -run '^TestRecordCrud'  -timeout 30m                     # about 20 seconds
+```
+
+The live connection tests (`core.TestLibSQLLive`, `core.TestLibSQLLiveAuth`) use a plain sqld (no namespaces) and one started with a JWT key:
+
+```sh
+docker run -d --name claviger-libsql-plain -p 127.0.0.1:18080:8080 ghcr.io/tursodatabase/libsql-server:latest
+# an Ed25519 key pair: SQLD_AUTH_JWT_KEY is the URL-safe base64 of the public key,
+# the token is a JWT with alg EdDSA signed by the private key
+docker run -d --name claviger-libsql-auth -p 127.0.0.1:18082:8080 -e SQLD_AUTH_JWT_KEY=<public key> ghcr.io/tursodatabase/libsql-server:latest
+
+CLAVIGER_TEST_LIBSQL_URL=http://127.0.0.1:18080 \
+CLAVIGER_TEST_LIBSQL_AUTH_URL=http://127.0.0.1:18082 CLAVIGER_TEST_LIBSQL_AUTH_TOKEN=<jwt> \
+  go test ./core -run 'LibSQL|RedactDBURL' -v
+```
+
+The URL parsing, the redaction and the "errors never contain the token" tests need no server.
+
+Skipped on libSQL (each prints `known_gap(libsql)`): the eight multi replica tests, and six tagged tests that assert PostgreSQL specific outcomes (`TestIntrospection`, `TestCollectionLifecycle` (PostgreSQL column types and `pg_indexes`), `TestSQLEndpoint` (PostgreSQL SQL and its statement guard), `TestStrftimeMatchesSQLite` (checks the PostgreSQL strftime translation), `TestViewCollections` (PostgreSQL's view column type inference), `TestMultiReplicaOffByDefault` (`information_schema`)). In the regular suites one scenario is skipped, `TestCollectionSaveViewWrapping/no_wrapping_-_select_field`: the test fixture declares `demo1.select_many` as `TEXT` while the schema rebuilt from the converted fixture declares it `JSON`, so the view wrapping differs (a fixture artifact, not a libSQL behavior).
+
+| Run | Result |
+| --- | --- |
+| `./tests/pgtests` (tag `postgres`) | 400 pass, 0 fail, 28 skips (14 whole tests, 14 filter cases where libSQL agrees with SQLite and the table lists a PostgreSQL gap). |
+| `./core -run '^TestRecord'` | 421 pass, 0 fail. |
+| `./core -run '^TestCollection'` | 248 pass, 0 fail, 1 skip. |
+| `./apis -run '^TestRecordCrud'` | 253 pass, 0 fail. |
+
+(Counts include subtests.)
+
+The regular suites were run on these samples, **not in full**; the full `./core` and `./apis` suites on libSQL (thousands of namespace forks) were not run.
+
+## CI for CockroachDB, MySQL and libSQL (for the conductor)
 
 Nothing here is wired into `.github/workflows/test.yml` yet. Two jobs would do it, each after the `test` job, on the same runner tier as the `postgres` job. The service container syntax of GitHub Actions cannot pass arguments to the CockroachDB image, so that one is started with a `docker run` step.
 
@@ -458,3 +582,30 @@ Nothing here is wired into `.github/workflows/test.yml` yet. Two jobs would do i
 
 Check the counts the way the `postgres` job does (`grep -c -- '--- PASS'` against a minimum, any `--- SKIP` that is not `known_gap` or a multi replica test fails the job). The regular suites on these engines are not part of this proposal: they build one database per test app (4 to 7 seconds), so a full run takes hours; run a sample (`./core -run '^TestRecord'`, `./apis -run '^TestRecordCrud'`) with `CLAVIGER_TEST_DB=postgres` if you want one.
 
+### libSQL
+
+One more job, same shape (the sqld image takes its arguments after the image name, so it is started with a `docker run` step like CockroachDB; pin the image to a digest or a released tag instead of `latest` in CI):
+
+```yaml
+  libsql:
+    needs: test
+    runs-on: ${{ vars.RUNNER_LIGHT || 'tdp-k3s-claviger' }}
+    env:
+      CLAVIGER_TEST_DB: libsql
+      CLAVIGER_TEST_LIBSQL_URL: http://127.0.0.1:18090
+      CLAVIGER_TEST_LIBSQL_ADMIN_URL: http://127.0.0.1:18091
+    steps:
+      - uses: actions/checkout@<sha>
+      - uses: actions/setup-go@<sha>
+        with: { go-version-file: go.mod }
+      - name: Start sqld
+        run: |
+          docker run -d --name sqld -p 127.0.0.1:18090:8080 -p 127.0.0.1:18091:8081 \
+            ghcr.io/tursodatabase/libsql-server:<tag> /bin/sqld --enable-namespaces --admin-listen-addr 0.0.0.0:8081
+          until curl -sf -X POST http://127.0.0.1:18090/v2/pipeline -d '{"requests":[{"type":"execute","stmt":{"sql":"select 1"}}]}' >/dev/null; do sleep 1; done
+      - run: go test -tags postgres -count=1 -v ./tests/pgtests/... | tee libsql.log   # expect 0 FAIL; skips are known_gap(libsql)
+      - run: go test -count=1 ./core -run '^TestRecord' -timeout 20m
+      - run: go test -count=1 ./apis -run '^TestRecordCrud' -timeout 30m
+```
+
+The auth token tests need a second sqld with `SQLD_AUTH_JWT_KEY` and a signed token; add them only if you want the CI to cover the token path (the unit tests of the URL parsing and the redaction run in the normal `test` job, without a server).

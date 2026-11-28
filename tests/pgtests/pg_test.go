@@ -20,8 +20,21 @@ import (
 	mysqldrv "github.com/go-sql-driver/mysql"
 )
 
+// isLibSQLServer reports whether the suite runs against a libSQL server
+// (CLAVIGER_TEST_DB=libsql, CLAVIGER_TEST_LIBSQL_URL and
+// CLAVIGER_TEST_LIBSQL_ADMIN_URL, see tests/app_libsql.go): the SQL is
+// SQLite's, so the engine is expected to agree with SQLite everywhere.
+func isLibSQLServer(t testing.TB) bool {
+	t.Helper()
+	return strings.EqualFold(os.Getenv("CLAVIGER_TEST_DB"), "libsql") && os.Getenv("CLAVIGER_TEST_LIBSQL_URL") != ""
+}
+
 func adminURL(t testing.TB) string {
 	t.Helper()
+
+	if isLibSQLServer(t) {
+		return os.Getenv("CLAVIGER_TEST_LIBSQL_URL")
+	}
 
 	u := os.Getenv("CLAVIGER_TEST_PG_URL")
 	if u == "" {
@@ -44,7 +57,7 @@ func textCast(t testing.TB) string {
 // against another engine: see docs/datastores.md.
 func isMySQLServer(t testing.TB) bool {
 	t.Helper()
-	return strings.HasPrefix(strings.ToLower(adminURL(t)), "mysql://") ||
+	return !isLibSQLServer(t) && strings.HasPrefix(strings.ToLower(adminURL(t)), "mysql://") ||
 		strings.HasPrefix(strings.ToLower(adminURL(t)), "mariadb://")
 }
 
@@ -84,6 +97,10 @@ func adminSQL(t testing.TB) *sql.DB {
 func serverVersion(t testing.TB) string {
 	t.Helper()
 
+	if isLibSQLServer(t) {
+		return "libsql"
+	}
+
 	db := adminSQL(t)
 	defer db.Close()
 
@@ -96,12 +113,15 @@ func serverVersion(t testing.TB) string {
 
 // isCockroach reports whether the test server is CockroachDB.
 func isCockroach(t testing.TB) bool {
-	return !isMySQLServer(t) && strings.Contains(serverVersion(t), "CockroachDB")
+	return !isLibSQLServer(t) && !isMySQLServer(t) && strings.Contains(serverVersion(t), "CockroachDB")
 }
 
 // skipUnlessPostgres skips a test of a feature that only PostgreSQL has.
 func skipUnlessPostgres(t testing.TB, why string) {
 	t.Helper()
+	if isLibSQLServer(t) {
+		t.Skip("known_gap(libsql): " + why)
+	}
 	if isMySQLServer(t) {
 		t.Skip("known_gap(mysql): " + why)
 	}
@@ -113,6 +133,10 @@ func skipUnlessPostgres(t testing.TB, why string) {
 // freshDatabase creates an empty database and returns its connection URL.
 func freshDatabase(t testing.TB) string {
 	t.Helper()
+
+	if isLibSQLServer(t) {
+		return freshLibSQLNamespace(t)
+	}
 
 	admin := adminURL(t)
 
@@ -186,6 +210,9 @@ func TestDialectSelection(t *testing.T) {
 	app := newApp(t)
 
 	want := dialect.PostgresName
+	if isLibSQLServer(t) {
+		want = dialect.LibSQLName
+	}
 	if isCockroach(t) {
 		want = dialect.CockroachName
 	}
@@ -202,7 +229,12 @@ func TestDialectSelection(t *testing.T) {
 	if got := core.AuxDialectOf(app).Name(); got != dialect.SQLiteName {
 		t.Fatalf("aux db dialect = %q, want sqlite", got)
 	}
-	if app.ConcurrentDB() != app.NonconcurrentDB() {
+	if isLibSQLServer(t) {
+		// libSQL keeps the SQLite model: one writer pool, in the app
+		if app.ConcurrentDB() == app.NonconcurrentDB() {
+			t.Fatal("expected a separate write pool on libSQL")
+		}
+	} else if app.ConcurrentDB() != app.NonconcurrentDB() {
 		t.Fatal("expected a single connection pool for reads and writes on Postgres")
 	}
 	if app.AuxConcurrentDB() == app.AuxNonconcurrentDB() {
@@ -282,6 +314,7 @@ func TestBootstrapAndSystemMigrations(t *testing.T) {
 }
 
 func TestIntrospection(t *testing.T) {
+	skipOnLibSQL(t, "asserts the PostgreSQL catalogs and column types")
 	if isMySQLServer(t) {
 		t.Skip("known_gap(mysql): column types and defaults are reported in MySQL's spelling (varchar(255), concat(_utf8mb4'r', ...)), which this test pins for PostgreSQL")
 	}
@@ -343,6 +376,7 @@ func TestIntrospection(t *testing.T) {
 }
 
 func TestCollectionLifecycle(t *testing.T) {
+	skipOnLibSQL(t, "asserts PostgreSQL column types and pg_indexes")
 	app := newApp(t)
 
 	col := core.NewBaseCollection("posts")
