@@ -63,7 +63,7 @@ JavaScript hooks. Every feature below is off, or has no effect, until you config
 | Signed webhooks | Standard Webhooks signatures, retries: [docs/webhooks.md](docs/webhooks.md) |
 | Encrypted backups | AES-256-GCM, restore verification: [docs/backup-encryption.md](docs/backup-encryption.md) |
 | OpenTelemetry and metrics | OTLP/HTTP logs, traces and metrics; Prometheus text at `/api/metrics`. See [Telemetry](#telemetry) |
-| SQLite-safe rollouts | `entrypoint.sh` hands the database from the outgoing to the incoming container |
+| SQLite-safe rollouts | `entrypoint.sh` hands the database from the outgoing to the incoming container; an opt-in built-in handover (`serve --handover`) does the same in the binary: [docs/handover.md](docs/handover.md) |
 | Container packaging | Multi-stage `Dockerfile`, `docker-compose.yml`, optional Litestream replication |
 | PostgreSQL | Supported, opt-in data store (16 and 17); several replicas only on PostgreSQL; no zip backups: [docs/datastores.md](docs/datastores.md) |
 | CockroachDB, MySQL, SQL Server | CockroachDB (`cockroach://`) is supported on one replica; MySQL 8 (`mysql://`) and SQL Server 2019+ / Azure SQL (`sqlserver://`) are experimental; MariaDB is not supported yet: [docs/datastores.md](docs/datastores.md) |
@@ -79,7 +79,7 @@ JavaScript hooks. Every feature below is off, or has no effect, until you config
 | Diocese hierarchy and transfers | Nested orgs, opt-in oversight rules, consented transfers, org-scoped role tags: [docs/orgs.md](docs/orgs.md) |
 | Pastoral notes | Locked rules, two-person break-glass access, expiring prayer requests: [docs/pastoral-notes.md](docs/pastoral-notes.md) |
 | Children's check-in | Family pickup codes, guardian passkey release, kiosks, do-not-release flags, an append-only log: [docs/checkin.md](docs/checkin.md) |
-| Permanent registers | Final entries cannot be edited; corrections are annotations: [docs/registers.md](docs/registers.md) |
+| Permanent registers | Final entries cannot be edited; corrections are annotations; restriction of processing (GDPR Article 18) and optional anonymization of old entries: [docs/registers.md](docs/registers.md) |
 | SMS | Twilio or a generic webhook: [docs/sms.md](docs/sms.md) |
 
 ### Data protection (GDPR)
@@ -99,10 +99,11 @@ erasure all need local legal review. The guides say so where it applies.
 
 ## Roadmap
 
-Not built yet. Labels and details are in the [issues](../../issues).
+Not built yet, or not finished. Labels and details are in the [issues](../../issues).
 
-- Enterprise inbound SSO ([#92](../../issues/92)).
-- Built-in handover between instances is in, opt-in (`serve --handover`, see [docs/handover.md](docs/handover.md)); deleting the entrypoint's copy of it is what remains of [#72](../../issues/72).
+- Enterprise inbound SSO is built; testing it against a real Okta and Entra ID tenant is what remains of [#92](../../issues/92).
+- The church software SSO guides need two vendors verified end to end ([#85](../../issues/85)).
+- The built-in handover is opt-in; making it the default and deleting the entrypoint's copy is what remains of [#72](../../issues/72).
 - Owner-held key vault ([#86](../../issues/86)). Design spike: [docs/spikes/86-6-owner-key-vault.md](docs/spikes/86-6-owner-key-vault.md).
 - Data stores beyond SQLite, PostgreSQL and CockroachDB: MySQL, SQL Server and libSQL are experimental, MariaDB is not supported yet ([#106](../../issues/106)).
 
