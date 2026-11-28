@@ -501,7 +501,7 @@ export CLAVIGER_TEST_DB=libsql
 export CLAVIGER_TEST_LIBSQL_URL=http://127.0.0.1:18090
 export CLAVIGER_TEST_LIBSQL_ADMIN_URL=http://127.0.0.1:18091
 
-go test -tags postgres -count=1 -v ./tests/pgtests/...                  # the tagged suite, about 30 seconds
+go test -tags postgres,libsql -count=1 -v ./tests/pgtests/...           # the tagged suite plus the libSQL-only tests, about 30 seconds
 go test ./core -run '^TestRecord'      -timeout 20m                     # about 1 minute
 go test ./core -run '^TestCollection'  -timeout 20m
 go test ./apis -run '^TestRecordCrud'  -timeout 30m                     # about 20 seconds
@@ -711,7 +711,7 @@ One more job, same shape (the sqld image takes its arguments after the image nam
           docker run -d --name sqld -p 127.0.0.1:18090:8080 -p 127.0.0.1:18091:8081 \
             ghcr.io/tursodatabase/libsql-server:<tag> /bin/sqld --enable-namespaces --admin-listen-addr 0.0.0.0:8081
           until curl -sf -X POST http://127.0.0.1:18090/v2/pipeline -d '{"requests":[{"type":"execute","stmt":{"sql":"select 1"}}]}' >/dev/null; do sleep 1; done
-      - run: go test -tags postgres -count=1 -v ./tests/pgtests/... | tee libsql.log   # expect 0 FAIL; skips are known_gap(libsql)
+      - run: go test -tags postgres,libsql -count=1 -v ./tests/pgtests/... | tee libsql.log   # expect 0 FAIL; skips are known_gap(libsql)
       - run: go test -count=1 ./core -run '^TestRecord' -timeout 20m
       - run: go test -count=1 ./apis -run '^TestRecordCrud' -timeout 30m
 ```

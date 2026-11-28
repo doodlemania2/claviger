@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/doodlemania2/claviger/core"
-	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/security"
 )
 
@@ -61,42 +59,5 @@ func skipOnLibSQL(t testing.TB, why string) {
 	t.Helper()
 	if isLibSQLServer(t) {
 		t.Skip("known_gap(libsql): " + why)
-	}
-}
-
-// Several replicas need the LISTEN/NOTIFY bus and the advisory locks of PostgreSQL:
-// libSQL (one sqld primary) refuses the mode, loudly.
-func TestMultiReplicaRefusedOnLibSQL(t *testing.T) {
-	if !isLibSQLServer(t) {
-		t.Skip("libSQL only")
-	}
-
-	t.Setenv(core.DBURLEnv, freshDatabase(t))
-	t.Setenv(core.MultiReplicaEnv, "true")
-
-	app := core.NewBaseApp(core.BaseAppConfig{DataDir: t.TempDir()})
-	err := app.Bootstrap()
-	if err == nil {
-		_ = app.ClearBootstrap()
-		t.Fatal("expected the start to be refused")
-	}
-	if !strings.Contains(err.Error(), "not supported on libsql") || !strings.Contains(err.Error(), "PostgreSQL") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-// The logs stay in a local SQLite file next to the app.
-func TestLibSQLUsesTheLocalAuxiliaryDatabase(t *testing.T) {
-	if !isLibSQLServer(t) {
-		t.Skip("libSQL only")
-	}
-
-	app := newApp(t)
-
-	if got := core.DialectOf(app).Name(); got != dialect.LibSQLName {
-		t.Fatalf("data dialect %q", got)
-	}
-	if got := core.AuxDialectOf(app).Name(); got != dialect.SQLiteName {
-		t.Fatalf("aux dialect %q", got)
 	}
 }
