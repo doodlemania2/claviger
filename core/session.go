@@ -325,7 +325,7 @@ func DeleteExpiredSessions(app App, before time.Time) (int64, error) {
 	cutoff := before.UTC().Format(types.DefaultDateLayout)
 
 	res, err := app.NonconcurrentDB().Delete(CollectionNameSessions,
-		dbx.NewExp("[[expires]] < {:cutoff} OR ([[revoked]] = TRUE AND [[lastSeen]] < {:cutoff})", dbx.Params{"cutoff": cutoff}),
+		dbx.NewExp("[[expires]] < {:cutoff} OR ([[revoked]] = "+boolSQL(app, true)+" AND [[lastSeen]] < {:cutoff})", dbx.Params{"cutoff": cutoff}),
 	).Execute()
 	if err != nil {
 		return 0, err

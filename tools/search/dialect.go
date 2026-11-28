@@ -285,3 +285,25 @@ func noRows(d dialect.Dialect, fromWhere string) string {
 
 	return "NOT EXISTS (SELECT 1 " + fromWhere + ")"
 }
+
+// likeContains renders the "contains" pattern of a column operand: '%' || x || '%'
+// (SQL Server concatenates with +).
+func likeContains(d dialect.Dialect, operand string) string {
+	if c, ok := d.(interface{ Concat(parts ...string) string }); ok {
+		return "(" + c.Concat("'%'", operand, "'%'") + ")"
+	}
+
+	return "('%' || " + operand + " || '%')"
+}
+
+// LateralJoin returns the keyword that joins a table valued function (or a
+// derived table) over a column of an earlier table without a condition
+// ("OUTER APPLY" on SQL Server), or an empty string if the dialect joins it
+// with LEFT JOIN ... ON.
+func LateralJoin(d dialect.Dialect) string {
+	if a, ok := d.(interface{ ApplyJoin() string }); ok {
+		return a.ApplyJoin()
+	}
+
+	return ""
+}

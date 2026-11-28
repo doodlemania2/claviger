@@ -145,7 +145,7 @@ func createParamsTable(txApp core.App) error {
 // typeColumnType is the type of the indexed "type" column of _collections
 // (MySQL cannot index a TEXT column without a prefix length).
 func typeColumnType(d dialect.Dialect) string {
-	if d.Name() == dialect.MySQLName || d.Name() == dialect.MariaDBName {
+	if d.Name() == dialect.MySQLName || d.Name() == dialect.MariaDBName || d.Name() == dialect.MSSQLName {
 		return "VARCHAR(100)"
 	}
 	return "TEXT"

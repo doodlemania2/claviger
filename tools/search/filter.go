@@ -197,14 +197,14 @@ func buildResolversExpr(
 	case fexpr.SignLike, fexpr.SignAnyLike:
 		// the right side is a column and therefor wrap it with "%" for contains like behavior
 		if len(right.Params) == 0 {
-			expr = dbx.NewExp(fmt.Sprintf("%s %s ('%%' || %s || '%%') ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(false), d.AsText(right.Identifier)), left.Params)
+			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(false), likeContains(d, d.AsText(right.Identifier))), left.Params)
 		} else {
 			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(false), right.Identifier), mergeParams(left.Params, wrapLikeParams(right.Params)))
 		}
 	case fexpr.SignNlike, fexpr.SignAnyNlike:
 		// the right side is a column and therefor wrap it with "%" for not-contains like behavior
 		if len(right.Params) == 0 {
-			expr = dbx.NewExp(fmt.Sprintf("%s %s ('%%' || %s || '%%') ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(true), d.AsText(right.Identifier)), left.Params)
+			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(true), likeContains(d, d.AsText(right.Identifier))), left.Params)
 		} else {
 			expr = dbx.NewExp(fmt.Sprintf("%s %s %s ESCAPE '\\'", d.AsText(left.Identifier), d.LikeOp(true), right.Identifier), mergeParams(left.Params, wrapLikeParams(right.Params)))
 		}

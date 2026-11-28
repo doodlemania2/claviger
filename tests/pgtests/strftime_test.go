@@ -26,6 +26,9 @@ func TestStrftimeMatchesSQLite(t *testing.T) {
 			d = dialect.MariaDB
 		}
 	}
+	if isMSSQLServer(t) {
+		d = dialect.MSSQL
+	}
 	fb := d.(dialect.FunctionBuilder)
 
 	dates := []string{
@@ -53,6 +56,15 @@ func TestStrftimeMatchesSQLite(t *testing.T) {
 		}
 	}
 
+	if isMSSQLServer(t) {
+		// the subset that SQL Server supports (docs/datastores.md): no %P %G %g
+		formats = []string{
+			"%Y", "%m", "%d", "%e", "%H", "%I", "%k", "%l", "%M", "%S", "%f", "%j", "%p",
+			"%w", "%u", "%s", "%U", "%W", "%V", "%F", "%T", "%R", "%%",
+			"%Y-%m-%dT%H:%M:%S", "Q%m/%Y week %W day %w", `100%% "quoted" it's`,
+		}
+	}
+
 	for _, format := range formats {
 		for _, date := range dates {
 			check(t, sqliteApp, pgApp, fb, format, date, nil)
@@ -66,6 +78,18 @@ func TestStrftimeMatchesSQLite(t *testing.T) {
 		{"start of month", "+1 month", "-1 day"}, {"start of year", "+6 months"},
 		{"weekday 0"}, {"weekday 3"}, {"weekday 6"}, {"+3 days", "weekday 1"},
 		{"utc"}, {"subsec"},
+	}
+
+	if isMSSQLServer(t) {
+		// no fractional day modifiers
+		modifiers = [][]string{
+			{"start of day"}, {"start of month"}, {"start of year"},
+			{"+1 day"}, {"-1 day"}, {"+36 hours"}, {"-90 minutes"}, {"+45 seconds"}, {"+1 year"}, {"-1 year"},
+			{"+1 month"}, {"-1 month"},
+			{"start of month", "+1 month", "-1 day"}, {"start of year", "+6 months"},
+			{"weekday 0"}, {"weekday 3"}, {"weekday 6"}, {"+3 days", "weekday 1"},
+			{"utc"}, {"subsec"},
+		}
 	}
 
 	if isMySQLServer(t) {
@@ -144,6 +168,9 @@ func TestStrftimeMatchesSQLite(t *testing.T) {
 
 	// the session time zone does not matter
 	zones := []string{"UTC", "America/Los_Angeles", "Asia/Kolkata"}
+	if isMSSQLServer(t) {
+		zones = nil // SQL Server has no session time zone: the SQL uses UTC
+	}
 	if isMySQLServer(t) {
 		zones = nil // the session time zone of MySQL is pinned to UTC by the connection
 	}

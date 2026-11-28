@@ -538,6 +538,8 @@ func backupTool(dialectName string) string {
 		return "BACKUP (cockroach sql)"
 	case dialect.MySQLName, dialect.MariaDBName:
 		return "mysqldump"
+	case dialect.MSSQLName:
+		return "BACKUP DATABASE (T-SQL)"
 	}
 	return "pg_dump"
 }

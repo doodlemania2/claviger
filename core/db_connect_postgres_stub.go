@@ -29,3 +29,10 @@ func MySQLDBConnect(url string) DBConnectFunc {
 		return nil, errors.New("MySQL support is not compiled in (no_default_driver build tag)")
 	}
 }
+
+// MSSQLDBConnect is not available without the default drivers.
+func MSSQLDBConnect(url string) DBConnectFunc {
+	return func(_ string) (*dbx.DB, error) {
+		return nil, errors.New("SQL Server support is not compiled in (no_default_driver build tag)")
+	}
+}

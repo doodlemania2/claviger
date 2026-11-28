@@ -15,12 +15,14 @@ var (
 	engineName string
 )
 
-// testEngine is the dialect name of the test server: postgres, cockroach, mysql or mariadb.
+// testEngine is the dialect name of the test server: postgres, cockroach, mysql, mariadb or mssql.
 func testEngine(t testing.TB) string {
 	t.Helper()
 
 	engineOnce.Do(func() {
 		switch {
+		case isMSSQLServer(t):
+			engineName = dialect.MSSQLName
 		case isMySQLServer(t):
 			engineName = dialect.MySQLName
 			if strings.Contains(strings.ToLower(serverVersion(t)), "mariadb") {
@@ -58,6 +60,7 @@ var engineGaps = map[string]map[string]string{
 		"unicode like is ascii only":  "CockroachDB's ILIKE and lower() fold the case of non ASCII letters, SQLite's only ASCII",
 		"unicode lower is ascii only": "CockroachDB's ILIKE and lower() fold the case of non ASCII letters, SQLite's only ASCII",
 	},
+	dialect.MSSQLName: {},
 	dialect.MySQLName: {
 		"unicode like is ascii only":  "MySQL's case insensitive collation folds the case of non ASCII letters (accents stay significant), SQLite's LIKE only ASCII",
 		"unicode lower is ascii only": "MySQL's LOWER() and its case insensitive LIKE fold non ASCII letters, SQLite's only ASCII",
@@ -79,5 +82,5 @@ var engineGaps = map[string]map[string]string{
 // is not an error.
 func engineMayAgree(t testing.TB) bool {
 	t.Helper()
-	return testEngine(t) == dialect.MySQLName || testEngine(t) == dialect.MariaDBName
+	return testEngine(t) == dialect.MySQLName || testEngine(t) == dialect.MariaDBName || testEngine(t) == dialect.MSSQLName
 }

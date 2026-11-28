@@ -24,6 +24,11 @@ func (r *RecordFieldResolver) Dialect() dialect.Dialect {
 // condition (a cross join, or a lateral set returning function) needs an
 // explicit "ON TRUE" on Postgres.
 func (r *RecordFieldResolver) leftJoin(query *dbx.SelectQuery, join *search.Join) {
+	if apply := search.LateralJoin(r.Dialect()); join.On == nil && apply != "" {
+		query.Join(apply, join.TableName+" "+join.TableAlias, nil)
+		return
+	}
+
 	on := join.On
 	if on == nil {
 		if cond := r.Dialect().JoinOn(); cond != "" {

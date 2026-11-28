@@ -223,6 +223,14 @@ func withDatabase(rawURL, name string) string {
 	if err != nil {
 		panic(err)
 	}
+	if isMSSQLURL(rawURL) {
+		// SQL Server: the database is a query parameter
+		q := u.Query()
+		q.Set("database", name)
+		u.Path = ""
+		u.RawQuery = q.Encode()
+		return u.String()
+	}
 	u.Path = "/" + name
 	return u.String()
 }
@@ -236,11 +244,16 @@ func isMySQLURL(u string) bool {
 	return strings.HasPrefix(l, "mysql://") || strings.HasPrefix(l, "mariadb://")
 }
 
+func isMSSQLURL(u string) bool {
+	l := strings.ToLower(strings.TrimSpace(u))
+	return strings.HasPrefix(l, "sqlserver://") || strings.HasPrefix(l, "mssql://")
+}
+
 // canTemplate reports whether the server clones a database with CREATE DATABASE
 // ... TEMPLATE (PostgreSQL). MySQL and CockroachDB do not: every test app then
 // builds its own database from the fixture (a few seconds each, see clone).
 func canTemplate(adminURL string) bool {
-	if isMySQLURL(adminURL) {
+	if isMySQLURL(adminURL) || isMSSQLURL(adminURL) {
 		return false
 	}
 
@@ -263,10 +276,24 @@ func connectFunc(url string) core.DBConnectFunc {
 	if isMySQLURL(url) {
 		return core.MySQLDBConnect(url)
 	}
+	if isMSSQLURL(url) {
+		return core.MSSQLDBConnect(url)
+	}
 	return core.PostgresDBConnect(url)
 }
 
 func adminExec(adminURL string, query string) error {
+	if isMSSQLURL(adminURL) {
+		db, err := sql.Open("sqlserver", adminURL)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+
+		_, err = db.Exec(query)
+		return err
+	}
+
 	if isMySQLURL(adminURL) {
 		u, err := url.Parse(adminURL)
 		if err != nil {
@@ -294,6 +321,10 @@ func adminExec(adminURL string, query string) error {
 }
 
 func createDatabase(adminURL, name string) error {
+	if isMSSQLURL(adminURL) {
+		return adminExec(adminURL, "CREATE DATABASE ["+name+"] COLLATE Latin1_General_100_BIN2; "+
+			"ALTER DATABASE ["+name+"] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE")
+	}
 	if isMySQLURL(adminURL) {
 		return adminExec(adminURL, "CREATE DATABASE `"+name+"` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin")
 	}
@@ -306,6 +337,11 @@ var (
 )
 
 func dropDatabase(adminURL, name string) {
+	if isMSSQLURL(adminURL) {
+		_ = adminExec(adminURL, "IF DB_ID(N'"+name+"') IS NOT NULL BEGIN ALTER DATABASE ["+name+"] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE ["+name+"] END")
+		return
+	}
+
 	if isMySQLURL(adminURL) {
 		_ = adminExec(adminURL, "DROP DATABASE IF EXISTS `"+name+"`")
 		return
@@ -632,7 +668,7 @@ func adaptFixtureValue(v any, pgType string) any {
 	}
 
 	switch {
-	case pgType == "boolean" || pgType == "tinyint(1)":
+	case pgType == "boolean" || pgType == "tinyint(1)" || pgType == "bit":
 		switch x := v.(type) {
 		case int64:
 			return x != 0
@@ -646,7 +682,7 @@ func adaptFixtureValue(v any, pgType string) any {
 			return nil
 		}
 		return fmt.Sprint(v)
-	case strings.Contains(pgType, "double") || pgType == "real":
+	case strings.Contains(pgType, "double") || pgType == "real" || pgType == "float":
 		switch x := v.(type) {
 		case string:
 			var f float64
@@ -654,7 +690,7 @@ func adaptFixtureValue(v any, pgType string) any {
 				return f
 			}
 		}
-	case pgType == "text" || pgType == "longtext" || strings.HasPrefix(pgType, "varchar") || strings.HasPrefix(pgType, "character"):
+	case pgType == "text" || pgType == "longtext" || strings.HasPrefix(pgType, "varchar") || strings.HasPrefix(pgType, "nvarchar") || strings.HasPrefix(pgType, "character"):
 		if _, ok := v.(string); !ok {
 			return fmt.Sprint(v)
 		}
