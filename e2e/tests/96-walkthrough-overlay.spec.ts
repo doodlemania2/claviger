@@ -13,6 +13,10 @@ test("walkthrough overlay installs on the admin UI and a hosted page with no CSP
     await ctx.addInitScript(overlayInit);
     const page = await ctx.newPage();
     watch(page, problems);
+    // /passkeys starts a discoverable passkey sign-in in the background when it loads. The whole suite
+    // runs from one IP, and by this spec it can have spent the per-IP login-begin budget (20 a minute),
+    // so that call may answer 429. This spec is about the overlay and the CSP, not the rate limit.
+    problems.ignore(/status of 429 .*\/auth-with-webauthn\/login-begin-discoverable/);
 
     await signInAdmin(page);
     await page.evaluate(() => {
