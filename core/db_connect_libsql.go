@@ -88,7 +88,7 @@ func parseLibSQLURL(raw, envToken string) (*libsqlParams, error) {
 			}
 			p.proxy = values[0]
 		case "tls":
-			on := !(values[0] == "0" || strings.EqualFold(values[0], "false"))
+			on := values[0] != "0" && !strings.EqualFold(values[0], "false")
 			p.tls = &on
 		default:
 			return nil, fmt.Errorf("invalid libSQL URL: unknown query parameter %q (supported: authToken, tls, proxy)", key)

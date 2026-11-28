@@ -360,22 +360,22 @@ func (mysqlDialect) StrFTime(format string, timeValue string, timeValueIsNumber 
 
 		spec := format[i]
 
-		switch {
-		case spec == '%':
+		switch spec {
+		case '%':
 			lit.WriteByte('%')
-		case spec == 'f':
+		case 'f':
 			flush()
 			parts = append(parts, "SUBSTRING(DATE_FORMAT(@@TS@@, '%S.%f'), 1, 6)")
-		case spec == 'e':
+		case 'e':
 			flush()
 			parts = append(parts, "LPAD(DAYOFMONTH(@@TS@@), 2, ' ')")
-		case spec == 'k':
+		case 'k':
 			flush()
 			parts = append(parts, "LPAD(HOUR(@@TS@@), 2, ' ')")
-		case spec == 'l':
+		case 'l':
 			flush()
 			parts = append(parts, "LPAD(CAST(DATE_FORMAT(@@TS@@, '%l') AS CHAR), 2, ' ')")
-		case spec == 's':
+		case 's':
 			flush()
 			parts = append(parts, "CAST(FLOOR(UNIX_TIMESTAMP(@@TS@@)) AS CHAR)")
 		default:

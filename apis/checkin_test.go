@@ -772,7 +772,6 @@ func TestKioskHandoffAndSession(t *testing.T) {
 	if ttl := core.KioskSessionTTL(org); ttl != 2*time.Minute {
 		t.Fatalf("the org setting must apply, got %v", ttl)
 	}
-
 }
 
 func TestKioskSessionRoute(t *testing.T) {

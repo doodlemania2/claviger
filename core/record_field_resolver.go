@@ -4,12 +4,12 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"github.com/doodlemania2/claviger/tools/dialect"
 	"slices"
 	"strconv"
 	"strings"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/inflector"
 	"github.com/doodlemania2/claviger/tools/search"
 	"github.com/doodlemania2/claviger/tools/security"

@@ -996,7 +996,7 @@ func checkinCoordinators(app App, org *Record) []*Record {
 	for _, m := range members {
 		role := m.GetString("role")
 		if role != OrgRoleOwner && role != OrgRoleAdmin &&
-			!(role == OrgRoleMember && slices.Contains(OrgTagNames(app, m), CheckinSupervisorTag)) {
+			(role != OrgRoleMember || !slices.Contains(OrgTagNames(app, m), CheckinSupervisorTag)) {
 			continue
 		}
 

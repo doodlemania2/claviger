@@ -1,10 +1,10 @@
 package core
 
 import (
-	"github.com/doodlemania2/claviger/tools/dialect"
 	"strings"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	"github.com/doodlemania2/claviger/tools/dialect"
 )
 
 var _ dbx.Expression = (*replaceWithExpression)(nil)

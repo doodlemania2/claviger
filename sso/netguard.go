@@ -8,7 +8,7 @@ import (
 )
 
 var reservedPrefixes = func() []netip.Prefix {
-	var out []netip.Prefix
+	out := make([]netip.Prefix, 0, 11)
 
 	for _, s := range []string{
 		"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "192.0.2.0/24", "198.18.0.0/15",

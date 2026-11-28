@@ -15,6 +15,7 @@ package tests
 // host name in the URL.
 
 import (
+	"database/sql"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,9 +24,7 @@ import (
 	"sync"
 	"testing"
 
-	"database/sql"
 	"ganigeorgiev.com/pocketbase/dbx"
-
 	"github.com/doodlemania2/claviger/core"
 	"github.com/doodlemania2/claviger/tools/dialect"
 	"github.com/doodlemania2/claviger/tools/security"

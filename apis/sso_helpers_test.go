@@ -317,17 +317,6 @@ func (b *ssoBrowser) do(method, target, body string, headers map[string]string) 
 	return rec
 }
 
-func (b *ssoBrowser) json(rec *httptest.ResponseRecorder) map[string]any {
-	b.env.t.Helper()
-
-	var out map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
-		b.env.t.Fatalf("not JSON (%d): %s", rec.Code, rec.Body.String())
-	}
-
-	return out
-}
-
 // admin does a request as alice (owner of the organization P1).
 func (e *ssoEnv) admin(method, target, body string) *httptest.ResponseRecorder {
 	return e.browser().do(method, target, body, map[string]string{"Authorization": orgToken(e.t, "alice")})
